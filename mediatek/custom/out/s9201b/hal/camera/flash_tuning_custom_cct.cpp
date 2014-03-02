@@ -71,7 +71,7 @@ int getDefaultStrobeNVRam(int sensorType, void* data, int* ret_size)
 
 	static short engTab[]=
     {
-        1600,3081,4414,5680,6882,8066,9156,10162,11123,12063,12997,14015,14865,15596,16282,16987,17500,18028,18386,18734,18973,19167,19294,19328,19228,19147,19000,19005,18979,18977,19002,18938,
+1600,3081,4414,5680,6882,8066,9156,10162,11123,12063,12997,14015,14865,15596,16282,16987,17500,18028,18386,18734,18973,19167,19294,19328,19228,19147,19000,19005,18979,18977,19002,18938,
 		0,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,2,
 		1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,3,
 		1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,4,
@@ -79,6 +79,7 @@ int getDefaultStrobeNVRam(int sensorType, void* data, int* ret_size)
 		1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,6,
 		1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,7,
 		1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,8,
+
     };
 
 	//version
@@ -94,8 +95,8 @@ int getDefaultStrobeNVRam(int sensorType, void* data, int* ret_size)
 	p->tuningPara[0].antiIsoLevel = -5;
 	p->tuningPara[0].antiExpLevel = -5;
 	p->tuningPara[0].antiStrobeLevel = -10;
-	p->tuningPara[0].antiUnderLevel = -2;
-	p->tuningPara[0].antiOverLevel = 0;
+	p->tuningPara[0].antiUnderLevel = -2;// -2//LINE <ASNTZO-60> <DATE20130325> <enhance the brightness of flash light> wupingzhou
+	p->tuningPara[0].antiOverLevel = -0; //   2//LINE <ASNTZO-60> <DATE20130325> <enhance the brightness of flash light> wupingzhou
 	p->tuningPara[0].foregroundLevel = 0;
 	p->tuningPara[0].isRefAfDistance = 0;
 	p->tuningPara[0].accuracyLevel = -10;
@@ -104,8 +105,8 @@ int getDefaultStrobeNVRam(int sensorType, void* data, int* ret_size)
 	p->tuningPara[1].antiIsoLevel = -5;
 	p->tuningPara[1].antiExpLevel = -5;
 	p->tuningPara[1].antiStrobeLevel = -10;
-	p->tuningPara[1].antiUnderLevel = -2;
-	p->tuningPara[1].antiOverLevel = 0;
+	p->tuningPara[1].antiUnderLevel = -2;// -2//LINE <ASNTZO-60> <DATE20130325> <enhance the brightness of flash light> wupingzhou
+	p->tuningPara[1].antiOverLevel = 0; //   2//LINE <ASNTZO-60> <DATE20130325> <enhance the brightness of flash light> wupingzhou
 	p->tuningPara[1].foregroundLevel = 0;
 	p->tuningPara[1].isRefAfDistance = 0;
 	p->tuningPara[1].accuracyLevel = -10;
@@ -114,8 +115,8 @@ int getDefaultStrobeNVRam(int sensorType, void* data, int* ret_size)
 	p->tuningPara[2].antiIsoLevel = -5;
 	p->tuningPara[2].antiExpLevel = -5;
 	p->tuningPara[2].antiStrobeLevel = -10;
-	p->tuningPara[2].antiUnderLevel = -2;
-	p->tuningPara[2].antiOverLevel = 0;
+	p->tuningPara[2].antiUnderLevel = -2;// -2//LINE <ASNTZO-60> <DATE20130325> <enhance the brightness of flash light> wupingzhou
+	p->tuningPara[2].antiOverLevel = 0; //   2//LINE <ASNTZO-60> <DATE20130325> <enhance the brightness of flash light> wupingzhou
 	p->tuningPara[2].foregroundLevel = 0;
 	p->tuningPara[2].isRefAfDistance = 0;
 	p->tuningPara[2].accuracyLevel = -10;
@@ -124,8 +125,8 @@ int getDefaultStrobeNVRam(int sensorType, void* data, int* ret_size)
 	p->tuningPara[3].antiIsoLevel = -5;
 	p->tuningPara[3].antiExpLevel = -5;
 	p->tuningPara[3].antiStrobeLevel = -10;
-	p->tuningPara[3].antiUnderLevel = -2;
-	p->tuningPara[3].antiOverLevel = 0;
+	p->tuningPara[3].antiUnderLevel = -2;// -2//LINE <ASNTZO-60> <DATE20130325> <enhance the brightness of flash light> wupingzhou
+	p->tuningPara[3].antiOverLevel = 0; //   2//LINE <ASNTZO-60> <DATE20130325> <enhance the brightness of flash light> wupingzhou
 	p->tuningPara[3].foregroundLevel = 0;
 	p->tuningPara[3].isRefAfDistance = 0;
 	p->tuningPara[3].accuracyLevel = -10;

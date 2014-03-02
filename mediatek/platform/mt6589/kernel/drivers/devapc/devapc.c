@@ -22,6 +22,9 @@
 #include "mach/mt_typedefs.h"
 #include "mach/sync_write.h"
 #include "mach/irqs.h"
+#ifdef CONFIG_MTK_HIBERNATION
+#include "mach/mtk_hibernate_dpm.h"
+#endif
 #include "devapc.h"
 
 
@@ -908,7 +911,6 @@ void stop_usb_protection(void)
 
 }
 
-
 /*
  * test_devapc: test device apc mechanism
  */
@@ -1018,6 +1020,17 @@ static int devapc_resume(struct platform_device *dev)
     return 0;
 }
 
+#ifdef CONFIG_MTK_HIBERNATION
+extern void mt_irq_set_sens(unsigned int irq, unsigned int sens);
+extern void mt_irq_set_polarity(unsigned int irq, unsigned int polarity);
+int devapc_pm_restore_noirq(struct device *device)
+{
+    mt_irq_set_sens(MT_APARM_DOMAIN_IRQ_ID, MT65xx_LEVEL_SENSITIVE);
+    mt_irq_set_polarity(MT_APARM_DOMAIN_IRQ_ID, MT65xx_POLARITY_LOW);
+
+    return 0;
+}
+#endif
 
 struct platform_device devapc_device = {
     .name   = "devapc",
@@ -1081,6 +1094,10 @@ static int __init devapc_init(void)
         return ret;
     }
  
+#ifdef CONFIG_MTK_HIBERNATION
+    register_swsusp_restore_noirq_func(ID_M_DEVAPC, devapc_pm_restore_noirq, NULL);
+#endif
+
     return 0;
 }
 
@@ -1090,6 +1107,10 @@ static int __init devapc_init(void)
 static void __exit devapc_exit(void)
 {
     xlog_printk(ANDROID_LOG_INFO, DEVAPC_TAG ,"[DEVAPC] DEVAPC module exit\n");
+
+#ifdef CONFIG_MTK_HIBERNATION
+    unregister_swsusp_restore_noirq_func(ID_M_DEVAPC);
+#endif
 }
 
 module_init(devapc_init);
@@ -1097,7 +1118,3 @@ module_exit(devapc_exit);
 MODULE_LICENSE("GPL");
 EXPORT_SYMBOL(start_usb_protection);
 EXPORT_SYMBOL(stop_usb_protection);
-
-
-
-

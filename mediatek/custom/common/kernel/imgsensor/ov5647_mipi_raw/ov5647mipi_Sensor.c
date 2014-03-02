@@ -122,12 +122,12 @@
 #include "ov5647mipi_Camera_Sensor_para.h"
 #include "ov5647mipi_CameraCustomized.h"
 
-MSDK_SCENARIO_ID_ENUM CurrentScenarioId = MSDK_SCENARIO_ID_CAMERA_PREVIEW;
+static MSDK_SCENARIO_ID_ENUM CurrentScenarioId = MSDK_SCENARIO_ID_CAMERA_PREVIEW;
 static kal_bool OV5647MIPIAutoFlicKerMode = KAL_FALSE;
 //static kal_bool OV5647MIPIZsdCameraPreview = KAL_FALSE;
 
 
-//#define OV5647MIPI_DRIVER_TRACE
+#define OV5647MIPI_DRIVER_TRACE
 #define OV5647MIPI_DEBUG
 
 #ifdef OV5647MIPI_DEBUG
@@ -138,6 +138,8 @@ static kal_bool OV5647MIPIAutoFlicKerMode = KAL_FALSE;
 //#define ACDK
 extern int iReadRegI2C(u8 *a_pSendData , u16 a_sizeSendData, u8 * a_pRecvData, u16 a_sizeRecvData, u16 i2cId);
 extern int iWriteRegI2C(u8 *a_pSendData , u16 a_sizeSendData, u16 i2cId);
+//Ivan
+extern void set_maincam_powerdown(BOOL is_high);
 
 
 UINT32 OV5647MIPISetMaxFrameRate(UINT16 u2FrameRate);
@@ -1406,10 +1408,11 @@ UINT32 OV5647MIPIOpen(void)
 	// check if sensor ID correct
 	sensor_id=((OV5647MIPI_read_cmos_sensor(0x300A) << 8) | OV5647MIPI_read_cmos_sensor(0x300B));   
 #ifdef OV5647MIPI_DRIVER_TRACE
-	SENSORDB("OV5647MIPIOpen, sensor_id:%x \n",sensor_id);
+	printk("OV5647MIPIOpen, sensor_id:%x \n",sensor_id);
 #endif		
 	if (sensor_id != OV5647MIPI_SENSOR_ID)
 		return ERROR_SENSOR_CONNECT_FAIL;
+	printk("Ivan OV5647MIPIOpen OK! \n");
 	
 	/* initail sequence write in  */
 	OV5647MIPI_Sensor_Init();
@@ -1471,11 +1474,24 @@ UINT32 OV5647MIPIGetSensorID(UINT32 *sensorID)
 		// check if sensor ID correct
 	*sensorID=((OV5647MIPI_read_cmos_sensor(0x300A) << 8) | OV5647MIPI_read_cmos_sensor(0x300B));	
 #ifdef OV5647MIPI_DRIVER_TRACE
-	SENSORDB("OV5647MIPIOpen, sensor_id:%x \n",*sensorID);
+	printk("OV5647MIPIGetSensorID, sensor_id:%x \n",*sensorID);
 #endif		
-	if (*sensorID != OV5647MIPI_SENSOR_ID) {		
+	
+	if (*sensorID != OV5647MIPI_SENSOR_ID) {
+		//Try again with invert PWD Pin config
+		printk("OV5642GetSensorID Try again with PWD High \n");
+
+		//mt_set_gpio_out(GPIO_CAMERA_CMPDN_PIN,GPIO_OUT_ONE);
+		set_maincam_powerdown(GPIO_OUT_ONE);
+		mdelay(5);
+		*sensorID=((OV5647MIPI_read_cmos_sensor(0x300A) << 8) | OV5647MIPI_read_cmos_sensor(0x300B));	
+	    printk("OV5647MIPIGetSensorID, sensor_id:%x \n",*sensorID);
+	}
+	if (*sensorID != OV5647MIPI_SENSOR_ID) {	
 		return ERROR_SENSOR_CONNECT_FAIL;
 	}
+
+    printk("Ivan OV5647MIPIGetSensorID OK! \n");
 	
    return ERROR_NONE;
 }

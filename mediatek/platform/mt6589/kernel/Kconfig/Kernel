@@ -9,6 +9,13 @@ config MTK_SCHED_TRACERS
         help
            Trace context swicth, set_scheduler, Interrupt Handler
 
+config MTK_KERNEL_MARKER
+        bool "MTK Kernel Marker API"
+        depends on TRACING
+        help
+            Mark the user-defined points, such as systrace events in
+            user space, to visualize via systrace html files
+
 config FUNCTION_DURATION_TRACER
         bool "Kernel Function Duration Tracer"
         depends on FUNCTION_GRAPH_TRACER
@@ -137,6 +144,11 @@ config MTK_ETM
        default y
        help
 
+config MTK_MEMCFG
+       bool "Support enhanced memory configurations"
+       default n
+       help
+
 menu "MT load balance and schedule enhancement"
 config MT_SCHED
 	bool "Enhance CPU affinity in hotplug"	
@@ -159,6 +171,10 @@ config MTK_CIRQ
        default n
        help
 
-
+config MTK_HIBERNATION
+        bool "Support MTK hibernation"
+        depends on HIBERNATION
+        default y
+        help
 
 endmenu

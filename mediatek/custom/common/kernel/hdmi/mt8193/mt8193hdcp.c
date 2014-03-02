@@ -685,6 +685,12 @@ void vDisableHDCP(u8 fgDisableHdcp)
 	
 	_bHdcpOff = 0;
   }		
+
+  #ifdef MTK_MT8193_HDCP_SUPPORT
+  _bHdcpOff = 0;
+  #else
+  _bHdcpOff = 1;
+  #endif
 }	
 
 void HdcpService(HDCP_CTRL_STATE_T e_hdcp_state)

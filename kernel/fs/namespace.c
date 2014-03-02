@@ -20,12 +20,10 @@
 #include <linux/fs_struct.h>	/* get_fs_root et.al. */
 #include <linux/fsnotify.h>	/* fsnotify_vfsmount_delete */
 #include <linux/uaccess.h>
-
 //#define UMOUNT_LOG  //enable kernel layer unmount log when unmount fail
 #ifdef UMOUNT_LOG
 #include <linux/types.h>
 #endif
-
 #include "pnode.h"
 #include "internal.h"
 

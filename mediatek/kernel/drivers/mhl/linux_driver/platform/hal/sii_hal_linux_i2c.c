@@ -515,24 +515,24 @@ halReturn_t HalOpenI2cDevice(char const *DeviceName, char const *DriverName)
 }
 halReturn_t HalCloseI2cDevice(void)
 {
-    halReturn_t		retStatus;
-    retStatus = HalInitCheck();
-    if (retStatus != HAL_RET_SUCCESS)
-    {
-        return retStatus;
-    }
-    if(gMhlDevice.pI2cClient == NULL)
-    {
-        printk("I2C device not currently open\n");
+	halReturn_t		retStatus;
+	retStatus = HalInitCheck();
+	if (retStatus != HAL_RET_SUCCESS)
+	{
+		return retStatus;
+	}
+	if(gMhlDevice.pI2cClient == NULL)
+	{
+		printk("I2C device not currently open\n");
         retStatus = HAL_RET_DEVICE_NOT_OPEN;
-    }
-    else
-    {
-        i2c_del_driver(&gMhlDevice.driver);
-        gMhlDevice.pI2cClient = NULL;
-        retStatus = HAL_RET_SUCCESS;
-    }
-    return retStatus;
+	}
+	else
+	{
+		i2c_del_driver(&gMhlDevice.driver);
+		gMhlDevice.pI2cClient = NULL;
+		retStatus = HAL_RET_SUCCESS;
+	}
+	return retStatus;
 }
 
 #define USE_DEFAULT_I2C_CODE  0
@@ -540,6 +540,9 @@ halReturn_t HalCloseI2cDevice(void)
 
 uint8_t I2C_ReadByte(uint8_t deviceID, uint8_t offset)
 {
+    //printk("hdmi enter I2C_ReadByte(0x%02x, 0x%02x)\n",
+    //       deviceID, offset);
+
     uint8_t					accessI2cAddr;
     union i2c_smbus_data	data;
     int32_t					status;
@@ -601,8 +604,12 @@ uint8_t I2C_ReadByte(uint8_t deviceID, uint8_t offset)
     gMhlDevice.pI2cClient->addr = client_main_addr;
     return data.byte;
 }
+
 void I2C_WriteByte(uint8_t deviceID, uint8_t offset, uint8_t value)
 {
+    //printk("hdmi enter I2C_WriteByte(0x%02x, 0x%02x, 0x%02x) \n",
+    //    deviceID, offset, value);
+
     uint8_t					accessI2cAddr;
 #if USE_DEFAULT_I2C_CODE
     union i2c_smbus_data	data;
@@ -644,6 +651,7 @@ void I2C_WriteByte(uint8_t deviceID, uint8_t offset, uint8_t value)
 
 uint8_t I2C_ReadBlock(uint8_t deviceID, uint8_t offset,uint8_t *buf, uint8_t len)
 {
+    //printk("hdmi enter %s (0x%02x, 0x%02x, 0x%02x)\n", __func__, deviceID, offset, len);
     int i;
     uint8_t					accessI2cAddr;
 #if USE_DEFAULT_I2C_CODE
@@ -699,6 +707,7 @@ uint8_t I2C_ReadBlock(uint8_t deviceID, uint8_t offset,uint8_t *buf, uint8_t len
 
 void I2C_WriteBlock(uint8_t deviceID, uint8_t offset, uint8_t *buf, uint8_t len)
 {
+    //printk("hdmi enter %s (0x%02x, 0x%02x, 0x%02x)\n",__func__, deviceID, offset, len);
     int i;
     uint8_t					accessI2cAddr;
 #if USE_DEFAULT_I2C_CODE

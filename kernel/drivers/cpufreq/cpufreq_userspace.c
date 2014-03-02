@@ -1,4 +1,3 @@
-
 /*
  *  linux/drivers/cpufreq/cpufreq_userspace.c
  *
@@ -47,11 +46,9 @@ userspace_cpufreq_notifier(struct notifier_block *nb, unsigned long val,
 	if (!per_cpu(cpu_is_managed, freq->cpu))
 		return 0;
 
-	if (val == CPUFREQ_POSTCHANGE) {
-		pr_debug("saving cpu_cur_freq of cpu %u to be %u kHz\n",
-				freq->cpu, freq->new);
-		per_cpu(cpu_cur_freq, freq->cpu) = freq->new;
-	}
+	pr_debug("saving cpu_cur_freq of cpu %u to be %u kHz\n",
+			freq->cpu, freq->new);
+	per_cpu(cpu_cur_freq, freq->cpu) = freq->new;
 
 	return 0;
 }
@@ -220,3 +217,4 @@ fs_initcall(cpufreq_gov_userspace_init);
 module_init(cpufreq_gov_userspace_init);
 #endif
 module_exit(cpufreq_gov_userspace_exit);
+

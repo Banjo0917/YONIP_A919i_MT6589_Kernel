@@ -12,6 +12,10 @@
 /*
 ** $Log: wlan_oid.c $
 **
+** 01 17 2013 george.huang
+** [ALPS00444577] ?Lenovo A820t??Pre-test??????Critical??wifi??wifi??????????????
+** Rollback //ALPS_SW/MP/ALPS.JB2.MP/alps/mediatek/kernel/drivers/combo/drv_wlan/mt6628/wlan/common/wlan_oid.c to revision 1
+**
 ** 07 19 2012 yuche.tsai
 ** NULL
 ** Code update for JB.
@@ -1527,6 +1531,7 @@ wlanoidSetBssidListScan (
 {
     P_PARAM_SSID_T prSsid;
     PARAM_SSID_T rSsid;
+	WLAN_STATUS rStatus = WLAN_STATUS_SUCCESS;
 
     DEBUGFUNC("wlanoidSetBssidListScan()");
 
@@ -1562,6 +1567,14 @@ wlanoidSetBssidListScan (
             if (kalGetMediaStateIndicated(prAdapter->prGlueInfo) != PARAM_MEDIA_STATE_CONNECTED){
                 aisFsmScanRequest(prAdapter, prSsid, NULL, 0);
             }
+            else {
+                /* reject the scan request */
+                rStatus = WLAN_STATUS_FAILURE;
+            }
+        }
+        else {
+            /* reject the scan request */
+            rStatus = WLAN_STATUS_FAILURE;
         }
     }
     else
@@ -1573,9 +1586,13 @@ wlanoidSetBssidListScan (
         else if(kalGetMediaStateIndicated(prAdapter->prGlueInfo) != PARAM_MEDIA_STATE_CONNECTED) {
             aisFsmScanRequest(prAdapter, prSsid, NULL, 0);
         }
+        else {
+            /* reject the scan request */
+            rStatus = WLAN_STATUS_FAILURE;
+        }
     }
 
-    return WLAN_STATUS_SUCCESS;
+    return rStatus;
 } /* wlanoidSetBssidListScan */
 
 
@@ -1609,6 +1626,7 @@ wlanoidSetBssidListScanExt (
     P_PARAM_SSID_T prSsid;
     PUINT_8 pucIe;
     UINT_32 u4IeLength;
+	WLAN_STATUS rStatus = WLAN_STATUS_SUCCESS;
 
     DEBUGFUNC("wlanoidSetBssidListScanExt()");
 
@@ -1650,6 +1668,14 @@ wlanoidSetBssidListScanExt (
             if (kalGetMediaStateIndicated(prAdapter->prGlueInfo) != PARAM_MEDIA_STATE_CONNECTED){
                 aisFsmScanRequest(prAdapter, prSsid, pucIe, u4IeLength);
             }
+            else {
+                /* reject the scan request */
+                rStatus = WLAN_STATUS_FAILURE;
+            }
+        }
+        else {
+            /* reject the scan request */
+            rStatus = WLAN_STATUS_FAILURE;
         }
     }
     else
@@ -1661,9 +1687,13 @@ wlanoidSetBssidListScanExt (
         else if(kalGetMediaStateIndicated(prAdapter->prGlueInfo) != PARAM_MEDIA_STATE_CONNECTED) {
             aisFsmScanRequest(prAdapter, prSsid, pucIe, u4IeLength);
         }
+        else {
+            /* reject the scan request */
+            rStatus = WLAN_STATUS_FAILURE;
+        }
     }
 
-    return WLAN_STATUS_SUCCESS;
+    return rStatus;
 } /* wlanoidSetBssidListScanWithIE */
 
 
@@ -5820,181 +5850,10 @@ wlanoidSetSwCtrlWrite (
 
             }
             else if (u2SubId == 0x1234) {
-                // 1. Disable On-Lin Scan
-                prAdapter->fgEnOnlineScan = FALSE;
-
-                // 3. Disable FIFO FULL no ack
-                rCmdAccessReg.u4Address = 0x60140028;
-                rCmdAccessReg.u4Data = 0x904;
-                wlanSendSetQueryCmd(prAdapter,
-                        CMD_ID_ACCESS_REG,
-                        TRUE, //FALSE,
-                        FALSE, //TRUE,
-                        FALSE,
-                        nicCmdEventSetCommon,
-                        nicOidCmdTimeoutCommon,
-                        sizeof(CMD_ACCESS_REG),
-                        (PUINT_8)&rCmdAccessReg,
-                        pvSetBuffer,
-                        0
-                        );
-
-                // 4. Disable Roaming
-                rCmdSwCtrl.u4Id = 0x90000204;
-                rCmdSwCtrl.u4Data = 0x0;
-                wlanSendSetQueryCmd(prAdapter,
-                        CMD_ID_SW_DBG_CTRL,
-                        TRUE,
-                        FALSE,
-                        FALSE,
-                        nicCmdEventSetCommon,
-                        nicOidCmdTimeoutCommon,
-                        sizeof(CMD_SW_DBG_CTRL_T),
-                        (PUINT_8)&rCmdSwCtrl,
-                        pvSetBuffer,
-                        u4SetBufferLen
-                        );
-
-                rCmdSwCtrl.u4Id = 0x90000200;
-                rCmdSwCtrl.u4Data = 0x820000;
-                wlanSendSetQueryCmd(prAdapter,
-                        CMD_ID_SW_DBG_CTRL,
-                        TRUE,
-                        FALSE,
-                        FALSE,
-                        nicCmdEventSetCommon,
-                        nicOidCmdTimeoutCommon,
-                        sizeof(CMD_SW_DBG_CTRL_T),
-                        (PUINT_8)&rCmdSwCtrl,
-                        pvSetBuffer,
-                        u4SetBufferLen
-                        );
-
-                // Disalbe auto tx power
-                //
-                rCmdSwCtrl.u4Id = 0xa0100003;
-                rCmdSwCtrl.u4Data = 0x0;
-                wlanSendSetQueryCmd(prAdapter,
-                        CMD_ID_SW_DBG_CTRL,
-                        TRUE,
-                        FALSE,
-                        FALSE,
-                        nicCmdEventSetCommon,
-                        nicOidCmdTimeoutCommon,
-                        sizeof(CMD_SW_DBG_CTRL_T),
-                        (PUINT_8)&rCmdSwCtrl,
-                        pvSetBuffer,
-                        u4SetBufferLen
-                        );
-
-
-
-                // 2. Keep at CAM mode
-                {
-                    PARAM_POWER_MODE ePowerMode;
-
-                    prAdapter->u4CtiaPowerMode = 0;
-                    prAdapter->fgEnCtiaPowerMode = TRUE;
-
-                    ePowerMode = Param_PowerModeCAM;
-                    rWlanStatus = nicConfigPowerSaveProfile(
-                        prAdapter,
-                        NETWORK_TYPE_AIS_INDEX,
-                        ePowerMode,
-                        TRUE);
-                }
-
-                // 5. Disable Beacon Timeout Detection
-                prAdapter->fgDisBcnLostDetection = TRUE;
+                rWlanStatus = nicEnterCtiaMode(prAdapter, TRUE, TRUE);
             }
             else if (u2SubId == 0x1235) {
-
-                // 1. Enaable On-Lin Scan
-                prAdapter->fgEnOnlineScan = TRUE;
-
-                // 3. Enable FIFO FULL no ack
-                rCmdAccessReg.u4Address = 0x60140028;
-                rCmdAccessReg.u4Data = 0x905;
-                wlanSendSetQueryCmd(prAdapter,
-                        CMD_ID_ACCESS_REG,
-                        TRUE, //FALSE,
-                        FALSE, //TRUE,
-                        FALSE,
-                        nicCmdEventSetCommon,
-                        nicOidCmdTimeoutCommon,
-                        sizeof(CMD_ACCESS_REG),
-                        (PUINT_8)&rCmdAccessReg,
-                        pvSetBuffer,
-                        0
-                        );
-
-                // 4. Enable Roaming
-                rCmdSwCtrl.u4Id = 0x90000204;
-                rCmdSwCtrl.u4Data = 0x1;
-                wlanSendSetQueryCmd(prAdapter,
-                        CMD_ID_SW_DBG_CTRL,
-                        TRUE,
-                        FALSE,
-                        FALSE,
-                        nicCmdEventSetCommon,
-                        nicOidCmdTimeoutCommon,
-                        sizeof(CMD_SW_DBG_CTRL_T),
-                        (PUINT_8)&rCmdSwCtrl,
-                        pvSetBuffer,
-                        u4SetBufferLen
-                        );
-
-                rCmdSwCtrl.u4Id = 0x90000200;
-                rCmdSwCtrl.u4Data = 0x820000;
-                wlanSendSetQueryCmd(prAdapter,
-                        CMD_ID_SW_DBG_CTRL,
-                        TRUE,
-                        FALSE,
-                        FALSE,
-                        nicCmdEventSetCommon,
-                        nicOidCmdTimeoutCommon,
-                        sizeof(CMD_SW_DBG_CTRL_T),
-                        (PUINT_8)&rCmdSwCtrl,
-                        pvSetBuffer,
-                        u4SetBufferLen
-                        );
-
-                // Enable auto tx power
-                //
-
-                rCmdSwCtrl.u4Id = 0xa0100003;
-                rCmdSwCtrl.u4Data = 0x1;
-                wlanSendSetQueryCmd(prAdapter,
-                        CMD_ID_SW_DBG_CTRL,
-                        TRUE,
-                        FALSE,
-                        FALSE,
-                        nicCmdEventSetCommon,
-                        nicOidCmdTimeoutCommon,
-                        sizeof(CMD_SW_DBG_CTRL_T),
-                        (PUINT_8)&rCmdSwCtrl,
-                        pvSetBuffer,
-                        u4SetBufferLen
-                        );
-
-
-                // 2. Keep at Fast PS
-                {
-                    PARAM_POWER_MODE ePowerMode;
-
-                    prAdapter->u4CtiaPowerMode = 2;
-                    prAdapter->fgEnCtiaPowerMode = TRUE;
-
-                    ePowerMode = Param_PowerModeFast_PSP;
-                    rWlanStatus = nicConfigPowerSaveProfile(
-                        prAdapter,
-                        NETWORK_TYPE_AIS_INDEX,
-                        ePowerMode,
-                        TRUE);
-                }
-
-                // 5. Enable Beacon Timeout Detection
-                prAdapter->fgDisBcnLostDetection = FALSE;
+                rWlanStatus = nicEnterCtiaMode(prAdapter, FALSE, TRUE);
             }
 #endif
             }

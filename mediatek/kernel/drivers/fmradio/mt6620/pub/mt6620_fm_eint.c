@@ -20,8 +20,8 @@
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
-#include "mtkstp.h"
-#include "stp_drv.h"
+ #if 0
+#include "stp_exp.h"
 #include "wmt_exp.h"
 
 #include "fm_typedef.h"
@@ -52,3 +52,4 @@ fm_s32 fm_eint_pin_cfg(fm_s32 mode)
 {	
 	return 0;
 }
+#endif

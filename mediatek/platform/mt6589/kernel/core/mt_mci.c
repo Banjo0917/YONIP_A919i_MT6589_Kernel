@@ -91,11 +91,11 @@ static void mci_snoop_en(unsigned int en)
 {
 if(en)
 {
-    *((volatile unsigned int *) MCI_SCR_S0) |= 0x11; //enable slave0 (Periph/MM) port snoop
+    *((unsigned int *) MCI_SCR_S0) |= 0x11; //enable slave0 (Periph/MM) port snoop
 }
 else
 {
-    *((volatile unsigned int *) MCI_SCR_S0) &= ~(0x11); //disable slave0 port snoop
+    *((unsigned int *) MCI_SCR_S0) &= ~(0x11); //disable slave0 port snoop
 }
     dsb();
 }
@@ -106,11 +106,11 @@ static void mci_write_skip_en(unsigned int en)
 {
 if(en)
 {
-    *((volatile unsigned int *) MCI_SCR_S0) |= 0x4;
+    *((unsigned int *) MCI_SCR_S0) |= 0x4;
 }
 else
 {
-    *((volatile unsigned int *) MCI_SCR_S0) &= ~(0x4);
+    *((unsigned int *) MCI_SCR_S0) &= ~(0x4);
 }
     dsb();
     //mci_conf.mci_write_skip_en = en;
@@ -121,11 +121,11 @@ static void mci_write_snoop_early_resp_en(unsigned int en)
 {
 if(en)
 {
-    *((volatile unsigned int *) MCI_SCR_S0) |= 0x8;
+    *((unsigned int *) MCI_SCR_S0) |= 0x8;
 }
 else
 {
-    *((volatile unsigned int *) MCI_SCR_S0) &= ~(0x8);
+    *((unsigned int *) MCI_SCR_S0) &= ~(0x8);
 }
     dsb();
     //mci_conf.mci_write_snoop_early_resp_en = en;
@@ -136,11 +136,11 @@ static void mci_write_snoop_outstanding_en(unsigned int en)
 {
 if(en)
 {
-    *((volatile unsigned int *) MCI_SCR_S0) |= 0x10;
+    *((unsigned int *) MCI_SCR_S0) |= 0x10;
 }
 else
 {
-    *((volatile unsigned int *) MCI_SCR_S0) &= ~(0x10);
+    *((unsigned int *) MCI_SCR_S0) &= ~(0x10);
 }
     dsb();
     //mci_conf.mci_write_snoop_outstanding_en = en;

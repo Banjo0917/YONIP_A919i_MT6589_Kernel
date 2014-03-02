@@ -60,6 +60,8 @@ typedef void (*fiq_isr_handler)(void *arg, void *regs, void *svc_sp);
 #endif
  extern void mt_enable_ppi(int irq);
 
+extern void mt_irq_dump(void);
+
 #if 0
 
 /*

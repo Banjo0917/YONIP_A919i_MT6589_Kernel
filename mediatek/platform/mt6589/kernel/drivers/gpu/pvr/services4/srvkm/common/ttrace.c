@@ -56,6 +56,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 HASH_TABLE *g_psBufferTable;
 IMG_UINT32 g_ui32HostUID;
 IMG_HANDLE g_psTimer;
+static PVRSRV_LINUX_MUTEX g_sTTraceMutex;
 
 /* Trace buffer struct */
 typedef struct
@@ -65,6 +66,8 @@ typedef struct
 	IMG_UINT32	ui32ByteCount;	/* Number of bytes in buffer */
 	IMG_UINT8	ui8Data[0];
 } sTimeTraceBuffer;
+
+static PVRSRV_ERROR _PVRSRVTimeTraceBufferCreate(IMG_UINT32 ui32PID);
 
 /*!
 ******************************************************************************
@@ -124,12 +127,12 @@ PVRSRVTimeTraceAllocItem(IMG_UINT32 **pui32Item, IMG_UINT32 ui32Size)
 		PVRSRV_ERROR eError;
 
 		PVR_DPF((PVR_DBG_MESSAGE, "PVRSRVTimeTraceAllocItem: Creating buffer for PID %u", (IMG_UINT32) ui32PID));
-		eError = PVRSRVTimeTraceBufferCreate(ui32PID);
+		eError = _PVRSRVTimeTraceBufferCreate(ui32PID);
 		if (eError != PVRSRV_OK)
 		{
 			*pui32Item = IMG_NULL;
 			PVR_DPF((PVR_DBG_ERROR, "PVRSRVTimeTraceAllocItem: Failed to create buffer"));
-			return;
+            return;
 		}
 		
 		psBuffer = (sTimeTraceBuffer *) HASH_Retrieve(g_psBufferTable, (IMG_UINTPTR_T) ui32PID);
@@ -137,7 +140,7 @@ PVRSRVTimeTraceAllocItem(IMG_UINT32 **pui32Item, IMG_UINT32 ui32Size)
 		{
 			*pui32Item = NULL;
 			PVR_DPF((PVR_DBG_ERROR, "PVRSRVTimeTraceAllocItem: Failed to retrieve buffer"));
-			return;
+            return;
 		}
 	}
 
@@ -146,7 +149,7 @@ PVRSRVTimeTraceAllocItem(IMG_UINT32 **pui32Item, IMG_UINT32 ui32Size)
 	{
 		*pui32Item = NULL;
 		PVR_DPF((PVR_DBG_ERROR, "PVRSRVTimeTraceAllocItem: Error trace item too large (%d)", ui32Size));
-		return;
+        return;
 	}
 
 	/* FIXME: Enter critical section? */
@@ -204,6 +207,15 @@ PVRSRVTimeTraceAllocItem(IMG_UINT32 **pui32Item, IMG_UINT32 ui32Size)
 ******************************************************************************/
 PVRSRV_ERROR PVRSRVTimeTraceBufferCreate(IMG_UINT32 ui32PID)
 {
+    PVRSRV_ERROR ret;
+    LinuxLockMutex(&g_sTTraceMutex);
+    ret = _PVRSRVTimeTraceBufferCreate(ui32PID);
+    LinuxUnLockMutex(&g_sTTraceMutex);
+    return ret;
+}
+
+static PVRSRV_ERROR _PVRSRVTimeTraceBufferCreate(IMG_UINT32 ui32PID)
+{
 	sTimeTraceBuffer *psBuffer;
 	PVRSRV_ERROR eError = PVRSRV_OK;
 
@@ -249,20 +261,22 @@ PVRSRV_ERROR PVRSRVTimeTraceBufferCreate(IMG_UINT32 ui32PID)
 PVRSRV_ERROR PVRSRVTimeTraceBufferDestroy(IMG_UINT32 ui32PID)
 {
 	sTimeTraceBuffer *psBuffer;
-
 #if defined(DUMP_TTRACE_BUFFERS_ON_EXIT)
 	PVRSRVDumpTimeTraceBuffers();
 #endif
+    LinuxLockMutex(&g_sTTraceMutex);
 	psBuffer = (sTimeTraceBuffer *) HASH_Retrieve(g_psBufferTable, (IMG_UINTPTR_T) ui32PID);
 	if (psBuffer)
 	{
 		OSFreeMem(PVRSRV_PAGEABLE_SELECT, sizeof(sTimeTraceBuffer) + TIME_TRACE_BUFFER_SIZE,
 				psBuffer, NULL);
 		HASH_Remove(g_psBufferTable, (IMG_UINTPTR_T) ui32PID);
+        LinuxUnLockMutex(&g_sTTraceMutex);
 		return PVRSRV_OK;
 	}
 
 	PVR_DPF((PVR_DBG_ERROR, "PVRSRVTimeTraceBufferDestroy: Can't find trace buffer in hash table"));
+	LinuxUnLockMutex(&g_sTTraceMutex);
 	return PVRSRV_ERROR_INVALID_PARAMS;
 }
 
@@ -280,6 +294,8 @@ PVRSRV_ERROR PVRSRVTimeTraceBufferDestroy(IMG_UINT32 ui32PID)
 ******************************************************************************/
 PVRSRV_ERROR PVRSRVTimeTraceInit(IMG_VOID)
 {
+    LinuxInitMutex(&g_sTTraceMutex);
+
 	g_psBufferTable = HASH_Create(TIME_TRACE_HASH_TABLE_SIZE);
 
 	/* Create hash table to store the per process buffers in */
@@ -290,7 +306,7 @@ PVRSRV_ERROR PVRSRVTimeTraceInit(IMG_VOID)
 	}
 
 	/* Create the kernel buffer */
-	PVRSRVTimeTraceBufferCreate(KERNEL_ID);
+	_PVRSRVTimeTraceBufferCreate(KERNEL_ID);
 
 	g_psTimer = OSFuncHighResTimerCreate();
 
@@ -443,11 +459,12 @@ IMG_VOID PVRSRVTimeTraceArray(IMG_UINT32 ui32Group, IMG_UINT32 ui32Class, IMG_UI
 	ui32Size = ui32TypeSize * ui32Count;
 
 	/* Allocate space from the buffer */
+    LinuxLockMutex(&g_sTTraceMutex);
 	PVRSRVTimeTraceAllocItem(&pui32TraceItem, ui32Size);
-
 	if (!pui32TraceItem)
 	{
 		PVR_DPF((PVR_DBG_ERROR, "Can't find buffer\n"));
+        LinuxUnLockMutex(&g_sTTraceMutex);
 		return;
 	}
 
@@ -458,6 +475,7 @@ IMG_VOID PVRSRVTimeTraceArray(IMG_UINT32 ui32Group, IMG_UINT32 ui32Class, IMG_UI
 	{
 		OSMemCopy(ui8Ptr, pui8Data, ui32Size);
 	}
+    LinuxUnLockMutex(&g_sTTraceMutex);
 }
 
 /*!
@@ -487,12 +505,12 @@ IMG_VOID PVRSRVTimeTraceSyncObject(IMG_UINT32 ui32Group, IMG_UINT32 ui32Token,
 	IMG_UINT32 *ui32Ptr;
 	IMG_UINT32 ui32Size = PVRSRV_TRACE_TYPE_SYNC_SIZE;
 
-
+    LinuxLockMutex(&g_sTTraceMutex);
 	PVRSRVTimeTraceAllocItem(&pui32TraceItem, ui32Size);
-
 	if (!pui32TraceItem)
 	{
 		PVR_DPF((PVR_DBG_ERROR, "Can't find buffer\n"));
+        LinuxUnLockMutex(&g_sTTraceMutex);
 		return;
 	}
 
@@ -510,6 +528,8 @@ IMG_VOID PVRSRVTimeTraceSyncObject(IMG_UINT32 ui32Group, IMG_UINT32 ui32Token,
 	ui32Ptr[PVRSRV_TRACE_SYNC_RO_DEV_VADDR] = psSync->sReadOpsCompleteDevVAddr.uiAddr;
 	ui32Ptr[PVRSRV_TRACE_SYNC_RO2_DEV_VADDR] = psSync->sReadOps2CompleteDevVAddr.uiAddr;
 	ui32Ptr[PVRSRV_TRACE_SYNC_OP] = ui8SyncOp;
+    LinuxUnLockMutex(&g_sTTraceMutex);
+
 }
 
 /*!
@@ -591,7 +611,9 @@ static PVRSRV_ERROR PVRSRVDumpTimeTraceBuffer(IMG_UINTPTR_T hKey, IMG_UINTPTR_T 
 ******************************************************************************/
 IMG_VOID PVRSRVDumpTimeTraceBuffers(IMG_VOID)
 {
+    LinuxLockMutex(&g_sTTraceMutex);
 	HASH_Iterate(g_psBufferTable, PVRSRVDumpTimeTraceBuffer);
+    LinuxUnLockMutex(&g_sTTraceMutex);
 }
 
 #endif /* TTRACE */

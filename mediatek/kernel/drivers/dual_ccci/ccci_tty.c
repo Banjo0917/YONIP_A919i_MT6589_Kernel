@@ -51,6 +51,8 @@ typedef struct
 	//struct semaphore	ccci_tty_mutex;
 	struct mutex		ccci_tty_mutex;
 	int					has_pending_read;
+  // sync ccci_tty_read and ccci_tty_close in SMP.  
+	rwlock_t            ccci_tty_rwlock; 
 } tty_instance_t;
 
 typedef struct _tty_ctl_block{
@@ -88,16 +90,17 @@ static void ccci_tty_read(unsigned long arg)
 	ccci_msg_t		msg;
 	char			*rx_buffer;
 	int				md_id = tty_instance->m_md_id;
-
+  read_lock_bh(&tty_instance->ccci_tty_rwlock);
 	if (tty_instance->tty == NULL) {
 		tty_instance->has_pending_read = 1;
+    read_unlock_bh(&tty_instance->ccci_tty_rwlock);
 		CCCI_DBG_MSG(md_id, "tty", "NULL tty @ read\n");
 		return;
 	}
 	else if ((tty_instance->tty->index == CCCI_TTY_MODEM) && (is_meta_mode()||is_advanced_meta_mode())) {
 		//  Do not allow writes to the modem when in Meta Mode.
 		//  Otherwise, the modem firmware will crash.
-
+    read_unlock_bh(&tty_instance->ccci_tty_rwlock);
 		CCCI_DBG_MSG(md_id, "tty", "Attempted read from modem while in meta mode\n");     
 		return;
 	}
@@ -110,6 +113,7 @@ static void ccci_tty_read(unsigned long arg)
 	/*ALPS00241537: if there is no data in share memory, not copy and send message to MD*/
 	/*because total size is (length-1) which is handled in MD write API, size=0 only indicates memory is empty*/
 	if(size == 0) {
+    read_unlock_bh(&tty_instance->ccci_tty_rwlock);
 		//CCCI_MSG_INF(md_id, 0, "tty", "ttyC%d share memory is empty! \n", tty_instance->tty->index);
 		return;
 	}
@@ -171,6 +175,7 @@ __ccci_read_ack:
 
 	wake_lock_timeout(&tty_instance->wake_lock, HZ / 2);
 	tty_flip_buffer_push(tty_instance->tty);
+  read_unlock_bh(&tty_instance->ccci_tty_rwlock);
 }
 
 
@@ -550,12 +555,13 @@ static int ccci_tty_open(struct tty_struct *tty, struct file *f)
 	else {
 		CCCI_MSG_INF(md_id, "tty", "[tty_open]%s open %s%d, %s, nb_flag:%x\n", current->comm, 
 			ctlb->node_name, index, name, f->f_flags & O_NONBLOCK);
-
+    write_lock_bh(&tty_instance->ccci_tty_rwlock);
 		tty_instance->tty = tty;
 		tty_instance->ready = 1;
 		tty->driver_data = tty_instance;
 		snprintf(name_str, 16, "%s%d", name, md_id);
 		wake_lock_init(&tty_instance->wake_lock, WAKE_LOCK_SUSPEND, name_str);
+    write_unlock_bh(&tty_instance->ccci_tty_rwlock);		
 		mutex_unlock(&tty_instance->ccci_tty_mutex);
 
 		//Note: reset handle must be set after make sure open tty instance successfully
@@ -623,9 +629,12 @@ static void ccci_tty_close(struct tty_struct *tty, struct file *f)
 
 	if (tty_instance->count == 0) {
 		wake_lock_destroy(&tty_instance->wake_lock);
+    // keep tty_instance->tty cannot be used by ccci_tty_read()
+    write_lock_bh(&tty_instance->ccci_tty_rwlock);		
 		tty->driver_data    = NULL;
 		tty_instance->tty   = NULL;
 		tty_instance->ready = 0;
+    write_unlock_bh(&tty_instance->ccci_tty_rwlock);
 		ccci_reset_buffers(tty_instance->shared_mem, ctlb->tty_buf_size);
 
 		if(tty_instance->need_reset) {
@@ -774,7 +783,7 @@ int ccci_tty_init(int md_id)
 	ctlb->ccci_tty_meta.uart_rx_ack  = CCCI_UART1_RX_ACK;
 	ctlb->ccci_tty_meta.write_waitq  = &ctlb->ccci_tty_meta_write_waitq;
 	ctlb->ccci_tty_meta.ready        = 1;
-
+  rwlock_init(&ctlb->ccci_tty_meta.ccci_tty_rwlock);
 	mutex_init(&ctlb->ccci_tty_meta.ccci_tty_mutex);
 
 	// MUX section
@@ -806,7 +815,7 @@ int ccci_tty_init(int md_id)
 	ctlb->ccci_tty_modem.uart_rx_ack  = CCCI_UART2_RX_ACK;
 	ctlb->ccci_tty_modem.write_waitq  = &ctlb->ccci_tty_modem_write_waitq;
 	ctlb->ccci_tty_modem.ready        = 1;
-         
+  rwlock_init(&ctlb->ccci_tty_modem.ccci_tty_rwlock); 
 	mutex_init(&ctlb->ccci_tty_modem.ccci_tty_mutex);
 
 	// for IPC uart
@@ -836,6 +845,7 @@ int ccci_tty_init(int md_id)
 	ctlb->ccci_tty_ipc.uart_rx_ack  = CCCI_IPC_UART_RX_ACK;
 	ctlb->ccci_tty_ipc.write_waitq  = &ctlb->ccci_tty_ipc_write_waitq;
 	ctlb->ccci_tty_ipc.ready        = 1;
+	rwlock_init(&ctlb->ccci_tty_ipc.ccci_tty_rwlock); 
 	mutex_init(&ctlb->ccci_tty_ipc.ccci_tty_mutex);
 
 	//init wait queue and tasklet

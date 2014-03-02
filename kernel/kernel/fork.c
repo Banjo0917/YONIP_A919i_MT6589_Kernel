@@ -1644,6 +1644,7 @@ long do_fork(unsigned long clone_flags,
 			init_completion(&vfork);
 			get_task_struct(p);
 		}
+
 #ifdef CONFIG_SCHEDSTATS
         /* mt shceduler profiling*/
         save_mtproc_info(p, sched_clock());	

@@ -23,6 +23,7 @@
 #include <mach/mt_boot.h>
 #include <linux/version.h>
 #include "mach/mtk_ccci_helper.h"
+#include <mach/mtk_memcfg.h>
 
 
 #define SERIALNO_LEN 32
@@ -683,7 +684,7 @@ static struct platform_device mt_hid_dev = {
     .name = "hid-keyboard",
     .id   = -1,
 };
-#endif
+#endif 
 
 /*=======================================================================*/
 /* MT6575 Touch Panel                                                    */
@@ -745,6 +746,13 @@ struct platform_device spm_mcdi_pdev = {
     .id   = -1,
 };
 
+/*=======================================================================*/
+/* MT6589 Golden Setting module                                      */
+/*=======================================================================*/
+struct platform_device golden_setting_pdev = {
+    .name = "mtk-golden-setting",
+    .id   = -1,
+};
 
 /*=======================================================================*/
 /* MT6589 USIF-DUMCHAR                                                          */
@@ -1023,7 +1031,7 @@ static struct platform_device camera_sysram_dev = {
 
 /*=======================================================================*/
 /*=======================================================================*/
-/* Commandline fitlter                                                   */
+/* Commandline filter                                                    */
 /* This function is used to filter undesired command passed from LK      */
 /*=======================================================================*/
 static void cmdline_filter(struct tag *cmdline_tag, char *default_cmdline)
@@ -1051,7 +1059,7 @@ static void cmdline_filter(struct tag *cmdline_tag, char *default_cmdline)
 	    	    if (memcmp(cs, undesired_cmds[i], strlen(undesired_cmds[i])) == 0) {
 			ck_f = 1;
                         break;
-                    }
+                    }    		
 	    	}
 
                 if(ck_f == 0){
@@ -1203,7 +1211,7 @@ void mt_fixup(struct tag *tags, char **cmdline, struct meminfo *mi)
     } else // we should always have reserved memory
     	BUG();
 
-    printk(KERN_ALERT
+    MTK_MEMCFG_LOG_AND_PRINTK(KERN_ALERT
             "[PHY layout]avaiable DRAM size (lk) = 0x%08lx\n"
             "[PHY layout]avaiable DRAM size = 0x%08lx\n"
             "[PHY layout]FB       :   0x%08lx - 0x%08lx  (0x%08x)\n",
@@ -1211,11 +1219,11 @@ void mt_fixup(struct tag *tags, char **cmdline, struct meminfo *mi)
             kernel_mem_sz,
             FB_START, (FB_START + FB_SIZE - 1), FB_SIZE);
     if(g_boot_mode == FACTORY_BOOT)
-        printk(KERN_ALERT
+        MTK_MEMCFG_LOG_AND_PRINTK(KERN_ALERT
                 "[PHY layout]3D       :   0x%08lx - 0x%08lx  (0x%08x)\n",
                 TEST_3D_START, TEST_3D_START + TEST_3D_SIZE, TEST_3D_SIZE);
     if (PMEM_MM_SIZE) {
-        printk(KERN_ALERT
+        MTK_MEMCFG_LOG_AND_PRINTK(KERN_ALERT
                 "[PHY layout]PMEM     :   0x%08lx - 0x%08lx  (0x%08x)\n",
                 PMEM_MM_START, (PMEM_MM_START + PMEM_MM_SIZE - 1), PMEM_MM_SIZE);
     }
@@ -1276,7 +1284,7 @@ void mt_fixup(struct tag *tags, char **cmdline, struct meminfo *mi)
                     "hole_start_addr = 0x%08x, hole_size = 0x%08x\n",
                     max_avail_addr, i, modem_start_addr,
                     hole_start_addr, hole_size);
-            printk(KERN_ALERT
+            MTK_MEMCFG_LOG_AND_PRINTK(KERN_ALERT
                     "[PHY layout]MD       :   0x%08x - 0x%08x  (0x%08x)\n",
                     modem_start_addr,
                     (modem_start_addr + modem_size_list[i] - 1),
@@ -1482,6 +1490,15 @@ static struct platform_device mtk_nfc_6605_dev = {
 };
 
 /*=======================================================================*/
+/* Sim switch driver                                                         */
+/*=======================================================================*/
+#if defined (CUSTOM_KERNEL_SSW)
+static struct platform_device ssw_device = {	
+	.name = "sim-switch",	
+	.id = -1};
+#endif
+
+/*=======================================================================*/
 /* MT6589 Board Device Initialization                                    */
 /*=======================================================================*/
 __init int mt6589_board_init(void)
@@ -1622,7 +1639,7 @@ __init int mt6589_board_init(void)
     printk("register 8193_CKGEN device\n");
     retval = platform_device_register(&mtk_ckgen_dev);
     if (retval != 0){
-
+        
         printk("register 8193_CKGEN device FAILS!\n");
         return retval;
     }
@@ -1675,8 +1692,15 @@ __init int mt6589_board_init(void)
 #endif
     }
 
-    resource_fb[0].start = FB_START;
-    resource_fb[0].end   = FB_START + FB_SIZE - 1;
+    if ((use_bl_fb == 2)) {
+        /* use FB initialized by LK */
+        printk("use LK FB %d\n", use_bl_fb);
+        resource_fb[0].start = bl_fb.base;
+        resource_fb[0].end  = bl_fb.base + bl_fb.size - 1;
+    } else {
+        resource_fb[0].start = FB_START;
+        resource_fb[0].end   = FB_START + FB_SIZE - 1;
+    }
 
     printk("FB start: 0x%x end: 0x%x\n", resource_fb[0].start,
                                          resource_fb[0].end);
@@ -1710,7 +1734,7 @@ __init int mt6589_board_init(void)
 
 
 
-
+    
 
 #if defined(MTK_TVOUT_SUPPORT)
     retval = platform_device_register(&mt6575_TVOUT_dev);
@@ -1779,6 +1803,12 @@ __init int mt6589_board_init(void)
 	printk("hwmon_sensor device!");
 	if (retval != 0)
 		return retval;
+#if defined(CUSTOM_KERNEL_ALSPS)
+	retval = platform_device_register(&sensor_alsps);
+		printk("sensor_alsps device!");
+	if (retval != 0)
+		return retval;
+#endif
 
 #if defined(CUSTOM_KERNEL_ACCELEROMETER)
 	retval = platform_device_register(&sensor_gsensor);
@@ -1814,12 +1844,7 @@ __init int mt6589_board_init(void)
 		return retval;
 #endif
 
-#if defined(CUSTOM_KERNEL_ALSPS)
-	retval = platform_device_register(&sensor_alsps);
-		printk("sensor_alsps device!");
-	if (retval != 0)
-		return retval;
-#endif
+
 #endif
 
 #if defined(CONFIG_MTK_USBFSH)
@@ -1913,6 +1938,11 @@ retval = platform_device_register(&dummychar_device);
     retval = platform_device_register(&spm_mcdi_pdev);
     if (retval != 0) {
         return retval;
+    }    
+
+    retval = platform_device_register(&golden_setting_pdev);
+    if (retval != 0) {
+        return retval;
     }
 
 //
@@ -1995,6 +2025,13 @@ retval = platform_device_register(&dummychar_device);
 	printk("mtk_nfc_6605_dev register ret %d", retval);
 	if (retval != 0){
 		return retval;
+	}
+#endif
+
+#if defined (CUSTOM_KERNEL_SSW)	
+	retval = platform_device_register(&ssw_device);    
+	if (retval != 0) {        
+		return retval;    
 	}
 #endif
 

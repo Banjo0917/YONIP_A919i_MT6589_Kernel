@@ -292,12 +292,12 @@ static int OV8825AF_Release(struct inode * a_pstInode, struct file * a_pstFile)
         }
 
         if (g_u4CurrPosition > 200)  {
-	    s4OV8825AF_WriteReg(200);
+	        s4OV8825AF_WriteReg(200);
             msleep(3);
         }
 
         if (g_u4CurrPosition > 100)   {
-	    s4OV8825AF_WriteReg(100);
+	        s4OV8825AF_WriteReg(100);
             msleep(3);
         }
             	            	    	    

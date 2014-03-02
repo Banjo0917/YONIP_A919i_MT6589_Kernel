@@ -2072,7 +2072,11 @@ const struct hc_driver musbfsh_hc_driver = {
 	.description		= "musbfsh-hcd",
 	.product_desc		= "MUSBFSH HDRC host driver",
 	.hcd_priv_size		= sizeof(struct musbfsh),
+#ifdef CONFIG_ARCH_MT6589
+	.flags			= HCD_USB2 | HCD_MEMORY,
+#else
 	.flags			= HCD_USB11 | HCD_MEMORY,
+#endif
 
 	/* not using irq handler or reset hooks from usbcore, since
 	 * those must be shared with peripheral code for OTG configs

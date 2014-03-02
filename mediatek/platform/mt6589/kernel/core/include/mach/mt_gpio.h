@@ -108,6 +108,16 @@ typedef enum {
     GPIO_PULL_EN_DEFAULT = GPIO_PULL_ENABLE,
 } GPIO_PULL_EN;
 /*----------------------------------------------------------------------------*/
+/* GPIO IES*/
+typedef enum {
+    GPIO_IES_UNSUPPORTED = -1,
+    GPIO_IES_DISABLE = 0,
+    GPIO_IES_ENABLE  = 1,
+
+    GPIO_IES_MAX,
+    GPIO_IES_DEFAULT = GPIO_IES_ENABLE,
+} GPIO_IES;
+/*----------------------------------------------------------------------------*/
 /* GPIO PULL-UP/PULL-DOWN*/
 typedef enum {
     GPIO_PULL_UNSUPPORTED = -1,
@@ -213,7 +223,9 @@ typedef struct {        /*FIXME: check GPIO spec*/
 /*----------------------------------------------------------------------------*/
 typedef struct {
     VAL_REGS    dir[15];            /*0x0000 ~ 0x00EF: 240 bytes*/
-    u8          rsv00[272];         /*0x00F0 ~ 0x01FF: 272 bytes*/
+    u8          rsv001[16];         /*0x00F0 ~ 0x0FF:   16 bytes*/
+    VAL_REGS    ies[15];            /*0x0100 ~ 0x01EF: 240 bytes*/
+    u8          rsv002[16];         /*0x00F0 ~ 0x01FF: 272 bytes*/
     VAL_REGS    pullen[15];         /*0x0200 ~ 0x02CF: 240 bytes*/
     u8          rsv01[272];         /*0x02F0 ~ 0x03FF: 272 bytes*/
     VAL_REGS    pullsel[15];        /*0x0400 ~ 0x04CF: 240 bytes*/
@@ -253,7 +265,8 @@ typedef struct {        /*FIXME: check GPIO spec*/
     unsigned int pullen : 1;
     unsigned int dir    : 1;
     unsigned int dinv   : 1;
-    unsigned int _align : 7; 
+    unsigned int ies    : 1;
+    unsigned int _align : 6; 
 } GPIO_CFG; 
 /******************************************************************************
 * GPIO Driver interface 

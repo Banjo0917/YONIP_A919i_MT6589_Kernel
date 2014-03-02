@@ -24,13 +24,10 @@ struct ram_console_buffer {
 
 	uint8_t     hw_status;
 	uint8_t	    fiq_step;
-	uint8_t     shutdown_mode;
-	uint8_t     in_idle;
+	uint8_t     __pad1;
+	uint8_t     __pad2;
 	uint8_t     __pad3;
 
-	uint32_t    jiffies_current;
-	uint32_t    jiffies_idle;
-	uint32_t    jiffies_wdk_kick;
 	uint32_t    bin_log_count;
 
 	uint32_t    last_irq_enter[RC_CPU_COUNT];
@@ -79,34 +76,6 @@ void aee_rr_rec_fiq_step(u8 i)
 	}
 }
 
-
-void aee_rr_rec_current_jiffies(u32 j)
-{
-	if (ram_console_buffer) {
-		ram_console_buffer->jiffies_current = j;
-	}
-}
-
-void aee_rr_rec_wdk_kick_jiffies(u32 j)
-{
-	if (ram_console_buffer) {
-		ram_console_buffer->jiffies_wdk_kick = j;
-		ram_console_buffer->in_idle = 0;
-	}
-}
-
-void aee_rr_rec_idle_jiffies(u32 j)
-{
-	if (ram_console_buffer) {
-		if (raw_smp_processor_id() == 0) {
-			ram_console_buffer->jiffies_idle = j;
-			if (j != 0) {
-				ram_console_buffer->in_idle++;
-			}
-		}
-	}
-}
-
 void aee_rr_rec_last_irq_enter(int cpu, int irq, u64 j)
 {
 	if ((ram_console_buffer != NULL) && (cpu >= 0) && (cpu < RC_CPU_COUNT)) {
@@ -132,13 +101,6 @@ void aee_rr_rec_last_sched_jiffies(int cpu, u64 j, const char *comm)
 		strlcpy(ram_console_buffer->last_sched_comm[cpu], comm, TASK_COMM_LEN);
 	}
 	mb();
-}
-
-void aee_rr_rec_shutdown_mode(u8 mode)
-{
-	if (ram_console_buffer) {
-		ram_console_buffer->shutdown_mode = mode;
-	}
 }
 
 void aee_rr_rec_hoplug(int cpu, u8 data1, u8 data2)
@@ -440,9 +402,7 @@ static int __init ram_console_init(struct ram_console_buffer *buffer,
 	buffer->start = 0;
 	buffer->size = 0;
 	buffer->hw_status = 0;
-	buffer->shutdown_mode = 0;
 	buffer->bin_log_count = 0;
-	buffer->jiffies_current = buffer->jiffies_wdk_kick = buffer->jiffies_idle = 0;
 
 	for (i = 0; i < mtk_cpu_num; i++) {
 		buffer->last_irq_enter[i] = 0;
@@ -516,11 +476,6 @@ static int __init ram_console_late_init(void)
 	memset(&lrr, 0, sizeof(struct last_reboot_reason));
 	lrr.wdt_status = ram_console_old_header.hw_status;
 	lrr.fiq_step = ram_console_old_header.fiq_step;
-	lrr.shutdown_mode = ram_console_old_header.shutdown_mode;
-	lrr.in_idle = ram_console_old_header.in_idle;
-	lrr.jiffies_current = ram_console_old_header.jiffies_current;
-	lrr.jiffies_wdk_kick = ram_console_old_header.jiffies_wdk_kick;
-	lrr.jiffies_idle = ram_console_old_header.jiffies_idle;
 
 	for(i = 0; i < NR_CPUS; i++)
 	{
@@ -548,11 +503,10 @@ static int __init ram_console_late_init(void)
 	}
 
 
-	str_real_len = sprintf(ram_console_header_buffer,"ram console header, hw_status: %u, shutdown_mode %u, in idle %u, fiq step %u.\n",
-	ram_console_old_header.hw_status, ram_console_old_header.shutdown_mode,ram_console_old_header.in_idle, ram_console_old_header.fiq_step);
+	str_real_len = sprintf(ram_console_header_buffer,"ram console header, hw_status: %u, fiq step %u.\n",
+	ram_console_old_header.hw_status, ram_console_old_header.fiq_step);
 
-	str_real_len += sprintf(ram_console_header_buffer + str_real_len,"current %u, idle %u, wdk_kick %u, bin log %d.\n",
-			ram_console_old_header.jiffies_current, ram_console_old_header.jiffies_idle,ram_console_old_header.jiffies_wdk_kick,ram_console_old_header.bin_log_count);
+	str_real_len += sprintf(ram_console_header_buffer + str_real_len,"bin log %d.\n", ram_console_old_header.bin_log_count);
 	
 	ram_console_old_log = kmalloc(ram_console_old_log_size + str_real_len, GFP_KERNEL);
 	if(ram_console_old_log == NULL)

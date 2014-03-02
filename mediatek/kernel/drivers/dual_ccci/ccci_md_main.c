@@ -35,7 +35,7 @@
 #include <ccif.h>
 #include <ccci_common.h>
 #include <ccci_cfg.h>
-
+#include <linux/rtc.h>
 
 
 //------------------- md cotrol variable define---------------------//
@@ -597,6 +597,23 @@ static void ccci_mem_dump(void *start_addr, int len)
 void ccci_ee_info_dump(int md_id, DEBUG_INFO_T *debug_info)
 {
 	char ex_info[EE_BUF_LEN]="";
+
+	struct rtc_time		tm;
+	struct timeval		tv = {0};
+	struct timeval		tv_android = {0};
+	struct rtc_time		tm_android;
+
+	do_gettimeofday(&tv);
+	tv_android = tv;
+	rtc_time_to_tm(tv.tv_sec, &tm);
+	tv_android.tv_sec -= sys_tz.tz_minuteswest*60;
+	rtc_time_to_tm(tv_android.tv_sec, &tm_android);
+	CCCI_MSG_INF(md_id, "cci", "Sync:%d%02d%02d %02d:%02d:%02d.%u(%02d:%02d:%02d.%03d(TZone))\n", 
+		   tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday,
+		   tm.tm_hour, tm.tm_min, tm.tm_sec,
+		   (unsigned int) tv.tv_usec,
+		   tm_android.tm_hour, tm_android.tm_min, tm_android.tm_sec,
+		   (unsigned int) tv_android.tv_usec);
 
 	CCCI_MSG_INF(md_id, "cci", "exception type(%d):%s\n",debug_info->type,debug_info->name?:"Unknown");
 
@@ -2090,6 +2107,9 @@ int ccci_ipo_h_restore(int md_id, char buf[], unsigned int len)
 	// 5. Re register CCIF interrupt
 	//ccci_hal_irq_register(md_id);
 	//ccci_disable_md_intr(md_id);
+
+	// 6. Power on MD
+	ccci_power_on_md(md_id);
 
 	return 0;
 	

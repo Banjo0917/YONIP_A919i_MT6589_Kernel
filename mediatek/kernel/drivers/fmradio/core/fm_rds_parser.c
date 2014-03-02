@@ -133,6 +133,7 @@ static fm_s32 rds_checksum_check(fm_u16 crc, fm_s32 mask, fm_bool *valid)
  *
  * If success, return block_n's cbc, else error code
 */
+/*
 static fm_s32 rds_cbc_get(fm_u16 cbc, enum rds_blk_t blk)
 {
     int ret = 0;
@@ -157,7 +158,7 @@ static fm_s32 rds_cbc_get(fm_u16 cbc, enum rds_blk_t blk)
     WCN_DBG(FM_INF | RDSC, "group cbc=0x%04x\n", cbc);
     return ret;
 }
-
+*/
 /*
  * rds_event_set
  * To set rds event, and user space can use this flag to juge which event happened
@@ -536,18 +537,18 @@ static fm_s32 rds_g0_ps_cmp(fm_u8 addr, fm_u16 cbc, fm_u8 *fresh,
 	//fm_s32 j = 0;
 	//    fm_s32 cnt = 0;
 	fm_u8 AF_H, AF_L,PS_Num;
-	fm_u8 corrBitCnt_BlkB, corrBitCnt_BlkD;
+	//fm_u8 corrBitCnt_BlkB, corrBitCnt_BlkD;
 	static fm_s8 Pre_PS_Num = -1;
 
-    FMR_ASSERT(fresh);
-    FMR_ASSERT(once);
-    FMR_ASSERT(twice);
+	FMR_ASSERT(fresh);
+	FMR_ASSERT(once);
+	FMR_ASSERT(twice);
 //	FMR_ASSERT(valid);
 
 	//j = 2; // PS segment width
 	PS_Num = addr;
-	corrBitCnt_BlkB = rds_cbc_get(cbc, RDS_BLK_B);
-	corrBitCnt_BlkD = rds_cbc_get(cbc, RDS_BLK_D);
+	//corrBitCnt_BlkB = rds_cbc_get(cbc, RDS_BLK_B);
+	//corrBitCnt_BlkD = rds_cbc_get(cbc, RDS_BLK_D);
 
 	AF_H = once[2*PS_Num];
 	AF_L = once[2*PS_Num+1];
@@ -589,7 +590,8 @@ static fm_s32 rds_g0_ps_cmp(fm_u8 addr, fm_u16 cbc, fm_u8 *fresh,
 				*bm &= ~(1<<indx);
 			}
 		}
-		if((corrBitCnt_BlkB == 0) && (corrBitCnt_BlkD == 0)) 
+		//if((corrBitCnt_BlkB == 0) && (corrBitCnt_BlkD == 0)) 
+		if(cbc==0)
         {
 			*bm |= 1<<PS_Num;	
 			once[2*PS_Num]=fresh[2*PS_Num];
@@ -603,13 +605,13 @@ static fm_s32 rds_g0_ps_cmp(fm_u8 addr, fm_u16 cbc, fm_u8 *fresh,
 			once[2*PS_Num+1] = fresh[2*PS_Num+1];
 		}
 	}
-
+	
 	Pre_PS_Num = PS_Num;
 #if	0
-    if (rds_cbc_get(cbc, RDS_BLK_D) == 0) {
+	if (rds_cbc_get(cbc, RDS_BLK_D) == 0) {
 	    once[j*addr] = fresh[j*addr];
-        once[j*addr+1] = fresh[j*addr+1];
-    }
+	    once[j*addr+1] = fresh[j*addr+1];
+	}
 	if((once[j*addr] == fresh[j*addr])&&(once[j*addr+1] == fresh[j*addr+1]))
 	{
 		twice[j*addr] = once[j*addr];
@@ -725,7 +727,6 @@ static fm_s32 rds_bm_set(struct rds_bitmap *thiz, fm_u8 addr)
         thiz->cnt--;
     }
 
-    WCN_DBG(FM_NTC | RDSC, "bitmap=0x%04x, bmcnt=%d\n", thiz->bm, thiz->cnt);
     return 0;
 }
 
@@ -753,9 +754,11 @@ static fm_s32 rds_g2_txtAB_get(fm_u16 blk, fm_u8 *txtAB, fm_bool *dirty)
     FMR_ASSERT(txtAB);
     FMR_ASSERT(dirty);
 
-    if (*txtAB != ((blk&0x0010) >> 4)) {
-        *txtAB = (blk & 0x0010) >> 4;
-        *dirty = fm_true; // yes, we got new txtAB code
+	if (*txtAB != ((blk&0x0010) >> 4)) 
+	{
+		*txtAB = (blk & 0x0010) >> 4;
+		*dirty = fm_true; // yes, we got new txtAB code
+		WCN_DBG(FM_INF | RDSC, "changed! txtAB=%d\n", *txtAB);
     } else {
         *dirty = fm_false; // txtAB is the same as last one
     }
@@ -812,7 +815,7 @@ static fm_s32 rds_g2_rt_get(fm_u16 crc, fm_u8 subtype, fm_u16 blkC, fm_u16 blkD,
         break;
     }
 
-    WCN_DBG(FM_INF | RDSC, "addr[%02x]:0x%02x 0x%02x 0x%02x 0x%02x\n", addr, buf[idx], buf[idx+1], buf[idx+2], buf[idx+3]);
+    WCN_DBG(FM_NTC | RDSC, "fresh addr[%02x]:0x%02x%02x 0x%02x%02x\n", addr, buf[idx], buf[idx+1], buf[idx+2], buf[idx+3]);
     return ret;
 }
 
@@ -841,7 +844,7 @@ static fm_s32 rds_g2_rt_get_len(fm_u8 subtype, fm_s32 pos, fm_s32 *len)
  * If success return 0, else return error code
 */
 static fm_s32 rds_g2_rt_cmp(fm_u8 addr, fm_u16 cbc, fm_u8 subtype, fm_u8 *fresh,
-                            fm_u8 *once, fm_u8 *twice, fm_bool *valid, fm_bool *end, fm_s32 *len)
+                            fm_u8 *once, fm_u8 *twice, fm_bool *valid/*, fm_bool *end, fm_s32 *len*/)
 {
     fm_s32 ret = 0;
     fm_s32 i = 0;
@@ -852,22 +855,27 @@ static fm_s32 rds_g2_rt_cmp(fm_u8 addr, fm_u16 cbc, fm_u8 subtype, fm_u8 *fresh,
     FMR_ASSERT(once);
     FMR_ASSERT(twice);
     FMR_ASSERT(valid);
-    FMR_ASSERT(end);
+//    FMR_ASSERT(end);
 
     j = (subtype == RDS_GRP_VER_A) ? 4 : 2; // RT segment width
 
     if (subtype == RDS_GRP_VER_A) {
-        if (rds_cbc_get(cbc, RDS_BLK_C) == 0) {
+        //if (rds_cbc_get(cbc, RDS_BLK_C) == 0) 
+        if(cbc==0)
+        {
             once[j*addr+0] = fresh[j*addr+0];
             once[j*addr+1] = fresh[j*addr+1];
-        }
+        //}
 
-        if (rds_cbc_get(cbc, RDS_BLK_D) == 0) {
+        //if (rds_cbc_get(cbc, RDS_BLK_D) == 0) 
+       // {
             once[j*addr+2] = fresh[j*addr+2];
             once[j*addr+3] = fresh[j*addr+3];
         }
     } else if (subtype == RDS_GRP_VER_B) {
-        if (rds_cbc_get(cbc, RDS_BLK_D) == 0) {
+        //if (rds_cbc_get(cbc, RDS_BLK_D) == 0)
+		if(cbc==0)
+        {
             once[j*addr+0] = fresh[j*addr+0];
             once[j*addr+1] = fresh[j*addr+1];
         }
@@ -877,15 +885,19 @@ static fm_s32 rds_g2_rt_cmp(fm_u8 addr, fm_u16 cbc, fm_u8 subtype, fm_u8 *fresh,
         if (fresh[j*addr+i] == once[j*addr+i]) {
             twice[j*addr+i] = once[j*addr+i]; //get the same byte 2 times
             cnt++;
+			WCN_DBG(FM_NTC | RDSC, "twice=%d\n", j*addr+i);
         } else {
             once[j*addr+i] = fresh[j*addr+i]; //use new val
+			WCN_DBG(FM_NTC | RDSC, "once=%d\n", j*addr+i);
         }
-
+#if 0
         //if we got 0x0D twice, it means a RT end
         if (twice[j*addr+i] == 0x0D) {
             *end = fm_true;
             *len = j * addr + i + 1; //record the length of RT
+			WCN_DBG(FM_NTC | RDSC, "get 0D=%d\n", *len);
         }
+#endif        
     }
 
     //check if we got a valid segment 4bytes for typeA, 2bytes for typeB
@@ -896,9 +908,40 @@ static fm_s32 rds_g2_rt_cmp(fm_u8 addr, fm_u16 cbc, fm_u8 subtype, fm_u8 *fresh,
     }
 
     WCN_DBG(FM_INF | RDSC, "RT seg=%s\n", *valid == fm_true ? "fm_true" : "fm_false");
-    WCN_DBG(FM_INF | RDSC, "RT end=%s\n", *end == fm_true ? "fm_true" : "fm_false");
-    WCN_DBG(FM_INF | RDSC, "RT len=%d\n", *len);
+//    WCN_DBG(FM_INF | RDSC, "RT end=%s\n", *end == fm_true ? "fm_true" : "fm_false");
+//    WCN_DBG(FM_INF | RDSC, "RT len=%d\n", *len);
     return ret;
+}
+
+/*
+ * rds_g2_rt_check_end
+ * check 0x0D end flag
+ * If we got the end, then caculate the RT lenth
+ * If success return 0, else return error code
+*/
+static fm_s32 rds_g2_rt_check_end(fm_u8 addr, fm_u8 subtype, fm_u8 *twice,fm_bool *end)
+{
+    fm_s32 i = 0;
+    fm_s32 j = 0;
+
+    FMR_ASSERT(twice);
+    FMR_ASSERT(end);
+
+    j = (subtype == RDS_GRP_VER_A) ? 4 : 2; // RT segment width
+	*end = fm_false;
+
+    for (i = 0; i < j; i++) 
+    {
+        //if we got 0x0D twice, it means a RT end
+        if (twice[j*addr+i] == 0x0D) 
+        {
+            *end = fm_true;
+			WCN_DBG(FM_NTC | RDSC, "get 0x0D\n");
+			break;
+        }
+    }
+
+    return 0;
 }
 
 static fm_s32 rds_retrieve_g0_af(fm_u16 *block_data, fm_u8 SubType, rds_t *pstRDSData)
@@ -1224,6 +1267,15 @@ static fm_s32 rds_retrieve_g0_ps(fm_u16 *block_data, fm_u8 SubType, rds_t *pstRD
             //if (pos == ps_bm.max_addr) 
 			{
 				num=0;
+				WCN_DBG(FM_NTC | RDSC, "PS[3]=%x %x %x %x %x %x %x %x\n", 
+										pstRDSData->PS_Data.PS[3][0],
+										pstRDSData->PS_Data.PS[3][1],
+										pstRDSData->PS_Data.PS[3][2],
+										pstRDSData->PS_Data.PS[3][3],
+										pstRDSData->PS_Data.PS[3][4],
+										pstRDSData->PS_Data.PS[3][5],
+										pstRDSData->PS_Data.PS[3][6],
+										pstRDSData->PS_Data.PS[3][7]);
 				for(i=0;i<8;i++)//compare with last PS.
 				{
 					if(pstRDSData->PS_Data.PS[3][i]==pstRDSData->PS_Data.PS[2][i])
@@ -1243,10 +1295,18 @@ static fm_s32 rds_retrieve_g0_ps(fm_u16 *block_data, fm_u8 SubType, rds_t *pstRD
 					}
 					if(num != 8)
 					{
-                fm_memcpy(pstRDSData->PS_Data.PS[3], pstRDSData->PS_Data.PS[2], 8);
-                rds_event_set(event, RDS_EVENT_PROGRAMNAME); //yes we got a new PS
-                WCN_DBG(FM_NTC | RDSC, "Yes, get an PS!\n");
-            }
+						fm_memcpy(pstRDSData->PS_Data.PS[3], pstRDSData->PS_Data.PS[2], 8);
+						rds_event_set(event, RDS_EVENT_PROGRAMNAME); //yes we got a new PS
+						WCN_DBG(FM_NTC | RDSC, "Yes, get an PS!\n");
+					}
+				}
+				else
+				{
+					pstRDSData->PS_Data.Addr_Cnt=0;
+					//clear buf
+					fm_memset(pstRDSData->PS_Data.PS[0], 0x20, 8);
+					fm_memset(pstRDSData->PS_Data.PS[1], 0x20, 8);
+					fm_memset(pstRDSData->PS_Data.PS[2], 0x20, 8);
 				}
             }
 #if 0
@@ -1331,7 +1391,7 @@ static fm_s32 rds_retrieve_g2(fm_u16 *source, fm_u8 subtype, rds_t *target)
     static struct rds_bitmap rt_bm = {
         .bm = 0,
         .cnt = 0,
-        .max_addr = 0x15,
+        .max_addr = 0xF,
         .bm_get = rds_bm_get,
         .bm_cnt_get = rds_bm_cnt_get,
         .bm_set = rds_bm_set,
@@ -1344,7 +1404,7 @@ static fm_s32 rds_retrieve_g2(fm_u16 *source, fm_u8 subtype, rds_t *target)
     fm_bool txt_end = fm_false;       //0x0D means text end
     fm_bool seg_ok = 0;
     fm_s32 pos = 0;
-    fm_s32 rt_len = 0;
+    fm_s32 rt_len = 0,indx=0,invalid_cnt=0;
     fm_s32 bufsize = 0;
 
     FMR_ASSERT(source);
@@ -1364,6 +1424,7 @@ static fm_s32 rds_retrieve_g2(fm_u16 *source, fm_u8 subtype, rds_t *target)
     event = &target->event_status;
     flag = &target->RDSFlag.flag_status;
     bufsize = sizeof(target->RT_Data.TextData[0]);
+	rt_bm.bm = target->RT_Data.Addr_Cnt;
 
     //get basic info: addr, txtAB
     if (rds_g2_rt_addr_get(blkB, &rt_addr))
@@ -1371,69 +1432,106 @@ static fm_s32 rds_retrieve_g2(fm_u16 *source, fm_u8 subtype, rds_t *target)
 
     if (rds_g2_txtAB_get(blkB, &target->RDSFlag.Text_AB, &txtAB_change))
         return ret;
-
+	if(txtAB_change == fm_true)
+	{
+		//clear buf
+		fm_memset(fresh, 0x20, bufsize);
+		fm_memset(once, 0x20, bufsize);
+		fm_memset(twice, 0x20, bufsize);
+		rt_bm.bm_clr(&rt_bm);
+	}
     //RT parsing state machine run
     while (1) {
         switch (STATE_GET(&rt_sm)) {
         case RDS_RT_START:
-
-            if (txtAB_change == fm_true) {
+		{
+#if 0
+            if (txtAB_change == fm_true)
+            {
                 STATE_SET(&rt_sm, RDS_RT_DECISION);
-                break;
-            } else {
-                if (rds_g2_rt_get(crc, subtype, blkC, blkD, rt_addr, fresh)) {
-                    STATE_SET(&rt_sm, RDS_RT_FINISH); //if CRC error, we should not do parsing
-                    break;
+            } 
+            else 
+#endif
+            {
+                if (rds_g2_rt_get(crc, subtype, blkC, blkD, rt_addr, fresh) == 0) 
+                {
+                    //STATE_SET(&rt_sm, RDS_RT_FINISH); //if CRC error, we should not do parsing
+                    //break;
+					rds_g2_rt_cmp(rt_addr, cbc, subtype, fresh, once, twice,
+								  &seg_ok/*, &txt_end, &rt_len*/);
+					
+					if (seg_ok == fm_true) 
+					{
+						rt_bm.bm_set(&rt_bm, rt_addr);
+					}
+					else//clear bitmap of rt_addr
+					{
+						rt_bm.bm &= ~(1<<rt_addr);
+					}
                 }
-
-                rds_g2_rt_cmp(rt_addr, cbc, subtype, fresh, once, twice,
-                              &seg_ok, &txt_end, &rt_len);
-
-                if (seg_ok == fm_true) {
-                    rt_bm.bm_set(&rt_bm, rt_addr);
-                }
+				WCN_DBG(FM_NTC | RDSC, "bitmap=0x%04x, bmcnt=%d\n", rt_bm.bm, rt_bm.cnt);
+				rds_g2_rt_check_end(rt_addr,subtype,twice,&txt_end);
 
                 STATE_SET(&rt_sm, RDS_RT_DECISION);
-                break;
             }
-
+			break;
+		}
         case RDS_RT_DECISION:
-
-            if ((txt_end == fm_true) //find 0x0D, and the lenth has been recorded when do rds_g2_rt_cmp()
-                        || (rt_bm.bm_get(&rt_bm) == 0xFFFF) //get max  64 chars
-                       || (txtAB_change == fm_true)  //text AB changed,
-                       || (rt_bm.bm_cnt_get(&rt_bm) > RDS_RT_MULTI_REV_TH)) { //repeate many times, but no end char get
+		{
+			if ((txt_end == fm_true)
+				|| (rt_bm.bm_get(&rt_bm) == 0xFFFF) //get max  64 chars
+				|| (rt_bm.bm_cnt_get(&rt_bm) > RDS_RT_MULTI_REV_TH))//repeate many times, but no end char get
+            { 
                 pos = rt_bm.bm_get_pos(&rt_bm);
                 rds_g2_rt_get_len(subtype, pos, &rt_len);
                 STATE_SET(&rt_sm, RDS_RT_GETLEN);
-            } else {
+            } 
+            else 
+            {
                 STATE_SET(&rt_sm, RDS_RT_FINISH);
             }
 
             break;
+		}
         case RDS_RT_GETLEN:
             
-            fm_memcpy(display, twice, bufsize);
-            target->RT_Data.TextLength = rt_len;
-            if (rt_len > 0 && ((txt_end == fm_true) || (rt_bm.bm_get(&rt_bm) == 0xFFFF))) {
-                rds_event_set(event, RDS_EVENT_LAST_RADIOTEXT); //yes we got a new RT
-                WCN_DBG(FM_NTC | RDSC, "Yes, get an RT! [len=%d]\n", rt_len);
+            if (rt_len > 0 /*&& ((txt_end == fm_true) || (rt_bm.bm_get(&rt_bm) == 0xFFFF))*/) 
+            {
+				for(indx=0; indx<rt_len; indx++)
+				{
+					if(twice[indx] == 0x20)
+						invalid_cnt++;
+				}	
+				if(invalid_cnt != rt_len)
+				{
+					if(memcmp(display,twice,bufsize)!=0)
+					{
+						fm_memcpy(display, twice, bufsize);
+						target->RT_Data.TextLength = rt_len;
+		                rds_event_set(event, RDS_EVENT_LAST_RADIOTEXT); //yes we got a new RT
+		                WCN_DBG(FM_NTC | RDSC, "Yes, get an RT! [len=%d]\n", rt_len);
+					}
+					rt_bm.bm_clr(&rt_bm);
+					//clear buf
+					fm_memset(fresh, 0x20, bufsize);
+					fm_memset(once, 0x20, bufsize);
+					fm_memset(twice, 0x20, bufsize);
+                }
+                else
+	                WCN_DBG(FM_NTC | RDSC, "Get 0x20 RT %d\n", invalid_cnt);
             }
 
-            rt_bm.bm_clr(&rt_bm);
-            //clear buf
-            fm_memset(fresh, 0x20, bufsize);
-            fm_memset(once, 0x20, bufsize);
-            fm_memset(twice, 0x20, bufsize);
-
+#if 0
             if (txtAB_change == fm_true) {
                 txtAB_change = fm_false;
                 //we need get new RT after show the old RT to the display
                 STATE_SET(&rt_sm, RDS_RT_START);
-            } else {
+            } 
+            else 
+#endif
+            {
                 STATE_SET(&rt_sm, RDS_RT_FINISH);
             }
-
             break;
         case RDS_RT_FINISH:
             STATE_SET(&rt_sm, RDS_RT_START);
@@ -1445,6 +1543,7 @@ static fm_s32 rds_retrieve_g2(fm_u16 *source, fm_u8 subtype, rds_t *target)
     }
 
 out:
+	target->RT_Data.Addr_Cnt = rt_bm.bm;
     return ret;
 }
 

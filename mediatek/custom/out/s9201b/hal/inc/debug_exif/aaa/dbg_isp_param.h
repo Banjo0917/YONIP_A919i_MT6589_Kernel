@@ -1,8 +1,6 @@
+
 #ifndef _DBG_ISP_PARAM_H_
 #define _DBG_ISP_PARAM_H_
-/*******************************************************************************
-*
-*******************************************************************************/
 #define ISP_DEBUG_KEYID 0xF4F5F6F7
 
 namespace NSIspExifDebug
@@ -354,23 +352,13 @@ typedef struct IspExifDebugInfo
 
 
 };  //  namespace NSIspExifDebug
-/*******************************************************************************
-*
-*******************************************************************************/
 namespace NSIspTuning
 {
 
 
-/*******************************************************************************
-*
-*******************************************************************************/
 template <MUINT32 total_module, MUINT32 tag_module>
 struct ModuleNum
 {
-/*
-    |   8  |       8      |   8  |     8      |
-    | 0x00 | total_module | 0x00 | tag_module |
-*/
     enum
     {
         val = ((total_module & 0xFF) << 16) | ((tag_module & 0xFF))
@@ -381,10 +369,6 @@ struct ModuleNum
 template <MUINT32 module_id, MUINT32 tag_id, MUINT32 line_keep = 0>
 struct ModuleTag
 {
-/*
-    |     8     |      1    |   7  |    16    |
-    | module_id | line_keep | 0x00 |  tag_id  |
-*/
     enum
     {
         val = ((module_id & 0xFF) << 24)
@@ -396,10 +380,6 @@ struct ModuleTag
 
 inline MUINT32 getModuleTag(MUINT32 module_id, MUINT32 tag_id, MUINT32 line_keep = 0)
 {
-/*
-    |     8     |      1    |   7  |    16    |
-    | module_id | line_keep | 0x00 |  tag_id  |
-*/
     return  ((module_id & 0xFF) << 24)
           | ((line_keep & 0x01) << 23)
           | ((tag_id  & 0xFFFF) << 0)

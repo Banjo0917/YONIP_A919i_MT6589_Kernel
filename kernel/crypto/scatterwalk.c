@@ -46,25 +46,7 @@ void *scatterwalk_map(struct scatter_walk *walk)
 	       offset_in_page(walk->offset);
 }
 EXPORT_SYMBOL_GPL(scatterwalk_map);
-#define DUMP_LINE_NUM   8
-#define DUMP_WORDS_NUM  64
 
-void dump_mem_sg(unsigned int *sg)
-{
-    unsigned int *start = sg-DUMP_WORDS_NUM;
-    unsigned int *ptr = start;
-    int i;
-    int j;
-    
-    for(i = 0 ; i < (DUMP_WORDS_NUM*2)/DUMP_LINE_NUM ; i++){
-        printk("%08x   ", (unsigned int)ptr);
-    for(j = 0 ; j < DUMP_LINE_NUM ; j++){
-        printk("%08x ", *(volatile unsigned int*)ptr);
-        ptr++;
-    }
-    printk("\n");
-    }
-}
 static void scatterwalk_pagedone(struct scatter_walk *walk, int out,
 				 unsigned int more)
 {
@@ -72,11 +54,6 @@ static void scatterwalk_pagedone(struct scatter_walk *walk, int out,
 		struct page *page;
 
 		page = sg_page(walk->sg) + ((walk->offset - 1) >> PAGE_SHIFT);
-		//M
-		if(page == NULL){		    
-		    printk(KERN_ERR "walk->sg:0x%x, offset:%d,sg->offset:%d, sg length:%d\n", (unsigned int)walk->sg, walk->offset, walk->sg->offset, walk->sg->length);
-		    dump_mem_sg((unsigned int*)walk->sg);
-        }
 		if (!PageSlab(page))
 			flush_dcache_page(page);
 	}

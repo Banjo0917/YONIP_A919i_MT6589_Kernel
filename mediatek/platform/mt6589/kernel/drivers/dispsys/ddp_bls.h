@@ -6,6 +6,7 @@
 
 void disp_bls_init(unsigned int srcWidth, unsigned int srcHeight);
 int disp_bls_config(void);
+int disp_bls_set_max_backlight(unsigned int level);
 int disp_bls_set_backlight(unsigned int level);
 
 DISPLAY_GAMMA_T * get_gamma_index(void);

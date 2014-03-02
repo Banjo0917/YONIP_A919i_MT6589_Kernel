@@ -997,7 +997,7 @@ typedef UINT_32             KAL_WAKE_LOCK_T, *P_KAL_WAKE_LOCK_T;
 #define TX_INFO_LOGFUNC(_Fmt...)
 #define TX_STATE_LOGFUNC(_Fmt...)
 #define TX_EVENT_LOGFUNC(_Fmt...)
-#define TX_TRACE_LOGFUNC(_Fmt...)
+#define TX_TRACE_LOGFUNC(_Fmt...) xlog_printk(ANDROID_LOG_DEBUG, XLOG_TAG, _Fmt)
 #define TX_LOUD_LOGFUNC(_Fmt...)
 #define TX_TEMP_LOGFUNC(_Fmt...)
 
@@ -1447,7 +1447,7 @@ typedef UINT_32             KAL_WAKE_LOCK_T, *P_KAL_WAKE_LOCK_T;
 #define TX_INFO_LOGFUNC(_Fmt...)
 #define TX_STATE_LOGFUNC(_Fmt...)
 #define TX_EVENT_LOGFUNC(_Fmt...)
-#define TX_TRACE_LOGFUNC(_Fmt...)
+#define TX_TRACE_LOGFUNC(_Fmt...) kalPrint(_Fmt)
 #define TX_LOUD_LOGFUNC(_Fmt...)
 #define TX_TEMP_LOGFUNC(_Fmt...)
 

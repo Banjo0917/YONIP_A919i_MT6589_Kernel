@@ -1,17 +1,13 @@
+
+
 #ifndef _CAMERA_INFO_MT9D115MIPIRAW_H
 #define _CAMERA_INFO_MT9D115MIPIRAW_H
 
-/*******************************************************************************
-*   Configuration
-********************************************************************************/
 #define SENSOR_ID                           MT9D115_SENSOR_ID
 #define SENSOR_DRVNAME                      SENSOR_DRVNAME_MT9D115_MIPI_RAW
 #define INCLUDE_FILENAME_ISP_REGS_PARAM     "camera_isp_regs_mt9d115mipiraw.h"
 #define INCLUDE_FILENAME_ISP_PCA_PARAM      "camera_isp_pca_mt9d115mipiraw.h"
 #define INCLUDE_FILENAME_ISP_LSC_PARAM      "camera_isp_lsc_mt9d115mipiraw.h"
-/*******************************************************************************
-*
-********************************************************************************/
 
 #if defined(ISP_SUPPORT)
 

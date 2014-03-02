@@ -53,7 +53,7 @@ extern void Golden_Setting_Compare_for_Suspend(void);
 
 static DEFINE_SPINLOCK(slp_lock);
 
-static wake_reason_t slp_wake_reason;
+static wake_reason_t slp_wake_reason = WR_NONE;
 
 static bool slp_ck26m_on = false;
 
@@ -235,6 +235,11 @@ int slp_set_wakesrc(u32 wakesrc, bool enable, bool ck26m_on)
     return r;
 }
 
+wake_reason_t slp_get_wake_reason(void)
+{
+    return slp_wake_reason;
+}
+
 bool slp_will_infra_pdn(void)
 {
     return slp_infra_pdn;
@@ -262,4 +267,4 @@ module_param(slp_dump_gpio, bool, 0644);
 module_param(slp_dump_regs, bool, 0644);
 
 MODULE_AUTHOR("Terry Chang <terry.chang@mediatek.com>");
-MODULE_DESCRIPTION("MT6589 Sleep Driver v0.6");
+MODULE_DESCRIPTION("MT6589 Sleep Driver v0.7");

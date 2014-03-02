@@ -58,6 +58,9 @@ struct aee_oops
 
 	char *userspace_info;
 	int  userspace_info_len;
+
+	char *mmprofile;
+	int mmprofile_len;
 	
 	int dump_option;
 };
@@ -77,12 +80,6 @@ struct aee_kernel_api {
 struct last_reboot_reason {
 	uint8_t     wdt_status;
 	uint8_t     fiq_step;
-	uint8_t     shutdown_mode;
-	uint8_t     in_idle;
-
-	uint32_t    jiffies_current;
-	uint32_t    jiffies_idle;
-	uint32_t    jiffies_wdk_kick;
 
 	uint32_t    last_irq_enter[NR_CPUS];
 	uint64_t    jiffies_last_irq_enter[NR_CPUS];
@@ -122,6 +119,13 @@ void aee_oops_free(struct aee_oops *oops);
 #define DB_OPT_DISPLAY_HANG_DUMP        (1<<9)
 #define DB_OPT_LOW_MEMORY_KILLER        (1<<10)
 #define DB_OPT_PROC_MEM                 (1<<11)
+#define DB_OPT_FS_IO_LOG                (1<<12)
+#define DB_OPT_PROCESS_COREDUMP         (1<<13)
+#define DB_OPT_VM_HPROF                 (1<<14)
+#define DB_OPT_PROCMEM                  (1<<15)
+#define DB_OPT_DUMPSYS_INPUT            (1<<16)
+#define DB_OPT_MMPROFILE_BUFFER         (1<<17)
+#define DB_OPT_BINDER_INFO              (1<<18)
 
 #define aee_kernel_exception(module, msg...)	\
 	aee_kernel_exception_api(__FILE__, __LINE__, DB_OPT_DEFAULT, module, msg)

@@ -283,7 +283,7 @@ static void android_enable(struct android_dev *dev)
 	if (--dev->disable_depth == 0) {
 		usb_add_config(cdev, &android_config_driver,
 					android_bind_config);
-		usb_gadget_connect(cdev->gadget);
+	usb_gadget_connect(cdev->gadget);
 	}
 }
 
@@ -942,7 +942,7 @@ eem_function_bind_config(struct android_usb_function *f,
 
 	//ret = gether_setup_name(c->cdev->gadget, rndis->ethaddr, "eem");
 	// emulate as rndis interface, this can help network framework to integrate without changing the binding interface name
-	ret = gether_setup_name(c->cdev->gadget, eem->ethaddr, "rndis");
+	ret = gether_setup_name(c->cdev->gadget, eem->ethaddr, "rndis"); 
 	if (ret) {
 		pr_err("%s: gether_setup failed\n", __func__);
 		return ret;

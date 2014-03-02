@@ -235,6 +235,8 @@ typedef struct
 // length of the two memory areas
 #define RT_BUF_TBL_NPAGES 16
 #define ISP_RT_BUF_SIZE 16
+#define ISP_RT_CQ0C_BUF_SIZE (ISP_RT_BUF_SIZE>>1)
+
 //
 typedef enum
 {
@@ -400,7 +402,7 @@ typedef struct _cq_ring_cmd_st_
 }CQ_RING_CMD_ST;
 typedef struct _cq_rtbc_ring_st_
 {
-    CQ_RING_CMD_ST rtbc_ring[ISP_RT_BUF_SIZE>>1];
+    CQ_RING_CMD_ST rtbc_ring[ISP_RT_BUF_SIZE];
     unsigned long   imgo_ring_size;
     unsigned long   img2o_ring_size;
 }CQ_RTBC_RING_ST;

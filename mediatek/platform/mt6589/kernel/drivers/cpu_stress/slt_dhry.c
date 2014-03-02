@@ -102,7 +102,7 @@ static ssize_t slt_cpu##_N##_dhry_store(struct device_driver *driver, const char
     \
     printk("\n>> CPU%d dhry test start (cpu id = %d) <<\n\n", _N, raw_smp_processor_id());  \
     \
-    for (i = 0; i < g_iDhryLoopCount; i++) {    \
+    for (i = 0, g_iCPU##_N##_PassFail = 0; i < g_iDhryLoopCount; i++) {    \
         spin_lock_irqsave(&cpu_lock, cpu_flags);    \
         ret = fp1_dhry_start();    /* 1: PASS, 0:Fail, -1: target CPU power off */  \
         spin_unlock_irqrestore(&cpu_lock, cpu_flags);   \

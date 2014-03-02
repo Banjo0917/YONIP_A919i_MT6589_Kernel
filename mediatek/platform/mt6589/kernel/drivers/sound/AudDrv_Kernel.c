@@ -141,6 +141,7 @@ static u64        AudDrv_dmamask      = 0xffffffffUL;
 static bool   AudDrvSuspendStatus            = false; // is suspend flag
 static bool   AudIrqReset                              = false; // flag when irq to reset
 static bool   AuddrvSpkStatus                     = false;
+static bool   AuddrvAeeEnable                    = false;
 static volatile kal_uint8	 Afe_irq_status  = 0;
 
 #define WriteArrayMax (6)
@@ -194,6 +195,9 @@ static DEFINE_MUTEX(AnaClk_mutex);
 *******************************************************************************/
 void CheckPowerState(void);
 bool GetHeadPhoneState(void);
+void Auddrv_Check_Irq(void);
+static void CheckInterruptTiming(void);
+static void ClearInterruptTiming(void);
 
 //here is counter of clock , user extern , clock counter is maintain in auddrv_clk
 
@@ -354,7 +358,10 @@ void CheckWriteWaitEvent(void)
     if(OverTimeCounter >= WriteWarningTrigger)
     {
         xlog_printk(ANDROID_LOG_ERROR, "Sound","Audio Dump FTrace, OverTimeCounter=%d n",OverTimeCounter);
-        //aee_kernel_exception_api(__FILE__, __LINE__, DB_OPT_FTRACE, "Audio is blocked", "audio blocked dump ftrace");
+        if(AuddrvAeeEnable)
+        {
+            aee_kernel_exception_api(__FILE__, __LINE__, DB_OPT_FTRACE, "Audio is blocked", "audio blocked dump ftrace");
+        }
         ResetWriteWaitEvent();
         //AudIrqReset = true;
     }
@@ -711,7 +718,15 @@ void Auddrv_DL_Interrupt_Handler(void)  // irq1 ISR handler
     spin_lock_irqsave(&auddrv_irqstatus_lock, flags);
 
     HW_Cur_ReadIdx = Afe_Get_Reg(AFE_DL1_CUR);
+    if(HW_Cur_ReadIdx == 0)
+    {
+        PRINTK_AUDDRV("[Auddrv] HW_Cur_ReadIdx ==0 \n");
+        HW_Cur_ReadIdx = Afe_Block->pucPhysBufAddr;
+    }
     HW_memory_index =  (HW_Cur_ReadIdx - Afe_Block->pucPhysBufAddr);
+    /*
+    PRINTK_AUDDRV("[Auddrv] HW_Cur_ReadIdx=0x%x HW_memory_index = 0x%x Afe_Block->pucPhysBufAddr = 0x%x\n",
+        HW_Cur_ReadIdx,HW_memory_index,Afe_Block->pucPhysBufAddr);*/
 
     // get hw consume bytes
     if(HW_memory_index > Afe_Block->u4DMAReadIdx)
@@ -764,6 +779,39 @@ void Auddrv_DL_Interrupt_Handler(void)  // irq1 ISR handler
 
 }
 
+static unsigned long long Irq_time_t1 =0, Irq_time_t2 =0;
+static void CheckInterruptTiming(void)
+{
+    if(Irq_time_t1 == 0)
+    {
+       Irq_time_t1 = sched_clock(); // in ns (10^9)
+    }
+    else
+    {
+        Irq_time_t2 =Irq_time_t1;
+        Irq_time_t1 = sched_clock(); // in ns (10^9)
+        if((Irq_time_t1 > Irq_time_t2) && DL1_Interrupt_Interval_Limit )
+        {
+            /*
+            PRINTK_AUDDRV("CheckInterruptTiming  Irq_time_t2 t2 = %llu Irq_time_t1 = %llu Irq_time_t1 - Irq_time_t2 = %llu  DL1_Interrupt_Interval_Limit = %d\n",
+                Irq_time_t2,Irq_time_t1, Irq_time_t1 - Irq_time_t2,DL1_Interrupt_Interval_Limit);*/
+            Irq_time_t2 = Irq_time_t1 - Irq_time_t2;
+            if(Irq_time_t2 > DL1_Interrupt_Interval_Limit*1000000)
+            {
+                PRINTK_AUDDRV("CheckInterruptTiming interrupt may be blocked Irq_time_t2 = llu DL1_Interrupt_Interval_Limit = %d\n",
+                    Irq_time_t2,DL1_Interrupt_Interval_Limit);
+            }
+        }
+    }
+}
+
+static void ClearInterruptTiming(void)
+{
+    Irq_time_t1 = 0;
+    Irq_time_t2 = 0;
+}
+
+
 /*****************************************************************************
  * FUNCTION
  *  AudDrv_IRQ_handler / AudDrv_magic_tasklet
@@ -783,9 +831,20 @@ static irqreturn_t AudDrv_IRQ_handler(int irq, void *dev_id)
     // here is error handle , for interrupt is trigger but not status , clear all interrupt with bit 6
     if(u4RegValue ==0 ){
         PRINTK_AUDDRV("u4RegValue == 0 \n");
+        AudioWayDisable();
+        AudDrv_Clk_On();
         Afe_Set_Reg (AFE_IRQ_CLR, 1<<6 ,0xff);
+        Afe_Set_Reg (AFE_IRQ_CLR, 1 ,0xff);
+        Afe_Set_Reg (AFE_IRQ_CLR, 1<<1 ,0xff);
+        Afe_Set_Reg (AFE_IRQ_CLR, 1<<2 ,0xff);
+        Afe_Set_Reg (AFE_IRQ_CLR, 1<<3 ,0xff);
+        Afe_Set_Reg (AFE_IRQ_CLR, 1<<4 ,0xff);
+        Afe_Set_Reg (AFE_IRQ_CLR, 1<<5 ,0xff);
+
+        AudDrv_Clk_Off();
         goto AudDrv_IRQ_handler_exit;
     }
+    CheckInterruptTiming();
 
     if(u4RegValue&INTERRUPT_IRQ1_MCU)
     {
@@ -1011,10 +1070,8 @@ static void AudDrv_Recover_reg_AFE(void)
     Afe_Set_Reg(AFE_MRGIF_CON,           Suspend_reg.Suspend_AFE_MRGIF_CON,          MASK_ALL);
 
     Afe_Set_Reg(AFE_DL1_BASE,            Suspend_reg.Suspend_AFE_DL1_BASE,           MASK_ALL);
-    Afe_Set_Reg(AFE_DL1_CUR,             Suspend_reg.Suspend_AFE_DL1_CUR,            MASK_ALL);
     Afe_Set_Reg(AFE_DL1_END,             Suspend_reg.Suspend_AFE_DL1_END,            MASK_ALL);
     Afe_Set_Reg(AFE_DL2_BASE,            Suspend_reg.Suspend_AFE_DL2_BASE,           MASK_ALL);
-    Afe_Set_Reg(AFE_DL2_CUR,             Suspend_reg.Suspend_AFE_DL2_CUR,            MASK_ALL);
     Afe_Set_Reg(AFE_DL2_END,             Suspend_reg.Suspend_AFE_DL2_END,            MASK_ALL);
     Afe_Set_Reg(AFE_AWB_BASE,            Suspend_reg.Suspend_AFE_AWB_BASE,           MASK_ALL);
     Afe_Set_Reg(AFE_AWB_CUR,             Suspend_reg.Suspend_AFE_AWB_CUR,            MASK_ALL);
@@ -1163,6 +1220,8 @@ static int AudDrv_resume(struct platform_device *dev) // wake up
        AudDrv_Suspend_Clk_On();
        AudDrv_Recover_reg_AFE();
        AudDrvSuspendStatus = false;
+       AFE_BLOCK_T *Afe_Block = &(AFE_dL1_Control_context.rBlock);
+       memset(Afe_Block->pucVirtBufAddr,0,Afe_Block->u4BufferSize);
    }
    //PRINTK_AUDDRV("-AudDrv_resume \n");
    return 0;
@@ -1562,6 +1621,11 @@ void Auddrv_Add_MemIF_Counter(int MEM_Type)
     {
         case MEM_DL1:
             Afe_Mem_Pwr_on++;
+            if(Afe_Mem_Pwr_on ==1)
+            {
+                AFE_BLOCK_T *Afe_Block = &(AFE_dL1_Control_context.rBlock);
+                memset(Afe_Block->pucVirtBufAddr,0,Afe_Block->u4BufferSize);
+            }
             break;
         case MEM_DL2:
             break;
@@ -1715,6 +1779,22 @@ void Auddrv_Set_MemIF_Fp(struct file *fp,unsigned long arg)
     pAfe_MEM_ConTrol->flip = fp;
     pAfe_MEM_ConTrol->bRunning = true;
     PRINTK_AUDDRV("-Auddrv_Set_MemIF_Fp  = %p arg = %lu\n",pAfe_MEM_ConTrol->flip ,arg);
+}
+
+void Auddrv_Check_Irq(void)
+{
+    uint32_t u4RegValue = Afe_Get_Reg (AFE_IRQ_STATUS);
+    u4RegValue &= 0xf;
+    if(u4RegValue &0x1)
+    {
+        PRINTK_AUDDRV("Auddrv_Check_Irq u4RegValue == %d \n",u4RegValue);
+        Afe_Set_Reg (AFE_IRQ_CLR, 1 ,0xff);
+    }
+    else if(u4RegValue &0x2)
+    {
+        PRINTK_AUDDRV("Auddrv_Check_Irq u4RegValue == %d \n",u4RegValue);
+        Afe_Set_Reg (AFE_IRQ_CLR, 2 ,0xff);
+    }
 }
 
 void Auddrv_Release_MemIF_Fp(struct file *fp,unsigned long arg)
@@ -1968,8 +2048,10 @@ static long AudDrv_ioctl(struct file *fp, unsigned int cmd, unsigned long arg)
                 //PRINTK_AUDDRV("%s enable_dpidle_by_bit\n",__FUNCTION__);
             }
 #endif
+            Auddrv_Check_Irq();
             Auddrv_Release_MemIF_Fp(fp,arg);
             Auddrv_Release_MemIF_Counter(arg);
+            ClearInterruptTiming();
             break;
         }
         case AUD_RESTART:
@@ -2117,20 +2199,78 @@ static long AudDrv_ioctl(struct file *fp, unsigned int cmd, unsigned long arg)
 #if defined(CONFIG_MTK_COMBO) || defined(CONFIG_MTK_COMBO_MODULE)
         case AUDDRV_RESET_BT_FM_GPIO:
         {
-            PRINTK_AUDDRV("!! AudDrv, RESET, COMBO_AUDIO_STATE_1 \n");
+            PRINTK_AUDDRV("!! AudDrv, BT OFF, Analog FM, COMBO_AUDIO_STATE_1 \n");
             mt_combo_audio_ctrl((COMBO_AUDIO_STATE)COMBO_AUDIO_STATE_0);
             break;
         }
         case AUDDRV_SET_BT_PCM_GPIO:
         {
-            PRINTK_AUDDRV("!! AudDrv, BT PCM, COMBO_AUDIO_STATE_1 \n");
+            PRINTK_AUDDRV("!! AudDrv, BT ON, Analog FM, COMBO_AUDIO_STATE_1 \n");
             mt_combo_audio_ctrl((COMBO_AUDIO_STATE)COMBO_AUDIO_STATE_1);
             break;
         }
         case AUDDRV_SET_FM_I2S_GPIO:
         {
-            PRINTK_AUDDRV("!! AudDrv, FM I2S, COMBO_AUDIO_STATE_2 \n");
+            PRINTK_AUDDRV("!! AudDrv, BT OFF, Digital FM, COMBO_AUDIO_STATE_2 \n");
             mt_combo_audio_ctrl((COMBO_AUDIO_STATE)COMBO_AUDIO_STATE_2);
+            break;
+        }
+		  case AUDDRV_SET_BT_FM_GPIO:
+		  {
+			  PRINTK_AUDDRV("!! AudDrv, BT ON, Digital FM, COMBO_AUDIO_STATE_3 \n");
+			  mt_combo_audio_ctrl((COMBO_AUDIO_STATE)COMBO_AUDIO_STATE_3);
+			  break;
+		  }
+        case AUDDRV_RESET_FMCHIP_MERGEIF:
+        {
+            int i, j;
+            PRINTK_AUDDRV("!! AudDrv, +RESET FM Chip MergeIF\n");
+
+            mt_set_gpio_mode(GPIO221, GPIO_MODE_00);//clk
+            mt_set_gpio_mode(GPIO222, GPIO_MODE_00);//sync
+            mt_set_gpio_mode(GPIO223, GPIO_MODE_00);
+            mt_set_gpio_mode(GPIO224, GPIO_MODE_00);
+
+            mt_set_gpio_dir(GPIO221, GPIO_DIR_OUT); //output
+            mt_set_gpio_dir(GPIO222, GPIO_DIR_OUT); //output
+            mt_set_gpio_dir(GPIO223, GPIO_DIR_IN); //input
+            mt_set_gpio_dir(GPIO224, GPIO_DIR_OUT); //output
+
+            mt_set_gpio_out(GPIO222, GPIO_OUT_ZERO);//sync
+            mt_set_gpio_out(GPIO221, GPIO_OUT_ZERO);//clock
+            ndelay(170);//delay 170ns
+            for (j=0; j<3; j++)
+            {
+                //-- gen sync
+                mt_set_gpio_out(GPIO222, GPIO_OUT_ONE);//sync
+                ndelay(170);//delay 170ns
+
+                mt_set_gpio_out(GPIO221, GPIO_OUT_ONE);//clock
+                ndelay(170);//delay 170ns
+                mt_set_gpio_out(GPIO221, GPIO_OUT_ZERO);//clock
+                ndelay(170);//delay 170ns
+                mt_set_gpio_out(GPIO222, GPIO_OUT_ZERO);//sync
+                ndelay(170);//delay 170ns
+
+                //-- send 56 clock to change state
+                for (i=0; i<56; i++)
+                {
+                    mt_set_gpio_out(GPIO221, GPIO_OUT_ONE);//clock
+                    ndelay(170);//delay 170ns
+                    mt_set_gpio_out(GPIO221, GPIO_OUT_ZERO);//clock
+                    ndelay(170);//delay 170ns
+                }
+            }
+
+            //-- gen sync
+            mt_set_gpio_out(GPIO222, GPIO_OUT_ONE);//sync
+            ndelay(170);//delay 170ns
+            mt_set_gpio_out(GPIO221, GPIO_OUT_ONE);//clock
+            ndelay(170);//delay 170ns
+            mt_set_gpio_out(GPIO221, GPIO_OUT_ZERO);//clock
+            ndelay(170);//delay 170ns
+            mt_set_gpio_out(GPIO222, GPIO_OUT_ZERO);//sync
+            PRINTK_AUDDRV("!! AudDrv, -RESET FM Chip MergeIF\n");
             break;
         }
 #else
@@ -2166,20 +2306,6 @@ static long AudDrv_ioctl(struct file *fp, unsigned int cmd, unsigned long arg)
 #endif
 	     break;
         }
-        case AUDDRV_SET_MRGIF_GPIO:
-        {
-            u32 reg;
-            u32 mask;
-            reg = GPIO_RD32(GPIO_BASE+ 0x5C0);
-            mask = (1L << 4) - 1;
-            reg &= ~mask;
-            reg |= 0x0;
-            xlog_printk(ANDROID_LOG_INFO, "Sound","write GPIO221~224 driving setting=0x%x",reg);
-            GPIO_WR32(GPIO_BASE+ 0x5C0, reg);
-            xlog_printk(ANDROID_LOG_INFO, "Sound","Read GPIO221~224 driving setting=0x%x",GPIO_RD32(GPIO_BASE+ 0x5C0));
-            break;
-        }
-
         case AUD_SET_HDMI_CLOCK:
         {
             PRINTK_AUDDRV("+AudDrv AUD_SET_ANA_CLOCK(%ld), \n",arg);
@@ -2311,6 +2437,12 @@ static long AudDrv_ioctl(struct file *fp, unsigned int cmd, unsigned long arg)
             printk("AuddrvSpkStatus = 0x%x\n",AuddrvSpkStatus);
             Ana_Log_Print();
             Afe_Log_Print();
+            break;
+        }
+        case AUDDRV_AEE_IOCTL:
+        {
+            PRINTK_AUDDRV("AudDrv AUDDRV_AEE_IOCTL  arg = %d",arg);
+            AuddrvAeeEnable = arg;
             break;
         }
         default:{

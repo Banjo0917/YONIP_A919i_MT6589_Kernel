@@ -53,6 +53,7 @@ typedef struct _fs_ctl_block
 	struct kfifo		fs_fifo;
 	int					reset_handle;
 	wait_queue_head_t	fs_waitq;
+	struct wake_lock	fs_wake_lock;
 	int					fs_smem_size;
 }fs_ctl_block_t;
 
@@ -79,6 +80,7 @@ static void ccci_fs_callback(void *private)
 
 			if (kfifo_in(&ctl_b->fs_fifo, (unsigned char *) &msg.reserved, sizeof(msg.reserved)) == sizeof(msg.reserved)) {
 				wake_up_interruptible(&ctl_b->fs_waitq);
+				wake_lock_timeout(&ctl_b->fs_wake_lock, HZ/2);
 			} else {
 				CCCI_DBG_MSG(ctl_b->fs_md_id, "fs ", "[Error]Unable to put new request into fifo\n");    
 			}
@@ -392,7 +394,8 @@ int __init ccci_fs_init(int md_id)
 	spin_lock_init(&ctl_b->fs_spinlock);
 	init_waitqueue_head(&ctl_b->fs_waitq);
 	ctl_b->fs_dev_num = MKDEV(major, minor);
-	snprintf(buf, 16, "%s%d", CCCI_FS_DEVNAME, md_id);
+	snprintf(buf, 16, "%s%d", CCCI_FS_DEVNAME, md_id);	
+	wake_lock_init(&ctl_b->fs_wake_lock, WAKE_LOCK_SUSPEND, buf); 
 	ret = register_chrdev_region(ctl_b->fs_dev_num, 1, buf);
 
 	if (ret) {
@@ -445,7 +448,7 @@ void __exit ccci_fs_exit(int md_id)
 
 	cdev_del(&ctl_b->fs_cdev);
 	unregister_chrdev_region(ctl_b->fs_dev_num, 1);
-
+	wake_lock_destroy(&ctl_b->fs_wake_lock);
 	kfree(ctl_b);
 	fs_ctl_block[md_id] = NULL;
 }

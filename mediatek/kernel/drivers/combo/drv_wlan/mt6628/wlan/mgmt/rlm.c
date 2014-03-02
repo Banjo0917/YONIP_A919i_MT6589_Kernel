@@ -708,6 +708,7 @@ rlmFillHtCapIE (
     ASSERT(prAdapter);
     ASSERT(prBssInfo);
     ASSERT(prMsduInfo);
+
 #if 1
 		if(prMsduInfo->ucNetworkType==NETWORK_TYPE_P2P_INDEX)
 			{
@@ -715,6 +716,7 @@ rlmFillHtCapIE (
 				prBssInfo->fgAssoc40mBwAllowed=FALSE;
 			}
 #endif
+
 
     fg40mAllowed = prBssInfo->fgAssoc40mBwAllowed;
 
@@ -1449,6 +1451,11 @@ rlmProcessAssocRsp (
         !(prStaRec->u2HtCapInfo & HT_CAP_INFO_SUP_CHNL_WIDTH)) {
         prBssInfo->fg40mBwAllowed = FALSE;
     }
+
+    /* Note: Update its capabilities to WTBL by cnmStaRecChangeState(), which
+     *       shall be invoked afterwards.
+     *       Update channel, bandwidth and protection mode by nicUpdateBss()
+     */
 #if 1
 	if(prStaRec->ucNetTypeIndex==NETWORK_TYPE_P2P_INDEX)
 	{
@@ -1459,11 +1466,6 @@ rlmProcessAssocRsp (
 #endif
 
 
-
-    /* Note: Update its capabilities to WTBL by cnmStaRecChangeState(), which
-     *       shall be invoked afterwards.
-     *       Update channel, bandwidth and protection mode by nicUpdateBss()
-     */
 }
 
 /*----------------------------------------------------------------------------*/

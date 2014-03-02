@@ -687,7 +687,7 @@ void vHDMIAVUnMute(void)
 void vHDMIVideoOutput(u8 ui1Res, u8 ui1ColorSpace)
 {
    MT8193_VIDEO_FUNC();
-   
+
    vWriteHdmiDGIMsk(fifo_ctrl, sw_rst, sw_rst);
    vWriteHdmiDGIMsk(dgi0_anaif_ctrl1, dgi1_pad_clk_en, anaif_dig1_clk_sel|dgi1_pad_clk_en|clk_sel_tv_mode|data_in_tv_mode|dgi1_clk_pad_sel_tv_mode|tv_mode_clk_en);
    vWriteHdmiDGIMsk(dgi1_clk_rst_ctrl, dgi1_clk_out_enable|dgi1_clk_in_inv_enable|dgi1_clk_in_enable, dgi1_clk_out_enable|dgi1_clk_in_inv_enable|dgi1_clk_in_enable);
@@ -700,17 +700,24 @@ void vHDMIVideoOutput(u8 ui1Res, u8 ui1ColorSpace)
    if(ui1ColorSpace==HDMI_YCBCR_444)
    {
      vWriteHdmiDGIMsk(ctrl_422_444, rpt_422_444, rpt_422_444|bypass_422_444);
-	 vWriteHdmiDGIMsk(data_out_ctrl, (0x1<<0)|(0x1<<2)|(0x1<<4), y_out_delay|c1_out_delay|c2_out_delay);
+	 vWriteHdmiDGIMsk(data_out_ctrl, (0x1<<0)|(0x0<<2)|(0x0<<4), y_out_delay|c1_out_delay|c2_out_delay);
+	 vWriteHdmiDGIMsk(dgi1_yuv2rgb_ctr, 0, rg_yuv709_rgb|rg_yuv2rgb_en);
    }
    else if(ui1ColorSpace==HDMI_YCBCR_422)
    {
      vWriteHdmiDGIMsk(ctrl_422_444, bypass_422_444, rpt_422_444|bypass_422_444);
-	 vWriteHdmiDGIMsk(data_out_ctrl, (0x1<<0)|(0x2<<2)|(0x1<<4), y_out_delay|c1_out_delay|c2_out_delay);
+	 vWriteHdmiDGIMsk(data_out_ctrl, (0x1<<0)|(0x0<<2)|(0x0<<4), y_out_delay|c1_out_delay|c2_out_delay);
+	 vWriteHdmiDGIMsk(dgi1_yuv2rgb_ctr, 0, rg_yuv709_rgb|rg_yuv2rgb_en);
+   }
+   else if(ui1ColorSpace==HDMI_RGB)
+   {
+     vWriteHdmiDGIMsk(ctrl_422_444, 0, rpt_422_444|bypass_422_444);
+     vWriteHdmiDGIMsk(data_out_ctrl, (0x2<<0)|(0x0<<2)|(0x0<<4), y_out_delay|c1_out_delay|c2_out_delay);
+	 vWriteHdmiDGIMsk(dgi1_yuv2rgb_ctr, rg_yuv709_rgb|rg_yuv2rgb_en, rg_yuv709_rgb|rg_yuv2rgb_en);
    }
    else
    {
-     vWriteHdmiDGIMsk(ctrl_422_444, 0, rpt_422_444|bypass_422_444);
-     vWriteHdmiDGIMsk(data_out_ctrl, (0x1<<0)|(0x1<<2)|(0x1<<4), y_out_delay|c1_out_delay|c2_out_delay);
+	   printk("color space type error\n");
    }
 }
 
@@ -1897,14 +1904,14 @@ void vCheckHDMICLKPIN(void)
 
   for(i=0; i<5; i++)
   {
-    vWriteHdmiSYSMsk(HDMI_SYS_FMETER,TRI_CAL|CALSEL,TRI_CAL|CALSEL);
-    vWriteHdmiSYSMsk(HDMI_SYS_FMETER,CLK_EXC,CLK_EXC);
-    
-    while(!(dReadHdmiSYS(HDMI_SYS_FMETER)&&CAL_OK));
-    
-    u4Data = ((dReadHdmiSYS(HDMI_SYS_FMETER)&(0xffff0000))>>16)*26000/1024;
+  vWriteHdmiSYSMsk(HDMI_SYS_FMETER,TRI_CAL|CALSEL,TRI_CAL|CALSEL);
+  vWriteHdmiSYSMsk(HDMI_SYS_FMETER,CLK_EXC,CLK_EXC);
   
-    printk("[HDMI]hdmi pin clk = %d.%dM \n", (u4Data/1000), (u4Data-((u4Data/1000)*1000)));
+  while(!(dReadHdmiSYS(HDMI_SYS_FMETER)&&CAL_OK));
+  
+  u4Data = ((dReadHdmiSYS(HDMI_SYS_FMETER)&(0xffff0000))>>16)*26000/1024;
+
+  printk("[HDMI]hdmi pin clk = %d.%dM \n", (u4Data/1000), (u4Data-((u4Data/1000)*1000)));
   }
 }
 

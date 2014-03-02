@@ -595,6 +595,12 @@ nicConfigPowerSaveProfile (
     BOOLEAN fgEnCmdEvent
     );
 
+WLAN_STATUS
+nicEnterCtiaMode (
+    IN  P_ADAPTER_T prAdapter,
+    BOOLEAN fgEnterCtia,
+    BOOLEAN fgEnCmdEvent
+    );
 /*----------------------------------------------------------------------------*/
 /* Scan Result Processing                                                     */
 /*----------------------------------------------------------------------------*/

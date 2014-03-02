@@ -19,7 +19,7 @@
 #include <linux/string.h>
 #include <disp_drv_log.h>
 #include <linux/dma-mapping.h>
-#include <disp_drv_platform.h>
+#include "disp_drv_platform.h"
 
 #include <linux/hrtimer.h>
 
@@ -447,7 +447,8 @@ LCD_STATUS LCD_Init(void)
 	LCD_OUTREG32(&LCD_REG->SYNC_CNT, 0x1);
 
     ASSERT(ret == LCD_STATUS_OK);
-	MASKREG32(DISPSYS_BASE + 0x60, 0x1, 0x0);
+//	MASKREG32(DISPSYS_BASE + 0x60, 0x1, 0x0);
+
 #if ENABLE_LCD_INTERRUPT
     if (request_irq(MT6589_DISP_DBI_IRQ_ID,
         _LCD_InterruptHandler, IRQF_TRIGGER_LOW, "mtklcd", NULL) < 0)
@@ -935,6 +936,31 @@ UINT32 LCD_LayerGetInfo(LCD_LAYER_ID id, UINT32 *enabled, INT32 *curr_idx, INT32
     return LCD_STATUS_OK;
 }
 
+UINT32 LCD_DisableAllLayer(UINT32 vram_start, UINT32 vram_end)
+{
+    int id;
+    int layer_enable = 0;
+    DISP_LOG_PRINT(ANDROID_LOG_INFO, "LCD", "%s(%d, %d)\n", __func__, vram_start, vram_end);
+
+    for (id = 0; id < DDP_OVL_LAYER_MUN; id++) {
+        if (cached_layer_config[id].layer_en == 0)
+            continue;
+
+        if (cached_layer_config[id].addr >= vram_start &&
+            cached_layer_config[id].addr < vram_end)
+        {
+            DISP_LOG_PRINT(ANDROID_LOG_INFO, "LCD", "  not disable(%d)\n", id);
+            layer_enable |= (1 << id);
+            continue;
+        }
+
+        DISP_LOG_PRINT(ANDROID_LOG_INFO, "LCD", "  disable(%d)\n", id);
+        cached_layer_config[id].layer_en = 0;
+        cached_layer_config[id].isDirty = true;
+    }
+    return layer_enable;
+}
+
 UINT32 LCD_LayerGetAddress(LCD_LAYER_ID id)
 {
     return cached_layer_config[id].addr;
@@ -943,23 +969,23 @@ UINT32 LCD_LayerGetAddress(LCD_LAYER_ID id)
 
 LCD_STATUS LCD_LayerSetSize(LCD_LAYER_ID id, UINT32 width, UINT32 height)
 {   
-	cached_layer_config[id].w = width;
-	cached_layer_config[id].h = height;
+	//cached_layer_config[id].src_w = width;
+	//cached_layer_config[id].src_h = height;
     return LCD_STATUS_OK;
 }
 
 
 LCD_STATUS LCD_LayerSetPitch(LCD_LAYER_ID id, UINT32 pitch)
 {
-	cached_layer_config[id].pitch = pitch;
+	cached_layer_config[id].src_pitch = pitch;
     return LCD_STATUS_OK;
 }
 
 
 LCD_STATUS LCD_LayerSetOffset(LCD_LAYER_ID id, UINT32 x, UINT32 y)
 {
-	cached_layer_config[id].x = x;
-	cached_layer_config[id].y = y;
+	//cached_layer_config[id].dst_x = x;
+	//cached_layer_config[id].dst_y = y;
     return LCD_STATUS_OK;
 }
 
@@ -1362,11 +1388,11 @@ LCD_STATUS LCD_Dump_Layer_Info()
             cached_layer_config[i].source,
             cached_layer_config[i].fmt,
             cached_layer_config[i].addr, 
-            cached_layer_config[i].x, 
-            cached_layer_config[i].y, 
-            cached_layer_config[i].w, 
-            cached_layer_config[i].h,
-            cached_layer_config[i].pitch,
+            cached_layer_config[i].dst_x,
+            cached_layer_config[i].dst_y,
+            cached_layer_config[i].dst_w,
+            cached_layer_config[i].dst_h,
+            cached_layer_config[i].src_pitch,
             cached_layer_config[i].keyEn,
             cached_layer_config[i].key, 
             cached_layer_config[i].aen, 
@@ -1434,6 +1460,10 @@ LCD_STATUS LCD_StartTransfer(BOOL blocking, BOOL isMutexLocked)
     if (!isMutexLocked)
         disp_path_get_mutex();
     mutex_lock(&OverlaySettingMutex);
+    // isMutexLocked=false means it is the first time of DBI update after init or late resume.
+    // Layer config was not applied in config update thread.
+    // So need to config overlay here.
+    if (!isMutexLocked)
     LCD_ConfigOVL();
 
 //	_WaitForEngineNotBusy();
@@ -1517,11 +1547,11 @@ void LCD_DumpLayer()
 	    cached_layer_config[i].source,   // data source (0=memory)
 	    cached_layer_config[i].fmt, 
 	    cached_layer_config[i].addr, // addr 
-	    cached_layer_config[i].x,  // x
-	    cached_layer_config[i].y,  // y
-	    cached_layer_config[i].w, // width
-	    cached_layer_config[i].h, // height
-	    cached_layer_config[i].pitch, //pitch, pixel number
+	    cached_layer_config[i].dst_x,  // x
+	    cached_layer_config[i].dst_y,  // y
+	    cached_layer_config[i].dst_w, // width
+	    cached_layer_config[i].dst_h, // height
+	    cached_layer_config[i].src_pitch, //pitch, pixel number
 	    cached_layer_config[i].keyEn,  //color key
 	    cached_layer_config[i].key,  //color key
 	    cached_layer_config[i].aen, // alpha enable

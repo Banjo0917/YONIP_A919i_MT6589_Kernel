@@ -99,6 +99,22 @@ typedef struct{
     void *pParam;
 }DISP_INTERRUPT_CALLBACK_STRUCT;
 
+typedef struct{
+    unsigned int id;
+    unsigned int curr_en;
+    unsigned int next_en;
+    unsigned int hw_en;
+    int curr_idx;
+    int next_idx;
+    int hw_idx;
+    int curr_identity;
+    int next_identity;
+    int hw_identity;
+    int curr_conn_type;
+    int next_conn_type;
+    int hw_conn_type;
+}DISP_LAYER_INFO;
+
 // ---------------------------------------------------------------------------
 // Public Functions
 // ---------------------------------------------------------------------------
@@ -117,6 +133,7 @@ DISP_STATUS DISP_UpdateScreen(UINT32 x, UINT32 y, UINT32 width, UINT32 height);
 DISP_STATUS DISP_SetInterruptCallback(DISP_INTERRUPT_EVENTS eventID, DISP_INTERRUPT_CALLBACK_STRUCT *pCBStruct);
 DISP_STATUS DISP_WaitForLCDNotBusy(void);
 DISP_STATUS DISP_PrepareSuspend(void);
+DISP_STATUS DISP_GetLayerInfo(DISP_LAYER_INFO *pLayer);
 
 //Register extra trigger source 
 typedef int (*DISP_EXTRA_CHECKUPDATE_PTR)(int);
@@ -160,8 +177,11 @@ DISP_STATUS DISP_ConfigDither(int lrs, int lgs, int lbs, int dbr, int dbg, int d
 
 
 // Retrieve Information
+BOOL   DISP_IsVideoMode(void);
 UINT32 DISP_GetScreenWidth(void);
 UINT32 DISP_GetScreenHeight(void);
+UINT32 DISP_GetActiveWidth(void);
+UINT32 DISP_GetActiveHeight(void);
 UINT32 DISP_GetScreenBpp(void);
 UINT32 DISP_GetPages(void);
 DISP_STATUS DISP_SetScreenBpp(UINT32);   ///config how many bits for each pixel of framebuffer
@@ -250,6 +270,7 @@ void DISP_WaitVSYNC(void);
 void DISP_InitVSYNC(unsigned int vsync_interval);
 DISP_STATUS DISP_PauseVsync(BOOL enable);
 DISP_STATUS DISP_Config_Overlay_to_Memory(unsigned int mva, int enable);
+void DISP_StartConfigUpdate(void);
 
 unsigned long DISP_GetLCMIndex(void);
 // ---------------------------------------------------------------------------

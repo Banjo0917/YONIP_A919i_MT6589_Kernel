@@ -16,7 +16,7 @@
 //typedef unsigned int        U32;
 //typedef signed int          S32;
 #define PWRAPLOG(fmt, arg...)	printk(PWRAPTAG fmt,##arg)
-#define PWRAPERR(fmt, arg...)   printk(KERN_ERR PWRAPTAG "ERROR,%5d: "fmt, __LINE__, ##arg)
+#define PWRAPERR(fmt, arg...)   printk(KERN_ERR PWRAPTAG "ERROR,line=%d " fmt, __LINE__, ##arg)
 #define PWRAPREG(fmt, arg...)   printk(PWRAPTAG fmt,##arg)
 
 //---start ---external API for pmic_wrap user--------------------------------------------------

@@ -24,7 +24,7 @@ MODULE_LICENSE("GPL");
 /* some marco will be reuse with mmc subsystem */
 
 #ifdef MTK_EMMC_SUPPORT
-#include "partition_define.h"
+#include <mach/partition_define.h>
 #endif
 char test_kdump[]={6,5,8,9,'k','d','u','m','p','t','e','s','t'};
 //==============
@@ -284,9 +284,27 @@ static unsigned int simp_mmc_enable_clk(struct simp_mmc_host *host)
 		sdr_write32(0xF0209250,0x80000081);
 		mdelay(1);
 	}
-   
-   
-    /* step2: enable clock */
+   	/* step2: enable mux */
+   if(host->mtk_host->id == 0){
+   	 	l_tmp = sdr_read32(0xF0000164);
+	 	l_tmp &= ~(1 << 15);
+		sdr_write32(0xF0000164,l_tmp);
+		printk(KERN_EMERG "MSDC0 CLK_CFG = 0x%x\n", sdr_read32(0xF0000164)); 
+   	}
+   else if(host->mtk_host->id == 1){
+   		l_tmp = sdr_read32(0xF0000148);
+	 	l_tmp &= ~(1 << 7);
+		sdr_write32(0xF0000148,l_tmp);
+		printk(KERN_EMERG "MSDC1 CLK_CFG = 0x%x\n", sdr_read32(0xF0000148)); 
+   	}
+   #if 0
+   else if(host->mtk_host->id == 2){
+   		l_tmp = sdr_read32(0xF0000148);
+	 	l_tmp &= ~(1 << 15);
+		sdr_write32(0xF0000148,l_tmp);
+   	}
+   #endif
+    /* step3: enable clock */
 	l_tmp = sdr_read32(0xF0003010);
     l_tmp |= 0x1 << (host->mtk_host->id+PERI_MSDC0_PDN); 
     sdr_write32(0xF0003010, l_tmp);

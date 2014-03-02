@@ -814,6 +814,12 @@ scanP2pSearchDesc (
                 continue;
             }
 
+            if (!prBssDesc->fgIsP2PPresent) {
+                DBGLOG(P2P, ERROR, ("SSID, BSSID, BSSTYPE match, but no P2P IE present.\n"));
+                continue;
+            }
+
+
             /* Final decision. */
             prCandidateBssDesc = prBssDesc;
             break;

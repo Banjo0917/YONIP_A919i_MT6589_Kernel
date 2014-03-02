@@ -2186,15 +2186,16 @@ nicUpdateBss(
 #if CFG_ENABLE_WIFI_DIRECT
         if(prAdapter->fgIsP2PRegistered) {
             if (kalP2PGetCipher(prAdapter->prGlueInfo)) {
-            rCmdSetBssInfo.ucAuthMode               = (UINT_8)AUTH_MODE_WPA2_PSK;
-            rCmdSetBssInfo.ucEncStatus              = (UINT_8)ENUM_ENCRYPTION3_KEY_ABSENT;
-        }
-        else {
-            rCmdSetBssInfo.ucAuthMode               = (UINT_8)AUTH_MODE_OPEN;
-            rCmdSetBssInfo.ucEncStatus              = (UINT_8)ENUM_ENCRYPTION_DISABLED;
-        }
+				rCmdSetBssInfo.ucAuthMode               = (UINT_8)AUTH_MODE_WPA2_PSK;
+				rCmdSetBssInfo.ucEncStatus              = (UINT_8)ENUM_ENCRYPTION3_KEY_ABSENT;
+			}
+			else {
+				rCmdSetBssInfo.ucAuthMode               = (UINT_8)AUTH_MODE_OPEN;
+				rCmdSetBssInfo.ucEncStatus              = (UINT_8)ENUM_ENCRYPTION_DISABLED;
+			}
+			/* Need the probe response to detect the PBC overlap */    
             rCmdSetBssInfo.fgIsApMode = p2pFuncIsAPMode(prAdapter->rWifiVar.prP2pFsmInfo);
-        }
+	    }
 #else
         rCmdSetBssInfo.ucAuthMode               = (UINT_8)AUTH_MODE_WPA2_PSK;
         rCmdSetBssInfo.ucEncStatus              = (UINT_8)ENUM_ENCRYPTION3_KEY_ABSENT;
@@ -2433,7 +2434,7 @@ nicConfigPowerSaveProfile (
             CMD_ID_POWER_SAVE_MODE,
             TRUE,
             FALSE,
-            TRUE,
+            (fgEnCmdEvent ? TRUE : FALSE),
             (fgEnCmdEvent ? nicCmdEventSetCommon : NULL),
             (fgEnCmdEvent ? nicOidCmdTimeoutCommon : NULL),
             sizeof(CMD_PS_PROFILE_T),
@@ -2443,6 +2444,202 @@ nicConfigPowerSaveProfile (
             );
 
 } /* end of wlanoidSetAcpiDevicePowerStateMode() */
+
+WLAN_STATUS
+nicEnterCtiaMode (
+    IN  P_ADAPTER_T prAdapter,
+    BOOLEAN fgEnterCtia,
+    BOOLEAN fgEnCmdEvent
+    )
+{
+    CMD_SW_DBG_CTRL_T rCmdSwCtrl;
+    CMD_ACCESS_REG rCmdAccessReg;
+    WLAN_STATUS rWlanStatus;
+
+    DEBUGFUNC("nicEnterCtiaMode");
+    DBGLOG(INIT, TRACE, ("nicEnterCtiaMode: %d\n", fgEnterCtia));
+
+    ASSERT(prAdapter);
+
+    rWlanStatus = WLAN_STATUS_SUCCESS;
+
+    if (fgEnterCtia) {
+        // 1. Disable On-Lin Scan
+        prAdapter->fgEnOnlineScan = FALSE;
+
+        // 3. Disable FIFO FULL no ack
+        rCmdAccessReg.u4Address = 0x60140028;
+        rCmdAccessReg.u4Data = 0x904;
+        wlanSendSetQueryCmd(prAdapter,
+            CMD_ID_ACCESS_REG,
+            TRUE, //FALSE,
+            FALSE, //TRUE,
+            FALSE,
+            NULL,
+            NULL,
+            sizeof(CMD_ACCESS_REG),
+            (PUINT_8)&rCmdAccessReg,
+            NULL,
+            0
+            );
+
+        // 4. Disable Roaming
+        rCmdSwCtrl.u4Id = 0x90000204;
+            rCmdSwCtrl.u4Data = 0x0;
+            wlanSendSetQueryCmd(prAdapter,
+                CMD_ID_SW_DBG_CTRL,
+                TRUE,
+                FALSE,
+                FALSE,
+                NULL,
+                NULL,
+                sizeof(CMD_SW_DBG_CTRL_T),
+                (PUINT_8)&rCmdSwCtrl,
+                NULL,
+                0
+            );
+
+        rCmdSwCtrl.u4Id = 0x90000200;
+        rCmdSwCtrl.u4Data = 0x820000;
+        wlanSendSetQueryCmd(prAdapter,
+            CMD_ID_SW_DBG_CTRL,
+            TRUE,
+            FALSE,
+            FALSE,
+            NULL,
+            NULL,
+            sizeof(CMD_SW_DBG_CTRL_T),
+            (PUINT_8)&rCmdSwCtrl,
+            NULL,
+            0
+            );
+
+        // Disalbe auto tx power        
+        rCmdSwCtrl.u4Id = 0xa0100003;
+        rCmdSwCtrl.u4Data = 0x0;
+        wlanSendSetQueryCmd(prAdapter,
+             CMD_ID_SW_DBG_CTRL,
+             TRUE,
+             FALSE,
+             FALSE,
+             NULL,
+             NULL,
+             sizeof(CMD_SW_DBG_CTRL_T),
+             (PUINT_8)&rCmdSwCtrl,
+             NULL,
+             0
+             );
+
+        // 2. Keep at CAM mode
+        {
+            PARAM_POWER_MODE ePowerMode;
+
+            prAdapter->u4CtiaPowerMode = 0;
+            prAdapter->fgEnCtiaPowerMode = TRUE;
+
+            ePowerMode = Param_PowerModeCAM;
+            rWlanStatus = nicConfigPowerSaveProfile(
+                   prAdapter,
+                   NETWORK_TYPE_AIS_INDEX,
+                   ePowerMode,
+                   fgEnCmdEvent);
+        }
+
+        // 5. Disable Beacon Timeout Detection
+        prAdapter->fgDisBcnLostDetection = TRUE;    
+    }
+    else {
+        // 1. Enaable On-Lin Scan
+        prAdapter->fgEnOnlineScan = TRUE;
+
+        // 3. Enable FIFO FULL no ack
+        rCmdAccessReg.u4Address = 0x60140028;
+        rCmdAccessReg.u4Data = 0x905;
+        wlanSendSetQueryCmd(prAdapter,
+            CMD_ID_ACCESS_REG,
+            TRUE, //FALSE,
+            FALSE, //TRUE,
+            FALSE,
+            NULL,
+            NULL,
+            sizeof(CMD_ACCESS_REG),
+            (PUINT_8)&rCmdAccessReg,
+            NULL,
+            0
+        );
+
+        // 4. Enable Roaming
+        rCmdSwCtrl.u4Id = 0x90000204;
+        rCmdSwCtrl.u4Data = 0x1;
+        wlanSendSetQueryCmd(prAdapter,
+            CMD_ID_SW_DBG_CTRL,
+            TRUE,
+            FALSE,
+            FALSE,
+            NULL,
+            NULL,
+            sizeof(CMD_SW_DBG_CTRL_T),
+            (PUINT_8)&rCmdSwCtrl,
+            NULL,
+            0
+        );
+
+        rCmdSwCtrl.u4Id = 0x90000200;
+        rCmdSwCtrl.u4Data = 0x820000;
+        wlanSendSetQueryCmd(prAdapter,
+            CMD_ID_SW_DBG_CTRL,
+            TRUE,
+            FALSE,
+            FALSE,
+            NULL,
+            NULL,
+            sizeof(CMD_SW_DBG_CTRL_T),
+            (PUINT_8)&rCmdSwCtrl,
+            NULL,
+            0
+        );
+
+        // Enable auto tx power
+        //
+
+        rCmdSwCtrl.u4Id = 0xa0100003;
+        rCmdSwCtrl.u4Data = 0x1;
+        wlanSendSetQueryCmd(prAdapter,
+            CMD_ID_SW_DBG_CTRL,
+            TRUE,
+            FALSE,
+            FALSE,
+            NULL,
+            NULL,
+            sizeof(CMD_SW_DBG_CTRL_T),
+            (PUINT_8)&rCmdSwCtrl,
+            NULL,
+            0
+        );
+
+
+        // 2. Keep at Fast PS
+        {
+            PARAM_POWER_MODE ePowerMode;
+
+            prAdapter->u4CtiaPowerMode = 2;
+            prAdapter->fgEnCtiaPowerMode = TRUE;
+
+            ePowerMode = Param_PowerModeFast_PSP;
+            rWlanStatus = nicConfigPowerSaveProfile(
+                prAdapter,
+                NETWORK_TYPE_AIS_INDEX,
+                ePowerMode,
+                fgEnCmdEvent);
+            }
+
+        // 5. Enable Beacon Timeout Detection
+        prAdapter->fgDisBcnLostDetection = FALSE;
+    
+    }
+    
+    return rWlanStatus;
+} /* end of nicEnterCtiaMode() */
 
 /*----------------------------------------------------------------------------*/
 /*!
@@ -2482,6 +2679,8 @@ nicUpdateBeaconIETemplate (
     DEBUGFUNC("wlanUpdateBeaconIETemplate");
     DBGLOG(INIT, LOUD, ("\n"));
 
+	printk("nicUpdateBeaconIETemplate\n");
+
     ASSERT(prAdapter);
     prGlueInfo = prAdapter->prGlueInfo;
 
@@ -2505,6 +2704,7 @@ nicUpdateBeaconIETemplate (
     prCmdInfo = cmdBufAllocateCmdInfo(prAdapter, (CMD_HDR_SIZE + u2CmdBufLen));
     if (!prCmdInfo) {
         DBGLOG(INIT, ERROR, ("Allocate CMD_INFO_T ==> FAILED.\n"));
+		printk("Allocate CMD_INFO_T ==> FAILED.\n");
         return WLAN_STATUS_FAILURE;
     }
 

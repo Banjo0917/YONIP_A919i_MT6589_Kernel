@@ -42,6 +42,7 @@ typedef enum {
 	ID_SET_MD_TX_LEVEL = 5,
 	ID_GET_TXPOWER = 6,			// For thermal
 	ID_IPO_H_RESTORE_CB = 7,
+	ID_FORCE_MD_ASSERT,
 }KERN_FUNC_ID;
 
 // System channel, AP -->(/ <-->) MD message start from 0x100
@@ -107,6 +108,8 @@ int get_md_adc_info(int md_id, char *adc_name, unsigned int len);
 int get_dram_type_clk(int *clk, int *type);
 int get_eint_attr(char *name, unsigned int name_len, unsigned int type, char * result, unsigned int *len);
 int get_bat_info(unsigned int para);
+int power_on_md_ldo(int md_id);
+int switch_md_ldo(int md_id, int mode);
 
 
 extern unsigned int get_nr_modem(void);

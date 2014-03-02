@@ -38,6 +38,7 @@ static const long int DEFAULT_LOG_FPS_WND_SIZE = 30;
 
 
 unsigned char pq_debug_flag=0;
+unsigned char aal_debug_flag=0;
 
 
 static char STR_HELP[] =
@@ -92,11 +93,12 @@ void init_ddp_mmp_events(void)
         DDP_MMP_Events.CMDQ_IRQ = MMProfileRegisterEvent(DDP_MMP_Events.DDP_IRQ, "CMDQ_IRQ");
         DDP_MMP_Events.Mutex_IRQ = MMProfileRegisterEvent(DDP_MMP_Events.DDP_IRQ, "Mutex_IRQ");
         DDP_MMP_Events.WAIT_INTR = MMProfileRegisterEvent(DDP_MMP_Events.DDP, "WAIT_IRQ");
+        DDP_MMP_Events.Debug = MMProfileRegisterEvent(DDP_MMP_Events.DDP, "Debug");
 
-        MMProfileEnableEventRecursive(DDP_MMP_Events.MutexParent, 1);
-        MMProfileEnableEventRecursive(DDP_MMP_Events.BackupReg, 1);
-        //MMProfileEnableEventRecursive(DDP_MMP_Events.DDP_IRQ, 1);
-        MMProfileEnableEventRecursive(DDP_MMP_Events.WAIT_INTR, 1);
+        MMProfileEnableEventRecursive(DDP_MMP_Events.DDP, 1);
+        //MMProfileEnableEventRecursive(DDP_MMP_Events.BackupReg, 1);
+        MMProfileEnableEventRecursive(DDP_MMP_Events.DDP_IRQ, 0);
+        //MMProfileEnableEventRecursive(DDP_MMP_Events.WAIT_INTR, 1);
     }
 }
 
@@ -276,6 +278,30 @@ static void process_dbg_opt(const char *opt)
     {
         pq_debug_flag=3;
         sprintf(buf, "Stop mutex update %d\n", pq_debug_flag);    
+    }
+    else if (0 == strncmp(opt, "aalon", 5))
+    {
+        aal_debug_flag=0;
+        sprintf(buf, "resume aal update %d\n", aal_debug_flag);    
+    }
+    else if (0 == strncmp(opt, "aaloff", 6))
+    {
+        aal_debug_flag=1;
+        sprintf(buf, "suspend aal update %d\n", aal_debug_flag);    
+    }
+    else if (0 == strncmp(opt, "color_win:", 10))
+    {
+        char *p = (char *)opt + 10;
+        unsigned int sat_upper, sat_lower, hue_upper, hue_lower;
+        sat_upper = (unsigned int) simple_strtoul(p, &p, 10);
+        p++;
+        sat_lower = (unsigned int) simple_strtoul(p, &p, 10);
+        p++;
+        hue_upper = (unsigned int) simple_strtoul(p, &p, 10);
+        p++;
+        hue_lower = (unsigned int) simple_strtoul(p, &p, 10);
+        DISP_MSG("Set color_win: %u, %u, %u, %u\n", sat_upper, sat_lower, hue_upper, hue_lower);
+        disp_color_set_window(sat_upper, sat_lower, hue_upper, hue_lower);
     }
     else
     {

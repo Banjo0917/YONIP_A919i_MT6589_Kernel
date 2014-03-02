@@ -668,6 +668,10 @@ qmInit(
 }
 #endif
 
+#if QM_TC_RESOURCE_EMPTY_COUNTER
+    kalMemZero(prQM->au4QmTcResourceEmptyCounter, sizeof(prQM->au4QmTcResourceEmptyCounter));
+#endif
+
 }
 
 #if QM_TEST_MODE
@@ -1394,7 +1398,22 @@ qmEnqueueTxPackets(
 
         //4 <4> Enqueue the packet
         QUEUE_INSERT_TAIL(prTxQue, (P_QUE_ENTRY_T)prCurrentMsduInfo);
+#if QM_TC_RESOURCE_EMPTY_COUNTER
+        {
+            P_TX_CTRL_T prTxCtrl = &prAdapter->rTxCtrl;
 
+            if(prTxCtrl->rTc.aucFreeBufferCount[ucTC] == 0) {
+                prQM->au4QmTcResourceEmptyCounter[prCurrentMsduInfo->ucNetworkType][ucTC]++;
+				/*
+                DBGLOG(QM, TRACE, ("TC%d Q Empty Count: [%d]%ld\n", 
+                        ucTC, 
+                        prCurrentMsduInfo->ucNetworkType, 
+                        prQM->au4QmTcResourceEmptyCounter[prCurrentMsduInfo->ucNetworkType][ucTC]));
+			    */
+            }
+            
+        }
+#endif
 
 #if QM_TEST_MODE
         if (++prQM->u4PktCount == QM_TEST_TRIGGER_TX_COUNT){
@@ -3133,7 +3152,7 @@ qmPopOutDueToFallWithin(
         else{
             if ((fgMissing == TRUE) && 
                 CHECK_FOR_TIMEOUT(rCurrentTime, (*prMissTimeout),
-                                  MSEC_TO_SEC(QM_RX_BA_ENTRY_MISS_TIMEOUT_MS))) {
+                                  MSEC_TO_SYSTIME(QM_RX_BA_ENTRY_MISS_TIMEOUT_MS))) {
                 DBGLOG(QM, TRACE, ("QM:RX BA Timout Next Tid %d SSN %d\n", prReorderQueParm->ucTid, prReorderedSwRfb->u2SSN));
                 fgDequeuHead = TRUE;
                 prReorderQueParm->u2WinStart =

@@ -126,6 +126,10 @@
 
 #include "hdmi_drv.h"
 
+//GPIO_HDMI_POWER_CONTROL
+//for EVB, power is always on, so no need for power control
+#define USE_GPIO_HDMI_POWER_CONTROL 1
+
 #define TDA_TRY(fct) { \
       err=(fct);                                                        \
       if (err) {                                                        \
@@ -956,8 +960,8 @@ static void hdmi_drv_get_params(HDMI_PARAMS *params)
 
 	params->clk_pol           = HDMI_POLARITY_FALLING;
 	params->de_pol            = HDMI_POLARITY_RISING;
-	params->vsync_pol         = HDMI_POLARITY_RISING;
-	params->hsync_pol         = HDMI_POLARITY_RISING;
+	params->vsync_pol         = HDMI_POLARITY_FALLING;
+	params->hsync_pol         = HDMI_POLARITY_FALLING;
 
 #if defined(USING_720P)
 	HDMI_LOG("[hdmi_drv]720p\n");
@@ -999,6 +1003,7 @@ static void hdmi_drv_get_params(HDMI_PARAMS *params)
 	params->output_mode = HDMI_OUTPUT_MODE_VIDEO_MODE;
     params->is_force_awake  = 0;
     params->is_force_landscape = 0;
+    params->scaling_factor = 5;
 }
 
 #if 0
@@ -1174,6 +1179,7 @@ _tda19989_hdcp_off(this);
          }
       }
    }
+    tmdlHdmiTxSetBScreen(this->tda.instance, TMDL_HDMITX_PATTERN_BLUE /*TMDL_HDMITX_PATTERN_CBAR8*/);
 #endif
     //tda19989_colorbar(true);
     //return 0;
@@ -1289,44 +1295,46 @@ static int last_hot_plug_detect_status = 0;
 
 static int hdmi_hpd_detect_kthread(void *data)
 {
-        tda_instance *this = g_inst;
-        //int ret = 0;
-		int hpd_result = 0;
-        struct sched_param param = { .sched_priority = RTPM_PRIO_SCRN_UPDATE };
+    tda_instance *this = g_inst;
+    //int ret = 0;
+    int hpd_result = 0;
+    struct sched_param param = { .sched_priority = RTPM_PRIO_SCRN_UPDATE };
 
-        tmdlHdmiTxRxSense_t rx_sense_status = TMDL_HDMITX_RX_SENSE_INVALID;
-        HDMI_FUNC();
+    tmdlHdmiTxRxSense_t rx_sense_status = TMDL_HDMITX_RX_SENSE_INVALID;
+    HDMI_FUNC();
 
-        sched_setscheduler(current, SCHED_RR, &param);
+    sched_setscheduler(current, SCHED_RR, &param);
 
-        for( ;; ) 
-        {
-                //ret =tmdlHdmiTxHandleInterrupt(this->tda.instance);
-                //HDMI_LOG("%s, return %d\n", __func__, ret);
-                //HDMI_LOG("%s, mdelay begin\n", __func__);
-                tmdlHdmiTxGetHPDStatus(this->tda.instance,&this->tda.hot_plug_detect);
-                tmdlHdmiTxGetRXSenseStatus(this->tda.instance, &rx_sense_status);
-                this->tda.rx_device_active = (rx_sense_status == TMDL_HDMITX_RX_SENSE_ACTIVE) ? true: false;
-				hpd_result = (this->tda.hot_plug_detect || this->tda.rx_device_active);
-                 if(hpd_result != last_hot_plug_detect_status)
-                {    
-                    HDMI_LOG("==============hdmi detect============\n");
-                     HDMI_LOG("this->tda.rx_device_active=%d, this->tda.hot_plug_detect=%d\n", this->tda.rx_device_active, this->tda.hot_plug_detect);
-                    HDMI_LOG("=====================================\n");                     
-                  tmdlHdmiTxHandleInterrupt(this->tda.instance);
-                }
-                 
-                 last_hot_plug_detect_status = hpd_result;
-                msleep(500);
-                
-                if (kthread_should_stop())
-                {
-                        HDMI_LOG("%s, kthread stop\n", __func__);
-                        break;
-                }
+    for( ;; ) 
+    {
+        //ret =tmdlHdmiTxHandleInterrupt(this->tda.instance);
+        //HDMI_LOG("%s, return %d\n", __func__, ret);
+        //HDMI_LOG("%s, mdelay begin\n", __func__);
+        tmdlHdmiTxGetHPDStatus(this->tda.instance,&this->tda.hot_plug_detect);
+        tmdlHdmiTxGetRXSenseStatus(this->tda.instance, &rx_sense_status);
+        this->tda.rx_device_active = (rx_sense_status == TMDL_HDMITX_RX_SENSE_ACTIVE) ? true: false;
+        hpd_result = (this->tda.hot_plug_detect || this->tda.rx_device_active);
+        if(hpd_result != last_hot_plug_detect_status)
+        {    
+            HDMI_LOG("==============hdmi detect============\n");
+            HDMI_LOG("this->tda.rx_device_active=%d, this->tda.hot_plug_detect=%d\n", 
+                    this->tda.rx_device_active, this->tda.hot_plug_detect);
+            HDMI_LOG("=====================================\n");                     
+            //tmdlHdmiTxHandleInterrupt(this->tda.instance);
         }
 
-        return 0;
+        tmdlHdmiTxHandleInterrupt(this->tda.instance);
+        last_hot_plug_detect_status = hpd_result;
+        msleep(500);
+
+        if (kthread_should_stop())
+        {
+            HDMI_LOG("%s, kthread stop\n", __func__);
+            break;
+        }
+    }
+
+    return 0;
 }
 
 static int hdmi_drv_init(void)
@@ -1375,12 +1383,16 @@ int hdmi_drv_power_on(void)
     HDMI_FUNC();
 
       resume_i2c();
+#if USE_GPIO_HDMI_POWER_CONTROL 
+
 #if defined 	GPIO_HDMI_POWER_CONTROL
     mt_set_gpio_mode(GPIO_HDMI_POWER_CONTROL, GPIO_MODE_00);
     mt_set_gpio_dir(GPIO_HDMI_POWER_CONTROL, GPIO_DIR_OUT);
     mt_set_gpio_out(GPIO_HDMI_POWER_CONTROL, 0);
 #else
 	HDMI_LOG("FATAL ERROR!!!, HDMI GPIO is not defined -- GPIO_HDMI_POWER_CONTROL\n");		
+#endif
+
 #endif
     TDA_TRY(_tda19989_tx_init(g_inst));
        tmdlHdmiTxGetHPDStatus(this->tda.instance,&this->tda.hot_plug_detect);
@@ -1395,6 +1407,7 @@ int hdmi_drv_power_on(void)
             TDA_TRY(tmdlHdmiTxHandleInterrupt(this->tda.instance));
             TDA_TRY(tmdlHdmiTxHandleInterrupt(this->tda.instance));
         }
+#if USE_GPIO_HDMI_POWER_CONTROL 
 
 #if defined 	GPIO_HDMI_POWER_CONTROL
 	    mt_set_gpio_out(GPIO_HDMI_POWER_CONTROL, 1);
@@ -1402,6 +1415,7 @@ int hdmi_drv_power_on(void)
 		HDMI_LOG("FATAL ERROR!!!, HDMI GPIO is not defined -- GPIO_HDMI_POWER_CONTROL\n"); 	 
 #endif
 
+#endif
        
        tmdlHdmiTxGetRXSenseStatus(this->tda.instance, &rx_sense_status);
        this->tda.rx_device_active = (rx_sense_status == TMDL_HDMITX_RX_SENSE_ACTIVE) ? true: false;
@@ -1447,6 +1461,7 @@ void hdmi_drv_power_off(void)
        }
     kthread_stop(hdmi_hpd_detect_task);
     _tda19989_tx_exit(g_inst);
+#if USE_GPIO_HDMI_POWER_CONTROL
 
 #if defined 	GPIO_HDMI_POWER_CONTROL
     mt_set_gpio_mode(GPIO_HDMI_POWER_CONTROL, GPIO_MODE_00);
@@ -1456,6 +1471,7 @@ void hdmi_drv_power_off(void)
 	HDMI_LOG("FATAL ERROR!!!, HDMI GPIO is not defined -- GPIO_HDMI_POWER_CONTROL\n");	 
 #endif
 		
+#endif
     suspend_i2c();
 		
 	last_hot_plug_detect_status = 0;

@@ -134,7 +134,7 @@
 #define MT_MFG_IRQ_ID                       (GIC_PRIVATE_SIGNALS + 188)
 #define MT_MD_WDT1_IRQ_ID                   (GIC_PRIVATE_SIGNALS + 192)
 #define MT_MD_WDT2_IRQ_ID                   (GIC_PRIVATE_SIGNALS + 196)
-
+#define MT_CIRQ_IRQ_ID                      (GIC_PRIVATE_SIGNALS + 200)
 
 #define MT6589_APARM_GPTTIMER_IRQ_LINE      MT6589_GPT_IRQ_ID   // alias name for GPT
 

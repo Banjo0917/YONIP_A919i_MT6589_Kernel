@@ -105,7 +105,7 @@ int ccmni_v1_ipo_h_restore(int md_id)
 	ccmni_v1_ctl_block_t	*ctlb;
 
 	ctlb = ccmni_ctl_block[md_id];
-	for(i=0; i<CCMNI_MAX_CHANNELS; i++)
+	for(i=0; i<CCMNI_CHANNEL_CNT; i++)
 		ccci_reset_buffers(ctlb->ccmni_instance[i]->shared_mem, CCCI1_CCMNI_BUF_SIZE);
 
 	return 0;

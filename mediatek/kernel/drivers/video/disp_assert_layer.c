@@ -7,6 +7,7 @@
 #include <linux/disp_assert_layer.h>
 #include <linux/semaphore.h>
 #include <linux/mutex.h>
+#include "ddp_ovl.h"
 
 #endif
 
@@ -26,7 +27,7 @@
 #include "mtkfb_console.h"
 
 // ---------------------------------------------------------------------------
-#define DAL_FORMAT          (LCD_LAYER_FORMAT_RGB565)
+#define DAL_FORMAT          (OVL_INPUT_FORMAT_RGB565)
 #define DAL_BG_COLOR        (dal_bg_color)
 #define DAL_FG_COLOR        (dal_fg_color)
 
@@ -110,6 +111,7 @@ static unsigned int dal_bg_color = RGB888_To_RGB565(DAL_COLOR_RED);
 extern struct mutex OverlaySettingMutex;
 extern atomic_t OverlaySettingDirtyFlag;
 extern atomic_t OverlaySettingApplied;
+extern OVL_CONFIG_STRUCT cached_layer_config[DDP_OVL_LAYER_MUN];
 
 #define DAL_LOWMEMORY_ASSERT
 
@@ -200,7 +202,7 @@ DAL_STATUS DAL_Init(UINT32 layerVA, UINT32 layerPA)
 
     //DAL_Clean();
     DAL_SetRedScreen((UINT32 *)dal_fb_addr);
-
+#if 0
     DAL_CHECK_LCD_RET(LCD_LayerSetAddress(ASSERT_LAYER, layerPA));
     DAL_CHECK_LCD_RET(LCD_LayerSetFormat(ASSERT_LAYER, DAL_FORMAT));
     DAL_CHECK_LCD_RET(LCD_LayerSetAlphaBlending(ASSERT_LAYER, TRUE, 0x80));
@@ -209,7 +211,7 @@ DAL_STATUS DAL_Init(UINT32 layerVA, UINT32 layerPA)
                                        DAL_WIDTH,
                                        DAL_HEIGHT));
     DAL_CHECK_LCD_RET(LCD_LayerSetPitch(ASSERT_LAYER, DAL_WIDTH * DAL_BPP));
-
+#endif
     return DAL_STATUS_OK;
 }
 
@@ -361,12 +363,6 @@ DAL_STATUS DAL_Printf(const char *fmt, ...)
     mutex_lock(&OverlaySettingMutex);
 
     if (!dal_shown) {
-		DAL_CHECK_LCD_RET(LCD_LayerSetWindowOffset(ASSERT_LAYER,0,0));
-		DAL_CHECK_LCD_RET(LCD_LayerSetOffset(ASSERT_LAYER, 0,0));
-   		DAL_CHECK_LCD_RET(LCD_LayerSetSize(ASSERT_LAYER,
-                                       DAL_WIDTH,
-                                       DAL_HEIGHT));
-        DAL_CHECK_LCD_RET(LCD_LayerEnable(ASSERT_LAYER, TRUE));
         dal_shown = TRUE;
     }
 
@@ -384,13 +380,18 @@ DAL_STATUS DAL_Printf(const char *fmt, ...)
                                    DAL_FG_COLOR, DAL_BG_COLOR));        
         //DAL_Clean();        
         DAL_CHECK_LCD_RET(LCD_LayerSetAddress(ASSERT_LAYER, dal_fb_pa));
-        DAL_CHECK_LCD_RET(LCD_LayerSetFormat(ASSERT_LAYER, DAL_FORMAT));
         DAL_CHECK_LCD_RET(LCD_LayerSetAlphaBlending(ASSERT_LAYER, TRUE, 0x80));
-        DAL_CHECK_LCD_RET(LCD_LayerSetOffset(ASSERT_LAYER, 0, 0));
-        DAL_CHECK_LCD_RET(LCD_LayerSetSize(ASSERT_LAYER,
-                                           DAL_WIDTH,
-                                           DAL_HEIGHT));
         DAL_CHECK_LCD_RET(LCD_LayerSetPitch(ASSERT_LAYER, DAL_WIDTH * DAL_BPP));  
+		cached_layer_config[ASSERT_LAYER].fmt= DAL_FORMAT;
+		cached_layer_config[ASSERT_LAYER].src_x = 0;
+		cached_layer_config[ASSERT_LAYER].src_y = 0;
+		cached_layer_config[ASSERT_LAYER].src_w = DAL_WIDTH;
+		cached_layer_config[ASSERT_LAYER].src_h = DAL_HEIGHT;
+		cached_layer_config[ASSERT_LAYER].dst_x = 0;
+		cached_layer_config[ASSERT_LAYER].dst_y = 0;
+		cached_layer_config[ASSERT_LAYER].dst_w = DAL_WIDTH;
+		cached_layer_config[ASSERT_LAYER].dst_h = DAL_HEIGHT;
+        DAL_CHECK_LCD_RET(LCD_LayerEnable(ASSERT_LAYER, TRUE));
 
         printk("after AEE config LCD layer 3: \n");
         LCD_Dump_Layer_Info();

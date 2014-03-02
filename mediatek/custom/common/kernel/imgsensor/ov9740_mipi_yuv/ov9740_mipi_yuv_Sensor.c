@@ -651,10 +651,10 @@ void OV9740MIPI_night_mode(kal_bool enable)
 		{	
 			OV9740MIPI_write_cmos_sensor(0x0303,0x1); 
 			OV9740MIPI_write_cmos_sensor(0x3A00,0x7C); 
-			OV9740MIPI_write_cmos_sensor(0x3a14,0x0B);//15);	// 50Hz Max exposure
-			OV9740MIPI_write_cmos_sensor(0x3a15,0xC0);//c6);	// 50Hz Max exposure
-			OV9740MIPI_write_cmos_sensor(0x3a02,0x0B);//18);	// 60Hz Max exposure
-			OV9740MIPI_write_cmos_sensor(0x3a03,0xC0);//20);	// 60Hz Max exposure
+			OV9740MIPI_write_cmos_sensor(0x3a14,0x04);  // 50Hz Max exposure
+			OV9740MIPI_write_cmos_sensor(0x3a15,0xB0);  // 50Hz Max exposure
+			OV9740MIPI_write_cmos_sensor(0x3a02,0x4);  // 60Hz Max exposure
+			OV9740MIPI_write_cmos_sensor(0x3a03,0xB0);  // 60Hz Max exposure
 		}	
 	}
 	else
@@ -1542,6 +1542,14 @@ void OV9740MIPIGetAFMaxNumMeteringAreas(UINT32 *pFeatureReturnPara32)
 
 }
 
+void OV9740MIPIGetAEAWBLock(UINT32 *pAElockRet32,UINT32 *pAWBlockRet32)
+{
+    *pAElockRet32 = 1;
+	*pAWBlockRet32 = 1;
+    SENSORDB("OV9740MIPIGetAEAWBLock,AE=%d ,AWB=%d\n,",*pAElockRet32,*pAWBlockRet32);
+}
+
+
 void OV9740MIPIGetExifInfo(UINT32 exifAddr)
 {
     SENSOR_EXIF_INFO_STRUCT* pExifInfo = (SENSOR_EXIF_INFO_STRUCT*)exifAddr;
@@ -1744,6 +1752,9 @@ UINT32 OV9740MIPIFeatureControl(MSDK_SENSOR_FEATURE_ENUM FeatureId,
 		case SENSOR_FEATURE_GET_DEFAULT_FRAME_RATE_BY_SCENARIO:
 			OV9740MIPIGetDefaultFramerateByScenario((MSDK_SCENARIO_ID_ENUM)*pFeatureData32, (MUINT32 *)(*(pFeatureData32+1)));
 			break;
+		case SENSOR_FEATURE_GET_AE_AWB_LOCK_INFO:
+			OV9740MIPIGetAEAWBLock((*pFeatureData32),*(pFeatureData32+1));
+			break;			
 		default:
 			break;			
 	}

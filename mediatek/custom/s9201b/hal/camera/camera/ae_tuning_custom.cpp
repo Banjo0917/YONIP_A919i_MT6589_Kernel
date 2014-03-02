@@ -244,12 +244,11 @@ getAEParam()
          194,  // EV -4.0
     };
 
-
     // total 24 sets
     static strAEMOVE  g_AEMoveTable[] =
     {
-        {-20,   17,    25}, //   mean below -2.5  move increase 25 index
-        {-20,   25,    20}, //   -2.5~-2  move increase 20 index
+        {-20,   17,    24}, //   mean below -2.5  move increase 25 index
+        {-20,   25,    19}, //   -2.5~-2  move increase 20 index
         {-15,   33,    15}, //   -2~-1.6
         {-15,   40,    12}, //   -1.6~-1.3
         {-10,   50,    9}, //   -1.3~-1
@@ -362,6 +361,14 @@ getAEParam()
           1,     // iGAIN_DIFFERENCE_LIMITER
     };
 
+    // for video dynamic frame rate
+    static VdoDynamicFrameRate_T g_VdoDynamicFpsTable = 
+    {
+       TRUE, // isEnableDFps
+       50,  // EVThresNormal
+       50,  // EVThresNight
+    };
+    
     static AE_PARAM_T strAEInitPara =
     {
         g_AEParasetting,
@@ -380,6 +387,7 @@ getAEParam()
         g_AEVideoMoveTable,
         g_AEFaceMoveTable,
         g_AELimiterDataTable,
+        g_VdoDynamicFpsTable,
     };
 
     return strAEInitPara;

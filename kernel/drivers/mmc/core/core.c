@@ -360,8 +360,7 @@ struct mmc_async_req *mmc_start_req(struct mmc_host *host,
 #ifdef MTK_IO_PERFORMANCE_DEBUG
         if ((1 == g_mtk_mmc_perf_dbg) && (2 == g_mtk_mmc_dbg_range)){
             if ((areq->mrq->cmd->arg >= g_dbg_range_start) && (areq->mrq->cmd->arg <= g_dbg_range_end) && (areq->mrq->data) && (areq->mrq->cmd->opcode == g_check_read_write)){ 
-				g_dbg_req_count++;
-                g_mmcqd_buf[g_dbg_req_count][0] = sched_clock();   /* request DMA map start */ 
+                g_mmcqd_buf[g_dbg_req_count][2] = sched_clock();   /* request DMA map start */ 
            	}
         }
 #endif
@@ -370,7 +369,7 @@ struct mmc_async_req *mmc_start_req(struct mmc_host *host,
 #ifdef MTK_IO_PERFORMANCE_DEBUG
         if ((1 == g_mtk_mmc_perf_dbg) && (2 == g_mtk_mmc_dbg_range)){
             if ((areq->mrq->cmd->arg >= g_dbg_range_start) && (areq->mrq->cmd->arg <= g_dbg_range_end) && (areq->mrq->data) && (areq->mrq->cmd->opcode == g_check_read_write)){ 
-                g_mmcqd_buf[g_dbg_req_count][1] = sched_clock();   /* request DMA map end */
+                g_mmcqd_buf[g_dbg_req_count][3] = sched_clock();   /* request DMA map end */
             }
         }
 #endif
@@ -379,14 +378,16 @@ struct mmc_async_req *mmc_start_req(struct mmc_host *host,
 	if (host->areq) {
 		mmc_wait_for_req_done(host, host->areq->mrq);
 		host->ops->send_stop(host,host->areq->mrq); //add for MTK msdc host <Yuchi Xu>
-		host->ops->tuning(host, host->areq->mrq);	//add for MTK msdc host <Yuchi Xu>
+		do{
+			host->ops->tuning(host, host->areq->mrq);	//add for MTK msdc host <Yuchi Xu>
+		}while(host->ops->check_written_data(host,host->areq->mrq));
 #ifdef MTK_IO_PERFORMANCE_DEBUG
         if ((1 == g_mtk_mmc_perf_dbg) && (2 == g_mtk_mmc_dbg_range)){
             if ((host->areq->mrq->cmd->arg >= g_dbg_range_start) && (host->areq->mrq->cmd->arg <= g_dbg_range_end) && (host->areq->mrq->data) && (host->areq->mrq->cmd->opcode == g_check_read_write)){ 
 				if(areq)
-					g_mmcqd_buf[g_dbg_req_count - 1][4] = sched_clock(); 
+					g_mmcqd_buf[g_dbg_req_count - 1][6] = sched_clock(); 
 				else
-                	g_mmcqd_buf[g_dbg_req_count][4] = sched_clock(); 
+                	g_mmcqd_buf[g_dbg_req_count][6] = sched_clock(); 
                 
                 g_mtk_mmc_dbg_flag = 0; /* notify high level after send next cmd */
             }
@@ -400,7 +401,7 @@ struct mmc_async_req *mmc_start_req(struct mmc_host *host,
         if (1 == g_mtk_mmc_perf_dbg){
             if (2 == g_mtk_mmc_dbg_range){
                 if ((areq->mrq->cmd->arg >= g_dbg_range_start) && (areq->mrq->cmd->arg <= g_dbg_range_end) && (areq->mrq->data) && (areq->mrq->cmd->opcode == g_check_read_write)){ 
-                    g_mmcqd_buf[g_dbg_req_count][2] = sched_clock();   /* request start time */
+                    g_mmcqd_buf[g_dbg_req_count][4] = sched_clock();   /* request start time */
 
                     /* record the max page index in this request */
                     //if (g_dbg_req_count > 0)
@@ -424,7 +425,7 @@ struct mmc_async_req *mmc_start_req(struct mmc_host *host,
 #ifdef MTK_IO_PERFORMANCE_DEBUG
 			if ((1 == g_mtk_mmc_perf_dbg) && (2 == g_mtk_mmc_dbg_range)){
 				if ((areq->mrq->cmd->arg >= g_dbg_range_start) && (areq->mrq->cmd->arg <= g_dbg_range_end) && (areq->mrq->data) && (areq->mrq->cmd->opcode == g_check_read_write)){ 
-					g_mmcqd_buf[g_dbg_req_count][3] = sched_clock(); 
+					g_mmcqd_buf[g_dbg_req_count][5] = sched_clock(); 
 					
 				}
 			}
@@ -436,9 +437,9 @@ struct mmc_async_req *mmc_start_req(struct mmc_host *host,
         if ((1 == g_mtk_mmc_perf_dbg) && (2 == g_mtk_mmc_dbg_range)){
             if ((host->areq->mrq->cmd->arg >= g_dbg_range_start) && (host->areq->mrq->cmd->arg <= g_dbg_range_end) && (host->areq->mrq->data) && (host->areq->mrq->cmd->opcode == g_check_read_write)){
 				if(areq)
-					g_mmcqd_buf[g_dbg_req_count - 1][5] = sched_clock();   /* request DMA unmap start */                             
+					g_mmcqd_buf[g_dbg_req_count - 1][7] = sched_clock();   /* request DMA unmap start */                             
 				else
-                    g_mmcqd_buf[g_dbg_req_count][5] = sched_clock();   
+                    g_mmcqd_buf[g_dbg_req_count][7] = sched_clock();   
                 }
         	}
 #endif
@@ -447,9 +448,9 @@ struct mmc_async_req *mmc_start_req(struct mmc_host *host,
 				if ((1 == g_mtk_mmc_perf_dbg) && (2 == g_mtk_mmc_dbg_range)){
 					if ((host->areq->mrq->cmd->arg >= g_dbg_range_start) && (host->areq->mrq->cmd->arg <= g_dbg_range_end) && (host->areq->mrq->data) && (host->areq->mrq->cmd->opcode == g_check_read_write)){
 						if(areq)
-							g_mmcqd_buf[g_dbg_req_count - 1][6] = sched_clock();	/* request DMA unmap end if exist */
+							g_mmcqd_buf[g_dbg_req_count - 1][8] = sched_clock();	/* request DMA unmap end if exist */
 						else
-							g_mmcqd_buf[g_dbg_req_count][6] = sched_clock();
+							g_mmcqd_buf[g_dbg_req_count][8] = sched_clock();
 					}
 				}
 #endif	

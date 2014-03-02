@@ -291,6 +291,10 @@ static void scsi_host_dev_release(struct device *dev)
 	struct device *parent = dev->parent;
 	struct request_queue *q;
 
+	//ALPS00445134, add more debug message for CR debugging
+	printk(KERN_DEBUG "%s, line %d: shost->host_no = %d\n", __func__, __LINE__, shost->host_no);
+	//ALPS00445134, add more debug message for CR debugging
+
 	scsi_proc_hostdir_rm(shost->hostt);
 
 	if (shost->ehandler)
@@ -344,6 +348,10 @@ struct Scsi_Host *scsi_host_alloc(struct scsi_host_template *sht, int privsize)
 	shost = kzalloc(sizeof(struct Scsi_Host) + privsize, gfp_mask);
 	if (!shost)
 		return NULL;
+
+	//ALPS00445134, add more debug message for CR debugging
+	printk(KERN_DEBUG "%s, line %d: \n", __func__, __LINE__);
+	//ALPS00445134, add more debug message for CR debugging
 
 	shost->host_lock = &shost->default_lock;
 	spin_lock_init(shost->host_lock);
@@ -421,11 +429,19 @@ struct Scsi_Host *scsi_host_alloc(struct scsi_host_template *sht, int privsize)
 	shost->shost_gendev.bus = &scsi_bus_type;
 	shost->shost_gendev.type = &scsi_host_type;
 
+	//ALPS00445134, add more debug message for CR debugging
+	printk(KERN_DEBUG "%s, line %d: shost->shost_gendev = %s, shost->host_no = %d \n", __func__, __LINE__, dev_name(&shost->shost_gendev), shost->host_no);
+	//ALPS00445134, add more debug message for CR debugging
+
 	device_initialize(&shost->shost_dev);
 	shost->shost_dev.parent = &shost->shost_gendev;
 	shost->shost_dev.class = &shost_class;
 	dev_set_name(&shost->shost_dev, "host%d", shost->host_no);
 	shost->shost_dev.groups = scsi_sysfs_shost_attr_groups;
+
+	//ALPS00445134, add more debug message for CR debugging
+	printk(KERN_DEBUG "%s, line %d: shost->shost_dev = %s, shost->host_no = %d \n", __func__, __LINE__, dev_name(&shost->shost_dev), shost->host_no);
+	//ALPS00445134, add more debug message for CR debugging
 
 	shost->ehandler = kthread_run(scsi_error_handler, shost,
 			"scsi_eh_%d", shost->host_no);

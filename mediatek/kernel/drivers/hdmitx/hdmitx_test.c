@@ -132,6 +132,7 @@
 #endif
 
 #include <mach/mt_reg_base.h>
+void hdmi_update_impl(void);
 
 extern int m4u_config_port(M4U_PORT_STRUCT* pm4uport);
 extern void HDMI_DBG_Init(void);
@@ -519,8 +520,8 @@ static HDMI_STATUS hdmi_drv_init(void)
 
     RETIF(p->output_mode == HDMI_OUTPUT_MODE_DPI_BYPASS, 0);
 
-    p->hdmi_width = 1280;
-    p->hdmi_height = 720;
+    p->hdmi_width = 1920;
+    p->hdmi_height = 1080;
 
     lcm_width = DISP_GetScreenWidth();
     lcm_height = DISP_GetScreenHeight();
@@ -601,33 +602,32 @@ static HDMI_STATUS hdmi_drv_init(void)
     }
 
  
-            printk("[hdmi]720p 60Hz\n");
+            printk("[hdmi]1080p 30Hz\n");
             //ret = pll_fsel(TVDPLL, 0x800B6C4E);
-            
-			OUTREG32(TVDPLL_CON1, 0x800B6C4E); //148.5MHz
+
+			OUTREG32(TVDPLL_CON1, 0x800b6c4e); //148.5MHz
 			OUTREG32(TVDPLL_CON0, 0x80000081);
 			//OUTREG32(TVDPLL_CON0, 0x80000081);
 						
 			//OUTREG32(DISPSYS_BASE+0x038, 0x1);	// rdma0_out_sel, 2 for DPI0
 			//OUTREG32(DISPSYS_BASE+0x05c, 0x1);	// DPI0_SEL, 0 is from rdma0
 			
-			
-            ASSERT(!ret);
-			clk_pol 		= HDMI_POLARITY_FALLING;
-			de_pol			= HDMI_POLARITY_RISING;
-			hsync_pol 	= HDMI_POLARITY_RISING;
-			vsync_pol 	= HDMI_POLARITY_RISING;;
-			
-		
-			hsync_front_porch 	= 110;
-			hsync_pulse_width 	= 40;
-			hsync_back_porch		= 220;
-			vsync_front_porch 	= 5;
-			vsync_pulse_width 	= 5;
-			vsync_back_porch		= 20;
+			clk_pol	 = HDMI_POLARITY_FALLING;
+			de_pol 	 = HDMI_POLARITY_RISING;
+			hsync_pol	 = HDMI_POLARITY_RISING;
+			vsync_pol	 = HDMI_POLARITY_RISING;;
 
-            dpi_clk_div = 2;
-            dpi_clk_duty = 1;
+			dpi_clk_div = 2;
+			dpi_clk_duty = 1;
+
+			hsync_pulse_width	 = 44;
+			hsync_back_porch	 = 148;
+			hsync_front_porch	 = 88;
+
+			vsync_pulse_width	 = 5;
+			vsync_back_porch	 = 36;
+			vsync_front_porch	 = 4;
+            ASSERT(!ret);
 
 
     rgb_order           = hdmi_params->rgb_order;
@@ -646,7 +646,7 @@ static HDMI_STATUS hdmi_drv_init(void)
 
 		DPI_CHECK_RET(DPI_ConfigVsync(vsync_pol, vsync_pulse_width, vsync_back_porch, vsync_front_porch));
 
-		DPI_CHECK_RET(DPI_FBSetSize(1280, 720));
+		DPI_CHECK_RET(DPI_FBSetSize(1920, 1080));
 
 		
 		//if (LCM_COLOR_ORDER_BGR == rgb_order)
@@ -719,8 +719,8 @@ int hdmi_dst_display_path_config(bool enable)
         struct disp_path_config_struct config = {0};
 
         // Config RDMA->DPI1
-        config.srcWidth = 1280;
-        config.srcHeight = 720;
+        config.srcWidth = 1920;
+        config.srcHeight = 1080;
 
         config.srcModule = DISP_MODULE_RDMA1;
         config.inFormat = RDMA_INPUT_FORMAT_ARGB;
@@ -781,9 +781,9 @@ static int hdmi_open(struct inode *inode, struct file *file)
 
 void hdmi_force_init(void)
 {
-	p->hdmi_width = 1280;
-	p->hdmi_height = 720;
-	p->output_video_resolution = HDMI_VIDEO_1280x720p_60Hz;
+	p->hdmi_width = 1920;
+	p->hdmi_height = 1080;
+	p->output_video_resolution = HDMI_VIDEO_1920x1080p_30Hz;
 	
 	p->is_enabled = true;
 	p->is_factory_mode = false;

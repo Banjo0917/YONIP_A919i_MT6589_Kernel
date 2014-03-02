@@ -5,9 +5,8 @@ ifneq ($(KERNELRELEASE),)
 	#subdir-ccflags-y can be used in 2.6.34 in the future
 	#subdir-ccflags-y += -I$(src)/common/include -I$(src)/common/linux/include 
     obj-y += common/
-    obj-y += common_mt6628/
     obj-$(CONFIG_MTK_FM) += drv_fm/
-	obj-$(CONFIG_MTK_COMBO_WIFI) += drv_wlan/
+    obj-$(CONFIG_MTK_COMBO_WIFI) += drv_wlan/
     obj-n := dummy.o
 	#skip bt hci driver
 	#obj-y	+= drv_bt/

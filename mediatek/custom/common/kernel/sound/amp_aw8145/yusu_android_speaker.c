@@ -91,7 +91,7 @@
 ******************************************************************************
 */
 
-#define SPK_WARM_UP_TIME     (50) //unit is ms
+#define SPK_WARM_UP_TIME        (10) //unit is ms
 /*****************************************************************************
 *                         D A T A      T Y P E S
 ******************************************************************************
@@ -108,14 +108,11 @@ extern void Yusu_Sound_AMP_Switch(BOOL enable);
 
 bool Speaker_Init(void)
 {
-    PRINTK("+Speaker_Init Success");
-    mt_set_gpio_mode(GPIO_SPEAKER_EN_PIN,GPIO_MODE_00);  // gpio mode
-    mt_set_gpio_pull_enable(GPIO_SPEAKER_EN_PIN,GPIO_PULL_ENABLE);
-    mt_set_gpio_dir(GPIO_SPEAKER_EN_PIN,GPIO_DIR_OUT); // output
-    mt_set_gpio_out(GPIO_SPEAKER_EN_PIN,GPIO_OUT_ZERO); // low
-    msleep(SPK_WARM_UP_TIME);
-    PRINTK("-Speaker_Init Success");
-    return true;
+   PRINTK("+Speaker_Init Success");
+   mt_set_gpio_mode(GPIO_SPEAKER_EN_PIN,GPIO_MODE_00);  // gpio mode
+   mt_set_gpio_pull_enable(GPIO_SPEAKER_EN_PIN,GPIO_PULL_ENABLE);
+   PRINTK("-Speaker_Init Success");
+   return true;
 }
 
 bool Speaker_Register(void)
@@ -125,31 +122,31 @@ bool Speaker_Register(void)
 
 int ExternalAmp(void)
 {
-    return 0;
+	return 0;
 }
 
 bool Speaker_DeInit(void)
 {
-    return false;
+	return false;
 }
 
 void Sound_SpeakerL_SetVolLevel(int level)
 {
-    PRINTK(" Sound_SpeakerL_SetVolLevel level=%d\n",level);
+   PRINTK(" Sound_SpeakerL_SetVolLevel level=%d\n",level);
 }
 
 void Sound_SpeakerR_SetVolLevel(int level)
 {
-    PRINTK(" Sound_SpeakerR_SetVolLevel level=%d\n",level);
+   PRINTK(" Sound_SpeakerR_SetVolLevel level=%d\n",level);
 }
 
 void Sound_Speaker_Turnon(int channel)
 {
     PRINTK("Sound_Speaker_Turnon channel = %d\n",channel);
-    if(gsk_on)
-        return;
+	if(gsk_on)
+		return;
     mt_set_gpio_dir(GPIO_SPEAKER_EN_PIN,GPIO_DIR_OUT); // output
-    mt_set_gpio_out(GPIO_SPEAKER_EN_PIN,GPIO_OUT_ONE); // high
+    mt_set_gpio_out(GPIO_SPEAKER_EN_PIN,GPIO_OUT_ONE); // low
     msleep(SPK_WARM_UP_TIME);
     gsk_on = true;
 }
@@ -157,11 +154,11 @@ void Sound_Speaker_Turnon(int channel)
 void Sound_Speaker_Turnoff(int channel)
 {
     PRINTK("Sound_Speaker_Turnoff channel = %d\n",channel);
-    if(!gsk_on)
-        return;
+	if(!gsk_on)
+		return;
     mt_set_gpio_dir(GPIO_SPEAKER_EN_PIN,GPIO_DIR_OUT); // output
-    mt_set_gpio_out(GPIO_SPEAKER_EN_PIN,GPIO_OUT_ZERO); // low
-    gsk_on = false;
+    mt_set_gpio_out(GPIO_SPEAKER_EN_PIN,GPIO_OUT_ZERO); // high
+	gsk_on = false;
 }
 
 void Sound_Speaker_SetVolLevel(int level)
@@ -183,51 +180,51 @@ void Sound_Headset_Turnoff(void)
 //kernal use
 void AudioAMPDevice_Suspend(void)
 {
-    PRINTK("AudioDevice_Suspend\n");
-    if(gsk_on)
-    {
-        Sound_Speaker_Turnoff(Channel_Stereo);
-        gsk_resume = true;
-    }
+	PRINTK("AudioDevice_Suspend\n");
+	if(gsk_on)
+	{
+		Sound_Speaker_Turnoff(Channel_Stereo);
+		gsk_resume = true;
+	}
 
 }
 void AudioAMPDevice_Resume(void)
 {
-    PRINTK("AudioDevice_Resume\n");
-    if(gsk_resume)
-        Sound_Speaker_Turnon(Channel_Stereo);
-    gsk_resume = false;
+	PRINTK("AudioDevice_Resume\n");
+	if(gsk_resume)
+		Sound_Speaker_Turnon(Channel_Stereo);
+	gsk_resume = false;
 }
 void AudioAMPDevice_SpeakerLouderOpen(void)
 {
-    PRINTK("AudioDevice_SpeakerLouderOpen\n");
-    gsk_forceon = false;
-    if(gsk_on)
-        return;
-    Sound_Speaker_Turnon(Channel_Stereo);
-    gsk_forceon = true;
-    return ;
+	PRINTK("AudioDevice_SpeakerLouderOpen\n");
+	gsk_forceon = false;
+	if(gsk_on)
+		return;
+	Sound_Speaker_Turnon(Channel_Stereo);
+	gsk_forceon = true;
+	return ;
 
 }
 void AudioAMPDevice_SpeakerLouderClose(void)
 {
-    PRINTK("AudioDevice_SpeakerLouderClose\n");
+	PRINTK("AudioDevice_SpeakerLouderClose\n");
 
-    if(gsk_forceon)
-        Sound_Speaker_Turnoff(Channel_Stereo);
-    gsk_forceon = false;
+	if(gsk_forceon)
+		Sound_Speaker_Turnoff(Channel_Stereo);
+	gsk_forceon = false;
 
 }
 void AudioAMPDevice_mute(void)
 {
-    PRINTK("AudioDevice_mute\n");
-    if(gsk_on)
-        Sound_Speaker_Turnoff(Channel_Stereo);
+	PRINTK("AudioDevice_mute\n");
+	if(gsk_on)
+		Sound_Speaker_Turnoff(Channel_Stereo);
 }
 
 int Audio_eamp_command(unsigned int type, unsigned long args, unsigned int count)
 {
-    return 0;
+	return 0;
 }
 static char *ExtFunArray[] =
 {
@@ -238,36 +235,33 @@ static char *ExtFunArray[] =
 
 kal_int32 Sound_ExtFunction(const char* name, void* param, int param_size)
 {
-    int i = 0;
-    int funNum = -1;
+	int i = 0;
+	int funNum = -1;
 
-    //Search the supported function defined in ExtFunArray
-    while(strcmp("End",ExtFunArray[i]) != 0 )  		//while function not equal to "End"
-    {
+	//Search the supported function defined in ExtFunArray
+	while(strcmp("End",ExtFunArray[i]) != 0 ) {		//while function not equal to "End"
 
-        if (strcmp(name,ExtFunArray[i]) == 0 )  		//When function name equal to table, break
-        {
-            funNum = i;
-            break;
-        }
-        i++;
-    }
+	    if (strcmp(name,ExtFunArray[i]) == 0 ) {		//When function name equal to table, break
+	    	funNum = i;
+	    	break;
+	    }
+	    i++;
+	}
 
-    switch (funNum)
-    {
-    case 0:			//InfoMATVAudioStart
-        printk("RunExtFunction InfoMATVAudioStart \n");
-        break;
+	switch (funNum) {
+	    case 0:			//InfoMATVAudioStart
+	        printk("RunExtFunction InfoMATVAudioStart \n");
+	        break;
 
-    case 1:			//InfoMATVAudioStop
-        printk("RunExtFunction InfoMATVAudioStop \n");
-        break;
+	    case 1:			//InfoMATVAudioStop
+	        printk("RunExtFunction InfoMATVAudioStop \n");
+	        break;
 
-    default:
-        break;
-    }
+	    default:
+	    	 break;
+	}
 
-    return 1;
+	return 1;
 }
 
 

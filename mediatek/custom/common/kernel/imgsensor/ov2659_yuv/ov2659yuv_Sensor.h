@@ -154,13 +154,12 @@ extern OV2659_OP_TYPE OV2659_g_iOV2659_Mode;
 #define OV2659_FULL_EXPOSURE_LIMITATION    	(1232-4)
 
 /* Config the ISP grab start x & start y, Config the ISP grab width & height */
-//#define OV2659_PV_GRAB_START_X 				(1)
-#define OV2659_PV_GRAB_START_X 				(4)//LINE <> <DATE20121230> <camera OV2659 change color> wupingzhou
+#define OV2659_PV_GRAB_START_X 				(1)
 #define OV2659_PV_GRAB_START_Y  			(1)
 #define OV2659_PV_GRAB_WIDTH				(OV2659_IMAGE_SENSOR_SVGA_WIDTH - 8)
 #define OV2659_PV_GRAB_HEIGHT				(OV2659_IMAGE_SENSOR_SVGA_HEIGHT - 6)
 
-#define OV2659_FULL_GRAB_START_X   			(4)//LINE <> <DATE20121230> <camera OV2659 change color> wupingzhou
+#define OV2659_FULL_GRAB_START_X   			(1)
 #define OV2659_FULL_GRAB_START_Y	  		(1)
 #define OV2659_FULL_GRAB_WIDTH				(OV2659_IMAGE_SENSOR_UVGA_WITDH - 16)
 #define OV2659_FULL_GRAB_HEIGHT				(OV2659_IMAGE_SENSOR_UVGA_HEIGHT - 12)

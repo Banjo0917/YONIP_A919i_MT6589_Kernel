@@ -18,7 +18,20 @@
 
 #include "power.h"
 
+#define HIB_PM_DEBUG 0
+extern bool console_suspend_enabled; // from printk.c
+#define _TAG_HIB_M "HIB/PM"
+#if (HIB_PM_DEBUG)
+#undef hib_log
+#define hib_log(fmt, ...)	if (!console_suspend_enabled) pr_warn("[%s][%s]" fmt, _TAG_HIB_M, __func__, ##__VA_ARGS__);
+#else
+#define hib_log(fmt, ...)
+#endif
+#undef hib_warn
+#define hib_warn(fmt, ...)  if (!console_suspend_enabled) pr_warn("[%s][%s]" fmt, _TAG_HIB_M, __func__, ##__VA_ARGS__);
+
 DEFINE_MUTEX(pm_mutex);
+EXPORT_SYMBOL_GPL(pm_mutex);
 
 unsigned int pm_flags;
 EXPORT_SYMBOL(pm_flags);
@@ -29,7 +42,8 @@ static unsigned int notify_count = 0;
 
 /* Routines for PM-transition notifications */
 
-static BLOCKING_NOTIFIER_HEAD(pm_chain_head);
+BLOCKING_NOTIFIER_HEAD(pm_chain_head);
+EXPORT_SYMBOL_GPL(pm_chain_head);
 
 int register_pm_notifier(struct notifier_block *nb)
 {
@@ -50,10 +64,10 @@ int pm_notifier_call_chain(unsigned long val)
 	int ret;
 	pr_info("[%s]: there are %u notify callbacks, event = %lu\n", __func__, notify_count, val);
 	ret = blocking_notifier_call_chain(&pm_chain_head, val, NULL);
-	pr_info("[%s]: notify done\n", __func__);
 
 	return notifier_to_errno(ret);
 }
+EXPORT_SYMBOL_GPL(pm_notifier_call_chain);
 
 /* If set, devices may be suspended and resumed asynchronously. */
 int pm_async_enabled = 0;
@@ -246,6 +260,7 @@ late_initcall(pm_debugfs_init);
 #endif /* CONFIG_PM_SLEEP */
 
 struct kobject *power_kobj;
+EXPORT_SYMBOL_GPL(power_kobj);
 
 /**
  *	state - control system power state.
@@ -351,10 +366,30 @@ static ssize_t state_store(struct kobject *kobj, struct kobj_attribute *attr,
     p = memchr(buf, '\n', n);
     len = p ? p - buf : n;
 
+#ifdef CONFIG_MTK_HIBERNATION
+    state = decode_state(buf, n);
+    hib_log("entry (%d)\n", state);
+#endif
+
     /* First, check if we are requested to hibernate */
     if (len == 4 && !strncmp(buf, "disk", len)) {
+#ifdef CONFIG_MTK_HIBERNATION
+        hib_log("trigger hibernation...\n");
+#ifdef CONFIG_EARLYSUSPEND
+        if (PM_SUSPEND_ON == get_suspend_state()) {
+            hib_warn("\"on\" to \"disk\" (i.e., 0->4) is not supported !!!\n");
+            error = -EINVAL;
+            goto Exit;
+        }
+#endif
+        if (!pre_hibernate()) {
+            error = 0;
+            error = mtk_hibernate();
+        }
+#else // !CONFIG_MTK_HIBERNATION
         error = hibernate();
-  goto Exit;
+#endif
+        goto Exit;
     }
 
 #ifdef CONFIG_SUSPEND
@@ -362,15 +397,17 @@ static ssize_t state_store(struct kobject *kobj, struct kobj_attribute *attr,
         if (*s && len == strlen(*s) && !strncmp(buf, *s, len))
             break;
     }
-    if (state < PM_SUSPEND_MAX && *s)
+    if (state < PM_SUSPEND_MAX && *s) {
 #ifdef CONFIG_EARLYSUSPEND
         if (state == PM_SUSPEND_ON || valid_state(state)) {
             error = 0;
             request_suspend_state(state);
-        }
+        } else
+            error = -EINVAL;
 #else
         error = enter_state(state);
 #endif
+    }
 #endif
 
  Exit:
@@ -478,6 +515,7 @@ static ssize_t autosleep_store(struct kobject *kobj,
 	suspend_state_t state = decode_state(buf, n);
 	int error;
 
+    hib_log("store autosleep_state(%d)\n", state);
 	if (state == PM_SUSPEND_ON
 	    && strcmp(buf, "off") && strcmp(buf, "off\n"))
 		return -EINVAL;

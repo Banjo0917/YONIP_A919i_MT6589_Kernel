@@ -2,6 +2,7 @@
 #include <linux/device.h>
 #include <linux/platform_device.h>
 #include <linux/module.h>
+#include <linux/interrupt.h>
 #include <mach/mt_cirq.h>
 #include <mach/mt_reg_base.h>
 #include <asm/system.h>
@@ -56,16 +57,27 @@ unsigned int mt_cirq_get_mask(unsigned int cirq_num)
 
 void mt_cirq_mask_all(void)
 {
+int i;
+
+for(i = 0; i < 6; i++)
+    mt65xx_reg_sync_writel(0xFFFFFFFF, CIRQ_MASK_SET0 + i * 4);
 
 }
 
 void mt_cirq_unmask_all(void)
 {
+int i;
+
+for(i = 0; i < 6; i++)
+    mt65xx_reg_sync_writel(0xFFFFFFFF, CIRQ_MASK_CLR0 + i * 4);
 
 }
 
 void mt_cirq_ack_all(void)
 {
+int i;
+        for(i = 0; i < 6; i++)
+            mt65xx_reg_sync_writel(0xFFFFFFFF, CIRQ_ACK0 + i * 4);
 
 }
 
@@ -168,9 +180,9 @@ void mt_cirq_disable(){
 }
 void mt_cirq_flush(){
 
-        print_func();
-    unsigned int irq,irq_bit,irq_offset;
+    unsigned int irq;
     unsigned int val;
+    print_func();
     for (irq = 64; irq < (MT_NR_SPI + 32); irq+=32)
     {
         val = readl(((irq-64) / 32) * 4 + CIRQ_STA0);
@@ -179,6 +191,7 @@ void mt_cirq_flush(){
         dsb();
         //printk("irq:%d,pending bit:%x,%x\n",irq,val,readl(GIC_DIST_BASE + GIC_DIST_PENDING_SET + irq / 32 * 4));
     }
+    mt_cirq_ack_all();
     //*(volatile unsigned int*) CIRQ_CON |= 0x4;  
     dsb();
 }
@@ -272,6 +285,17 @@ void mt_cirq_clone_gic()
     mt_cirq_clone_sens();
     mt_cirq_clone_mask();
 }
+
+void mt_cirq_wfi_func()
+{
+    mt_cirq_mask_all();
+    mt_cirq_ack_all();
+    mt_cirq_set_pol(MT_MD_WDT1_IRQ_ID - 64, MT_CIRQ_POL_NEG);
+    mt_cirq_set_sens(MT_MD_WDT1_IRQ_ID - 64, MT65xx_EDGE_SENSITIVE);
+    mt_cirq_unmask(MT_MD_WDT1_IRQ_ID - 64);
+}
+
+
 #if defined(LDVT)
 /*
  * cirq_dvt_show: To show usage.
@@ -307,12 +331,31 @@ static ssize_t cirq_dvt_store(struct device_driver *driver, const char *buf,
 }
 DRIVER_ATTR(cirq_dvt, 0664, cirq_dvt_show, cirq_dvt_store);
 #endif //!LDVT
+
+/*
+ * CIRQ interrupt service routine.
+ */
+static irqreturn_t cirq_irq_handler(int irq, void *dev_id)
+{
+    printk("CIRQ_Handler\n");
+    mt_cirq_ack_all();
+    return IRQ_HANDLED;
+}
+
 /*
  * always return 0
  * */
 int mt_cirq_init(void){
         int ret;
         printk("CIRQ init...\n");
+#if 1
+        if (request_irq(MT_CIRQ_IRQ_ID, cirq_irq_handler, IRQF_TRIGGER_LOW, "CIRQ",  NULL)) {
+            printk(KERN_ERR"CIRQ IRQ LINE NOT AVAILABLE!!\n");
+        }else
+        {
+            printk("CIRQ handler init success.");
+        }
+#endif
         ret = driver_register(&mt_cirq_drv.driver);
 #ifdef LDVT
 	ret = driver_create_file(&mt_cirq_drv.driver, &driver_attr_cirq_dvt);

@@ -997,7 +997,7 @@ void SiiMhlTxNotifyRgndMhl( void )
 {
 	if (MHL_TX_EVENT_STATUS_PASSTHROUGH == AppNotifyMhlEvent(MHL_TX_EVENT_RGND_MHL, 0))
 	{
-		SiiMhlTxDrvProcessRgndMhl();
+		//SiiMhlTxDrvProcessRgndMhl();
 	}
 }
 

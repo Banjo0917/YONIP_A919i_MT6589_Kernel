@@ -152,6 +152,7 @@
 
 /*
  * RTC_NEW_SPARE1: RTC_AL_DOM bit8~15
+ * 	   bit 8 ~ 14 : Fuel Gauge2 //Ivan
  * 	   bit 8 ~ 15 : reserved bits
  */
 
@@ -242,6 +243,42 @@ int set_rtc_spare_fg_value(int val)
 	val = (val & 0x7f)<<8;
 	temp = (temp & 0xff) | val;
 	rtc_write(RTC_AL_HOU, temp);
+	rtc_write_trigger();
+
+	spin_unlock_irqrestore(&rtc_lock, flags);
+	
+	return 0;
+}
+
+int get_rtc_spare_fg_value_2(void)
+{
+	//RTC_AL_DOM bit8~14
+	u16 temp;
+	unsigned long flags;
+	
+	spin_lock_irqsave(&rtc_lock, flags);
+	temp = rtc_read(RTC_AL_DOM);
+	temp = (temp & 0x7f00)>>8;
+	spin_unlock_irqrestore(&rtc_lock, flags);
+	
+	return temp;
+}
+int set_rtc_spare_fg_value_2(int val)
+{
+	//RTC_AL_DOM bit8~14
+	u16 temp;
+	unsigned long flags;
+
+	if(val>127)
+		return 1;
+
+	spin_lock_irqsave(&rtc_lock, flags);
+	rtc_writeif_unlock();
+
+	temp = rtc_read(RTC_AL_DOM);
+	val = (val & 0x7f)<<8;
+	temp = (temp & 0xff) | val;
+	rtc_write(RTC_AL_DOM, temp);
 	rtc_write_trigger();
 
 	spin_unlock_irqrestore(&rtc_lock, flags);
@@ -923,10 +960,12 @@ static struct platform_device rtc_pdev = {
 	.id	= -1,
 };
 
-static int __init rtc_mod_init(void)
+
+static int __init rtc_subsys_init(void)
 {
 	int r;
-
+	rtc_xinfo("rtc_init");
+	
 	r = platform_device_register(&rtc_pdev);
 	if (r) {
 		rtc_xerror("register device failed (%d)\n", r);
@@ -943,10 +982,32 @@ static int __init rtc_mod_init(void)
 	return 0;
 }
 
-/* should never be called */
-static void __exit rtc_mod_exit(void)
+/*static int __init rtc_mod_init(void)
 {
-}
+	int r;
+
+	rtc_xinfo("rtc_mod_init");
+
+	r = platform_device_register(&rtc_pdev);
+	if (r) {
+		rtc_xerror("register device failed (%d)\n", r);
+		return r;
+	}
+
+	r = platform_driver_register(&rtc_pdrv);
+	if (r) {
+		rtc_xerror("register driver failed (%d)\n", r);
+		platform_device_unregister(&rtc_pdev);
+		return r;
+	}
+
+	return 0;
+}*/
+
+/* should never be called */
+/*static void __exit rtc_mod_exit(void)
+{
+}*/
 
 static int __init rtc_late_init(void)
 {
@@ -969,10 +1030,12 @@ static int __init rtc_late_init(void)
 	return 0;
 }
 
-module_init(rtc_mod_init);
-module_exit(rtc_mod_exit);
+//module_init(rtc_mod_init);
+//module_exit(rtc_mod_exit);
 
 late_initcall(rtc_late_init);
+subsys_initcall(rtc_subsys_init);
+
 
 module_param(rtc_show_time, int, 0644);
 module_param(rtc_show_alarm, int, 0644);

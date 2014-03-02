@@ -63,7 +63,7 @@ static atomic_t g_CAM_CALatomic;
 /*******************************************************************************
 *
 ********************************************************************************/
-// maximun read length is limited at "I2C_FIFO_SIZE" in I2c-mt6516.c which is 8 bytes
+// maximun read length is limited at "I2C_FIFO_SIZE" in I2c-mt65xx.c which is 8 bytes
 int iWriteCAM_CAL(u16 a_u2Addr  , u32 a_u4Bytes, u8 * puDataInBytes)
 {
     int  i4RetValue = 0;
@@ -72,7 +72,7 @@ int iWriteCAM_CAL(u16 a_u2Addr  , u32 a_u4Bytes, u8 * puDataInBytes)
         0, 0, 0, 0, 0, 0};
     if(a_u4Bytes + 2 > 8)
     {
-        CAM_CALDB("[CAM_CAL] exceed I2c-mt6516.c 8 bytes limitation (include address 2 Byte)\n");
+        CAM_CALDB("[CAM_CAL] exceed I2c-mt65xx.c 8 bytes limitation (include address 2 Byte)\n");
         return -1;
     }
 
@@ -94,7 +94,7 @@ int iWriteCAM_CAL(u16 a_u2Addr  , u32 a_u4Bytes, u8 * puDataInBytes)
 }
 
 
-// maximun read length is limited at "I2C_FIFO_SIZE" in I2c-mt6516.c which is 8 bytes
+// maximun read length is limited at "I2C_FIFO_SIZE" in I2c-mt65xx.c which is 8 bytes
 int iReadCAM_CAL(u16 a_u2Addr, u32 ui4_length, u8 * a_puBuff)
 {
     int  i4RetValue = 0;
@@ -104,7 +104,7 @@ int iReadCAM_CAL(u16 a_u2Addr, u32 ui4_length, u8 * a_puBuff)
 
     if(ui4_length > 8)
     {
-        CAM_CALDB("[CAM_CAL] exceed I2c-mt6516.c 8 bytes limitation\n");
+        CAM_CALDB("[CAM_CAL] exceed I2c-mt65xx.c 8 bytes limitation\n");
         return -1;
     }
     spin_lock(&g_CAM_CALLock); //for SMP
@@ -411,25 +411,11 @@ static int CAM_CAL_Open(struct inode * a_pstInode, struct file * a_pstFile)
     }
     spin_unlock(&g_CAM_CALLock);
 
-#if defined(MT6516)
-    if(TRUE != hwPowerOn(MT6516_POWER_VCAM_A, VOL_2800, "S24CS64A"))
-    {
-        CAM_CALDB("[CAM_CAL] Fail to enable analog gain\n");
-        return -EIO;
-    }
-#elif 1//defined(MT6573)|MT//fix warning MSG
     if(TRUE != hwPowerOn(MT65XX_POWER_LDO_VCAMA, VOL_2800, "S24CS64A"))
     {
         CAM_CALDB("[CAM_CAL] Fail to enable analog gain\n");
         return -EIO;
     }
-#else//fix warning MSG
-    {
-        CAM_CALDB("[CAM_CAL] Fail to enable analog gain\n");
-        return -EIO;
-    }
-
-#endif
 
     return 0;
 }

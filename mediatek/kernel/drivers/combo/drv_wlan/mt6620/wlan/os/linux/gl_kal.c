@@ -1498,8 +1498,10 @@ kalRxIndicatePkts (
                 prNetDev = kalP2PGetDevHdlr(prGlueInfo);
             }
 
-            prNetDev->stats.rx_bytes += prSkb->len;
-            prNetDev->stats.rx_packets++;
+            //prNetDev->stats.rx_bytes += prSkb->len;
+            //prNetDev->stats.rx_packets++;
+            prGlueInfo->prP2PInfo->rNetDevStats.rx_bytes += prSkb->len;
+	        prGlueInfo->prP2PInfo->rNetDevStats.rx_packets++;
             
 #else
             prNetDev = prGlueInfo->prDevHandler;
@@ -1741,6 +1743,7 @@ kalIndicateStatusAndComplete (
         break;
         case WLAN_STATUS_CONNECT_INDICATION:
             /* indicate AIS Jion fail  event */
+            if(prGlueInfo->prDevHandler->ieee80211_ptr->sme_state == CFG80211_SME_CONNECTING) {
             cfg80211_connect_result(prGlueInfo->prDevHandler,
                     prGlueInfo->prAdapter->rWifiVar.rAisFsmInfo.prTargetBssDesc->aucBSSID,
                     prGlueInfo->aucReqIe,
@@ -1749,7 +1752,7 @@ kalIndicateStatusAndComplete (
                     prGlueInfo->u4RspIeLength,
                     REASON_CODE_UNSPECIFIED,
                     GFP_KERNEL);
-
+                }
             break;
 
     #if 0

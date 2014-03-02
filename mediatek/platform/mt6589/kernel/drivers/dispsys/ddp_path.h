@@ -53,6 +53,7 @@ int disp_path_config_layer(OVL_CONFIG_STRUCT* pOvlConfig);
 int disp_path_config_layer_addr(unsigned int layer, unsigned int addr);
 int disp_path_get_mutex(void);
 int disp_path_release_mutex(void);
+int disp_path_wait_reg_update(void);
 
 int disp_path_get_mutex_(int mutexId);
 int disp_path_release_mutex_(int mutexId);

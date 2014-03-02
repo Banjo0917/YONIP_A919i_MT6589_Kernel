@@ -51,13 +51,24 @@ static const struct mst_tbl_entry mst_tbl[] =
     { .master = MST_ID_APMCU_4, .port = 0x0, .id_mask = 0b11110000, .id_val = 0b00010000, .name = "APMCU: Write to cacheable memory from write address buffer" },
     
     /* arm9 (for Dual-talk) */ 
-    //TBD   
+    { .master = MST_ID_ARM9_0, .port = 0x2, .id_mask = 0b11111111, .id_val = 0b00000100, .name = "ARM9: MD2 ARM9_I" },
+    { .master = MST_ID_ARM9_1, .port = 0x2, .id_mask = 0b11111111, .id_val = 0b00000000, .name = "ARM9: MD2 ARM9_D" },
+    { .master = MST_ID_ARM9_2, .port = 0x2, .id_mask = 0b11000011, .id_val = 0b00000001, .name = "ARM9: MD2 PFB" },
 
-    /* Modem */    
-    //TBD
+    /* Modem MCU*/    
+    { .master = MST_ID_MDMCU_0, .port = 0x3, .id_mask = 0b11000011, .id_val = 0b00000000, .name = "MDMCU: MD1 CR4 M" },
+    { .master = MST_ID_MDMCU_1, .port = 0x3, .id_mask = 0b11111111, .id_val = 0b00000101, .name = "MDMCU: MD1 PFB" },
+    { .master = MST_ID_MDMCU_2, .port = 0x3, .id_mask = 0b11000011, .id_val = 0b00000010, .name = "MDMCU: MD1 ALC" },
 
     /* Modem HW (2G/3G) */
-    //TBD
+    { .master = MST_ID_MDHW_0, .port = 0x4, .id_mask = 0b11111111, .id_val = 0b00000000, .name = "MDHW: MD1 HwMix-peri.PDMA_axi" },
+    { .master = MST_ID_MDHW_1, .port = 0x4, .id_mask = 0b11110100, .id_val = 0b00000100, .name = "MDHW: MD1 HwMix-peri.ABM" },
+    { .master = MST_ID_MDHW_2, .port = 0x4, .id_mask = 0b11101111, .id_val = 0b00001110, .name = "MDHW: MD1 HwMix-modem.HSPA" },
+    { .master = MST_ID_MDHW_3, .port = 0x4, .id_mask = 0b11111111, .id_val = 0b00000010, .name = "MDHW: MD1 HwMix-modem.MD2G" },
+    { .master = MST_ID_MDHW_4, .port = 0x4, .id_mask = 0b11111111, .id_val = 0b00000110, .name = "MDHW: MD1 HwMix-modem.PFC" },
+    { .master = MST_ID_MDHW_5, .port = 0x4, .id_mask = 0b11111111, .id_val = 0b00001010, .name = "MDHW: MD1 HwMix-modem.BYC" },
+    { .master = MST_ID_MDHW_6, .port = 0x4, .id_mask = 0b11111111, .id_val = 0b00000001, .name = "MDHW: MD2 HwMix-peri.PDMA_axi" },
+    { .master = MST_ID_MDHW_7, .port = 0x4, .id_mask = 0b11111111, .id_val = 0b00000011, .name = "MDHW: MD2 HwMix-modem.MD2G" },    
 
     /* MM0 + Periperal (MCI port) */
     { .master = MST_ID_MMPERI_0, .port = 0x5, .id_mask = 0b11111111, .id_val = 0b00000100, .name = "Debug System" },
@@ -289,6 +300,105 @@ static void __clear_emi_mpu_vio(void)
     }
 }
 
+#if 0
+static void mtk_dump_full_pgtab(void *param, void *param1)
+{
+    //void *va = 0, *pa;
+    pgd_t *pgd;
+    pmd_t *pmd;
+    pte_t *pte;
+    int i, j;
+    struct task_struct *p = 0;
+    //va = vmalloc(PAGE_SIZE);
+    //
+    *(volatile unsigned long *)0xf0000000 = 0x00002224; // disable WDT
+    __asm__ __volatile__ ("dsb");
+#if 0
+    if (va) {
+        *(char *)va = 3;    // touch the va to allocate the pte
+        printk(KERN_ALERT"vmalloc @ %p\n", va);
+        pa = mtk_virt_to_phys(&va);
+        printk(KERN_ALERT"vmalloc (pa) @ %p\n", pa);
+        //vfree(va);
+    }
+#endif 
+    printk(KERN_ALERT"%s\n", __FUNCTION__);
+    printk(KERN_ALERT"=====================================\n");
+
+    p = current;
+    if (!(p->mm)) {
+        printk(KERN_ALERT"NULL current->mm\n");
+        pgd = init_mm.pgd;
+    } else {
+        // we use 2-level paging here (it means pgd == pud == pmd)
+        pgd = p->mm->pgd;
+    }
+    // show a complete pgd table
+    printk(KERN_ALERT"pgd: 0x%08lx\n", (unsigned long)pgd);
+    for (i = 0; i < PTRS_PER_PGD; i += 8) {
+        printk(KERN_ALERT"[0x%08lx] %08lx %08lx %08lx %08lx "
+                "%08lx %08lx %08lx %08lx\n", 
+                (unsigned long)(pgd + i),
+                (unsigned long)pgd_val(*(pgd + i + 0)),
+                (unsigned long)pgd_val(*(pgd + i + 1)),
+                (unsigned long)pgd_val(*(pgd + i + 2)),
+                (unsigned long)pgd_val(*(pgd + i + 3)),
+                (unsigned long)pgd_val(*(pgd + i + 4)),
+                (unsigned long)pgd_val(*(pgd + i + 5)),
+                (unsigned long)pgd_val(*(pgd + i + 6)),
+                (unsigned long)pgd_val(*(pgd + i + 7)));
+    }
+
+    // dump pmd if possible
+    for (i = 0; i < PTRS_PER_PGD; i++, pgd++) {
+        //msleep(100);    // print the log slowly to avoid form losing log
+        printk(KERN_ALERT"i: %d, pgd: 0x%08lx, val: 0x%08lx\n", 
+                i,
+                (unsigned long)pgd, (unsigned long)pgd_val(*pgd));
+        if ((pgd_none(*pgd)) || (pgd_bad(*pgd))) {
+            continue;
+        }
+
+        // we use 2-level paging here
+        printk(KERN_ALERT"pgd: 0x%08lx\n", (unsigned long)pgd);
+        pmd = (pmd_t *)(pgd);
+        printk(KERN_ALERT"pmd: 0x%08lx, pmd_val(pmd): 0x%08lx\n", 
+                (unsigned long)pmd,
+                (unsigned long)pmd_val(*pmd));
+        if (!pmd  || !pmd_val(*pmd)) {
+            continue;
+        }
+        pte = __pte_map(pmd);
+        if ((unsigned long)pmd_val(*pmd) >= 0x80000000 && 
+                (unsigned long)pmd_val(*pmd) <= 0xC0000000) {
+            printk(KERN_ALERT"pmd: 0x%08lx, mapped to 0x%08lx\n", 
+                    (unsigned long)pmd_val(*pmd), (unsigned long)pte);
+        } else {
+            printk(KERN_ALERT"skip non-DRAM pmd: 0x%08lx\n", 
+                    (unsigned long)pmd_val(*pmd));
+            continue;
+        }
+        for (j = 0; j < PTRS_PER_PTE; j += 8) {
+            printk(KERN_ALERT"[0x%08lx] %08lx %08lx %08lx %08lx "
+                    "%08lx %08lx %08lx %08lx\n", 
+                    (unsigned long)(pte + j),
+                    (unsigned long)pte_val(*(pte + j + 0)),
+                    (unsigned long)pte_val(*(pte + j + 1)),
+                    (unsigned long)pte_val(*(pte + j + 2)),
+                    (unsigned long)pte_val(*(pte + j + 3)),
+                    (unsigned long)pte_val(*(pte + j + 4)),
+                    (unsigned long)pte_val(*(pte + j + 5)),
+                    (unsigned long)pte_val(*(pte + j + 6)),
+                    (unsigned long)pte_val(*(pte + j + 7)));
+        }
+        __pte_unmap(pte);
+    }
+    //pa = mtk_virt_to_phys(&va);
+    //vfree(va);
+    //BUG();
+}
+#endif
+
 /*EMI MPU violation handler*/
 static irqreturn_t mpu_violation_irq(int irq, void *dev_id)
 {
@@ -358,8 +468,7 @@ static irqreturn_t mpu_violation_irq(int irq, void *dev_id)
     printk(KERN_CRIT "Corrupted region is %d\n\r", region);
     if (dbg_pqry & OOR_VIO) {
         printk(KERN_CRIT "Out of range violation.\n");
-    }  
-    printk(KERN_CRIT "[EMI MPU] Debug info end------------------------------------------\n");
+    }      
     
 #ifdef CONFIG_MTK_AEE_FEATURE
     //aee_kernel_exception("EMI MPU", "EMI MPU violation.\nEMP_MPUS = 0x%x, EMI_MPUT = 0x%x, EMI_MPU(PQR).\n", dbg_s, dbg_t+EMI_PHY_OFFSET, dbg_pqry);
@@ -392,6 +501,10 @@ static irqreturn_t mpu_violation_irq(int irq, void *dev_id)
     }while (reg_value != 0);
     
     printk("[EMI MPU] _id2mst = %d\n", __id2mst(master_ID));
+    
+    //mtk_dump_full_pgtab(NULL, NULL);
+    
+    printk(KERN_CRIT "[EMI MPU] Debug info end------------------------------------------\n");
 
 #if 1
     list_for_each(p, &(emi_mpu_notifier_list[__id2mst(master_ID)])) {

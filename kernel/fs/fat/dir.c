@@ -97,6 +97,7 @@ int bdev_existed(const char *pathname)
         //xlog_printk(ANDROID_LOG_DEBUG, "MNT_TAG", "bdev_existed, error: MNT_NODEV\n"); 
         goto fail;
     }
+    return 0;
 fail:
     path_put(&path);
     return (error); 
@@ -120,6 +121,8 @@ static int fat__get_entry(struct inode *dir, loff_t *pos,
 	sector_t phys, iblock;
 	unsigned long mapped_blocks;
 	int err, offset;
+    int err_print_num = 0;
+    #define ERR_PRINT_THRESHOLD (3)  
 
 next:
 	if (*bh)
@@ -136,8 +139,8 @@ next:
     *bh = sb_bread(sb, phys);
     if (*bh == NULL) {
         char bdev_path[256] = "/dev/block/";
-        strcat(bdev_path, sb->s_id);
-
+        strcat(bdev_path, sb->s_id);  
+    
         err = bdev_existed(bdev_path);
         if (err) {
            /* the block device doesn't exist. Don't print un-used log.
@@ -145,12 +148,22 @@ next:
                    */
         }
         else {
-           fat_msg(sb, KERN_ERR, "Directory bread(block %llu) failed",
-               (llu)phys);
-        }
+           err_print_num++;  
+           if (err_print_num <= ERR_PRINT_THRESHOLD) {
+               fat_msg(sb, KERN_ERR, "Directory bread(block %llu) failed",
+                   (llu)phys);
+               if (err_print_num == ERR_PRINT_THRESHOLD) {
+                   fat_msg(sb, KERN_ERR, "Too much error! Skip the next error messages.");                  
+               }       
+            } 
+            else {
+               /* skip the error message to prevent from out of the printk buffer */
+            }
+        }       
+
         /* skip this block */
         *pos = (iblock + 1) << sb->s_blocksize_bits;
-        goto next;
+        goto next;         
     }
 
 	offset = *pos & (sb->s_blocksize - 1);

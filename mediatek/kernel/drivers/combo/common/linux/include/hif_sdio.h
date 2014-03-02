@@ -35,6 +35,18 @@
 *                    E X T E R N A L   R E F E R E N C E S
 ********************************************************************************
 */
+#include <linux/mmc/card.h>
+#include <linux/mmc/host.h>
+#include <linux/mmc/sdio_func.h>
+#include <linux/mmc/sdio_ids.h>
+	
+#include <linux/mm.h>
+#include <linux/firmware.h>
+#include <linux/module.h>
+#include <linux/init.h>
+#include <linux/interrupt.h>
+#include <linux/vmalloc.h>
+
 
 #include "osal_typedef.h"
 #include "osal.h"
@@ -133,6 +145,12 @@ typedef enum {
     HIF_SDIO_ERR_CLT_NOT_REG = HIF_SDIO_ERR_ALRDY_OFF - 1,   
 } MTK_WCN_HIF_SDIO_ERR ;
 
+typedef struct _MTK_WCN_HIF_SDIO_CHIP_INFO_
+{
+    struct sdio_device_id deviceId;
+	UINT32 chipId;
+}MTK_WCN_HIF_SDIO_CHIP_INFO, *P_MTK_WCN_HIF_SDIO_CHIP_INFO;
+
 /*******************************************************************************
 *                            P U B L I C   D A T A
 ********************************************************************************
@@ -166,6 +184,8 @@ typedef enum {
 #ifndef DFT_TAG
 #define DFT_TAG         "[HIF-SDIO]"
 #endif
+
+extern UINT32 gHifSdioDbgLvl;
 
 #define HIF_SDIO_LOUD_FUNC(fmt, arg...)   if (gHifSdioDbgLvl >= HIF_SDIO_LOG_LOUD) { printk(KERN_INFO DFT_TAG"[L]%s:"  fmt, __FUNCTION__ ,##arg);}
 #define HIF_SDIO_DBG_FUNC(fmt, arg...)    if (gHifSdioDbgLvl >= HIF_SDIO_LOG_DBG) { printk(KERN_INFO DFT_TAG"[D]%s:"  fmt, __FUNCTION__ ,##arg);}
@@ -275,6 +295,11 @@ extern void mtk_wcn_hif_sdio_get_dev(
 extern INT32 mtk_wcn_hif_sdio_update_cb_reg(
     int (*ts_update)(void)
     );
+
+
+INT32 mtk_wcn_hif_sdio_tell_chipid(INT32 chipId);
+INT32 mtk_wcn_hif_sdio_query_chipid(INT32 waitFlag);
+
 /*******************************************************************************
 *                              F U N C T I O N S
 ********************************************************************************

@@ -38,6 +38,7 @@ static struct proc_dir_entry *aed_proc_current_ke_android_main_file;
 static struct proc_dir_entry *aed_proc_current_ke_android_radio_file;
 static struct proc_dir_entry *aed_proc_current_ke_android_system_file;
 static struct proc_dir_entry *aed_proc_current_ke_userspaceInfo_file;
+static struct proc_dir_entry *aed_proc_current_ke_mmprofile_file;
 
 /******************************************************************************
  * DEBUG UTILITIES
@@ -113,6 +114,8 @@ void msg_show(const char *prefix, AE_Msg *msg)
 #define CURRENT_KE_ANDROID_RADIO "current-ke-android_radio"
 #define CURRENT_KE_ANDROID_SYSTEM "current-ke-android_system"
 #define CURRENT_KE_USERSPACE_INFO "current-ke-userspace_info"
+
+#define CURRENT_KE_MMPROFILE "current-ke-mmprofile"
 
 #define MAX_EE_COREDUMP 0x800000
 
@@ -941,6 +944,33 @@ static int aed_proc_current_ke_android_system(char *page, char **start,
 	return len;
 }
 
+static int aed_proc_current_ke_mmprofile(char *page, char **start,
+				       off_t off, int count,
+				       int *eof, void *data)
+{
+	int len = 0;
+	if (aed_dev.kerec.lastlog) {
+		struct aee_oops *oops = aed_dev.kerec.lastlog;
+		if (off > oops->mmprofile_len) {
+		  return 0;
+		}
+
+		len = count;
+		if (len > oops->mmprofile_len - off) {
+		  len = oops->mmprofile_len - off;
+		}
+		memcpy(page, oops->mmprofile + off, len);
+		*start = (char *)len;
+		if (off + len == oops->mmprofile_len)
+		  *eof = 1;
+	}
+	else {
+		len = sprintf(page, "No current kernel exception mmprofile\n");
+		*eof = 1;
+	}
+	return len;
+}
+
 static ssize_t aed_ke_read(struct file *filp, char __user *buf, size_t count, loff_t *f_pos)
 {
 	return msg_copy_to_user(__func__, aed_dev.kerec.msg, buf, count, f_pos);
@@ -1194,12 +1224,12 @@ static void external_exception(const char *assert_type, const int *log, int log_
 
     if ((log_size > 0) && (log != NULL)) {
 		aed_dev.eerec.ee_log_size = log_size;
-		ee_log = (int*)kmalloc(log_size, GFP_KERNEL);
+		ee_log = (int*)kmalloc(log_size, GFP_ATOMIC);
 		if(NULL != ee_log)
             memcpy(ee_log, log, log_size);
 	} else {
 		aed_dev.eerec.ee_log_size = 16;
-		ee_log = (int*)kzalloc(aed_dev.eerec.ee_log_size, GFP_KERNEL);
+		ee_log = (int*)kzalloc(aed_dev.eerec.ee_log_size, GFP_ATOMIC);
 	}
 
     if(NULL == ee_log){
@@ -1323,6 +1353,15 @@ static int aed_proc_init(void)
 								  NULL);
 	if (aed_proc_current_ke_android_system_file == NULL) {
 		xlog_printk(ANDROID_LOG_ERROR, AEK_LOG_TAG, "aed create_proc_read_entry failed at %s\n", CURRENT_KE_ANDROID_SYSTEM);
+		return -ENOMEM;
+	}
+	
+	aed_proc_current_ke_mmprofile_file = create_proc_read_entry(CURRENT_KE_MMPROFILE, 
+								  0444, aed_proc_dir, 
+								  aed_proc_current_ke_mmprofile,
+								  NULL);
+	if (aed_proc_current_ke_mmprofile_file == NULL) {
+		xlog_printk(ANDROID_LOG_ERROR, AEK_LOG_TAG, "aed create_proc_read_entry failed at %s\n", CURRENT_KE_MMPROFILE);
 		return -ENOMEM;
 	}	
 

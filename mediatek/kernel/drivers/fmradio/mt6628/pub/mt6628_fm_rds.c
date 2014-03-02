@@ -246,7 +246,7 @@ fm_bool mt6628_RDS_OnOff(rds_t *dst, fm_bool bFlag)
     return fm_true;
 }
 
-DEFINE_RDSLOG(rds_log);
+DEFINE_RDSLOG(mt6628_rds_log);
 
 /* mt6628_RDS_Efm_s32_Handler    -    response FM RDS interrupt
  * @fm - main data structure of FM driver
@@ -254,13 +254,13 @@ DEFINE_RDSLOG(rds_log);
  */
 static fm_s32 mt6628_rds_parser(rds_t *rds_dst, struct rds_rx_t *rds_raw, fm_s32 rds_size, fm_u16(*getfreq)(void))
 {
-    rds_log.log_in(&rds_log, rds_raw, rds_size);
+    mt6628_rds_log.log_in(&mt6628_rds_log, rds_raw, rds_size);
     return rds_parser(rds_dst, rds_raw, rds_size, getfreq);
 }
 
 static fm_s32 mt6628_rds_log_get(struct rds_rx_t *dst, fm_s32 *dst_len)
 {
-    return rds_log.log_out(&rds_log, dst, dst_len);
+    return mt6628_rds_log.log_out(&mt6628_rds_log, dst, dst_len);
 }
 
 static fm_s32 mt6628_rds_gc_get(struct rds_group_cnt_t *dst, rds_t *rdsp)
@@ -273,7 +273,7 @@ static fm_s32 mt6628_rds_gc_reset(rds_t *rdsp)
     return rds_grp_counter_reset(&rdsp->gc);
 }
 
-fm_s32 fm_rds_ops_register(struct fm_lowlevel_ops *ops)
+fm_s32 MT6628fm_rds_ops_register(struct fm_lowlevel_ops *ops)
 {
     fm_s32 ret = 0;
 
@@ -302,7 +302,7 @@ fm_s32 fm_rds_ops_register(struct fm_lowlevel_ops *ops)
     return ret;
 }
 
-fm_s32 fm_rds_ops_unregister(struct fm_lowlevel_ops *ops)
+fm_s32 MT6628fm_rds_ops_unregister(struct fm_lowlevel_ops *ops)
 {
     fm_s32 ret = 0;
 

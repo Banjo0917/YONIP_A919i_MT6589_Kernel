@@ -30,7 +30,7 @@
 #ifdef SPM_MCDI_FUNC
 atomic_t is_in_hotplug = ATOMIC_INIT(0);
 
-static void empty_function(void *info) {}
+//static void empty_function(void *info) {}
 #endif
 /******************************************************************************/
  
@@ -84,10 +84,10 @@ void get_online_cpus(void)
 	might_sleep();
 	if (cpu_hotplug.active_writer == current)
 		return;
+
 	mutex_lock(&cpu_hotplug.lock);
 	cpu_hotplug.refcount++;
 	mutex_unlock(&cpu_hotplug.lock);
-
 }
 EXPORT_SYMBOL_GPL(get_online_cpus);
 
@@ -95,11 +95,11 @@ void put_online_cpus(void)
 {
 	if (cpu_hotplug.active_writer == current)
 		return;
+
 	mutex_lock(&cpu_hotplug.lock);
 	if (!--cpu_hotplug.refcount && unlikely(cpu_hotplug.active_writer))
 		wake_up_process(cpu_hotplug.active_writer);
 	mutex_unlock(&cpu_hotplug.lock);
-
 }
 EXPORT_SYMBOL_GPL(put_online_cpus);
 
@@ -144,7 +144,7 @@ static void cpu_hotplug_begin(void)
 *******************************************************************************/
 #ifdef SPM_MCDI_FUNC
     atomic_inc(&is_in_hotplug);
-    smp_call_function(empty_function, NULL, 1);
+    //smp_call_function(empty_function, NULL, 1);
 #endif
 /******************************************************************************/
 }
@@ -325,16 +325,6 @@ static int __ref _cpu_down(unsigned int cpu, int tasks_frozen)
 
 out_release:
 	cpu_hotplug_done();
-
-/*******************************************************************************
-* 20121113 marc.huang                                                          *
-* CPU Hotplug and MCDI integration                                             *
-*******************************************************************************/
-#ifdef SPM_MCDI_FUNC
-    spm_hot_plug_out_after(1 << cpu);
-#endif //#ifdef SPM_MCDI_FUNC
-/******************************************************************************/
-
 	if (!err)
 		cpu_notify_nofail(CPU_POST_DEAD | mod, hcpu);
 	return err;
@@ -369,15 +359,6 @@ static int __cpuinit _cpu_up(unsigned int cpu, int tasks_frozen)
 
 	if (cpu_online(cpu) || !cpu_present(cpu))
 		return -EINVAL;
-
-/*******************************************************************************
-* 20121113 marc.huang                                                          *
-* CPU Hotplug and MCDI integration                                             *
-*******************************************************************************/
-#ifdef SPM_MCDI_FUNC
-    spm_hot_plug_in_before(1 << cpu);
-#endif //#ifdef SPM_MCDI_FUNC
-/******************************************************************************/
 
 	cpu_hotplug_begin();
 	ret = __cpu_notify(CPU_UP_PREPARE | mod, hcpu, -1, &nr_calls);
@@ -514,6 +495,7 @@ int disable_nonboot_cpus(void)
 	cpu_maps_update_done();
 	return error;
 }
+EXPORT_SYMBOL_GPL(disable_nonboot_cpus);
 
 void __weak arch_enable_nonboot_cpus_begin(void)
 {
@@ -552,6 +534,7 @@ void __ref enable_nonboot_cpus(void)
 out:
 	cpu_maps_update_done();
 }
+EXPORT_SYMBOL_GPL(enable_nonboot_cpus);
 
 static int __init alloc_frozen_cpus(void)
 {

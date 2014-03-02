@@ -66,8 +66,7 @@ static void spin_dump(raw_spinlock_t *lock, const char *msg)
 		owner ? owner->comm : "<none>",
 		owner ? task_pid_nr(owner) : -1,
 		lock->owner_cpu, lock->raw_lock.lock);
-	//dump_stack();
-    /* dump stack info in the aee functions*/
+	dump_stack();
 }
 
 static void spin_bug(raw_spinlock_t *lock, const char *msg)
@@ -115,13 +114,6 @@ static inline void debug_spin_unlock(raw_spinlock_t *lock)
 #else
 #define LOOP_HZ HZ
 #endif
-#ifdef CONFIG_LOCKDEP
-extern void mt_lockdep_print_held_locks(struct task_struct *curr);
-extern void mt_check_lockoff(void);
-#else
-void mt_lockdep_print_held_locks(struct task_struct *curr){}
-void mt_check_lockoff(void){}
-#endif
 static void __spin_lock_debug(raw_spinlock_t *lock)
 {
 	u64 i;
@@ -129,7 +121,6 @@ static void __spin_lock_debug(raw_spinlock_t *lock)
 	int print_once = 1;
     char aee_str[40];
     unsigned long long t1;
-    struct task_struct* owner = NULL;
     t1 = sched_clock();
 	for (;;) {
 		for (i = 0; i < loops; i++) {
@@ -138,6 +129,7 @@ static void __spin_lock_debug(raw_spinlock_t *lock)
 			__delay(1);
 		}
 		/* lockup suspected: */
+        printk("spin time: %llu ns(start:%llu ns, lpj:%lu, HZ:%d)", sched_clock() - t1, t1, loops_per_jiffy, (int)LOOP_HZ);
 		if (print_once) {
 			print_once = 0;
 			spin_dump(lock, "lockup");
@@ -148,13 +140,6 @@ static void __spin_lock_debug(raw_spinlock_t *lock)
             sprintf( aee_str, "Spinlock lockup:%s\n", current->comm);
             aee_kernel_exception( aee_str,"spinlock debugger\n");
 		}
-        printk("spin time: %llu ns, start:%llu ns(lpj:%lu:%d)\n", sched_clock() - t1, t1, loops_per_jiffy, (int)LOOP_HZ);
-        owner = lock->owner;
-	    printk(KERN_EMERG " lock:%p,magic:%08x,owner:%s/%d,owner_cpu:%d,value:%d\n",
-		    lock, lock->magic,owner ? owner->comm : "<none>", owner ? task_pid_nr(owner) : -1,lock->owner_cpu, lock->raw_lock.lock);
-        mt_check_lockoff();
-        mt_lockdep_print_held_locks(owner);
-        mt_lockdep_print_held_locks(current);
 	}
 }
 

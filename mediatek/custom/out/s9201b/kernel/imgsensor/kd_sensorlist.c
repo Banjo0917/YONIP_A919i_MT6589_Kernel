@@ -316,9 +316,11 @@ int iWriteReg(u16 a_u2Addr , u32 a_u4Data , u32 a_u4Bytes , u16 i2cId)
 
     if(gI2CBusNum == SUPPORT_I2C_BUS_NUM1) {
         g_pstI2Cclient->addr = (i2cId >> 1);
+		g_pstI2Cclient->ext_flag = (g_pstI2Cclient->ext_flag)&(~I2C_DMA_FLAG);		
     }
     else {
         g_pstI2Cclient2->addr = (i2cId >> 1);
+		g_pstI2Cclient2->ext_flag = (g_pstI2Cclient2->ext_flag)&(~I2C_DMA_FLAG);
     }
 	spin_unlock(&kdsensor_drv_lock);
 
@@ -483,11 +485,20 @@ int iBurstWriteReg(u8 *pData, u32 bytes, u16 i2cId)
 * iMultiWriteReg
 ********************************************************************************/
 
-int iMultiWriteReg(u8 *pData, u16 lens)
+int iMultiWriteReg(u8 *pData, u16 lens, u16 i2cId)
 {
 	int ret = 0;
 
-	ret = i2c_master_send(g_pstI2Cclient, pData, lens);
+	if(gI2CBusNum == SUPPORT_I2C_BUS_NUM1) {
+		g_pstI2Cclient->addr =(i2cId >> 1);
+		g_pstI2Cclient->ext_flag = (g_pstI2Cclient->ext_flag)|(I2C_DMA_FLAG) ;
+	    ret = i2c_master_send(g_pstI2Cclient, pData, lens);
+	}
+	else {
+		g_pstI2Cclient2->addr = (i2cId >> 1) ;
+		g_pstI2Cclient2->ext_flag = (g_pstI2Cclient2->ext_flag)|(I2C_DMA_FLAG);		
+		ret = i2c_master_send(g_pstI2Cclient2, pData, lens);
+	}
 
 	if(ret != lens) {
 		PK_DBG("Error sent I2C ret = %d\n", ret);
@@ -510,9 +521,11 @@ int iWriteRegI2C(u8 *a_pSendData , u16 a_sizeSendData, u16 i2cId)
     spin_lock(&kdsensor_drv_lock);
     if(gI2CBusNum == SUPPORT_I2C_BUS_NUM1) {
         g_pstI2Cclient->addr = (i2cId >> 1);
+		g_pstI2Cclient->ext_flag = (g_pstI2Cclient->ext_flag)&(~I2C_DMA_FLAG);
     }
     else {
         g_pstI2Cclient2->addr = (i2cId >> 1);
+		g_pstI2Cclient2->ext_flag = (g_pstI2Cclient2->ext_flag)&(~I2C_DMA_FLAG);
     }
 	spin_unlock(&kdsensor_drv_lock);
     //
@@ -1282,6 +1295,7 @@ inline static int  adopt_CAMERA_HW_FeatureControl(void *pBuf)
     ACDK_KD_SENSOR_SYNC_STRUCT *pSensorSyncInfo = NULL;
     char kernelGroupNamePtr[128];
     unsigned char *pUserGroupNamePtr = NULL;
+	signed int ret = 0;
 
 
 
@@ -1343,6 +1357,7 @@ inline static int  adopt_CAMERA_HW_FeatureControl(void *pBuf)
         case SENSOR_FEATURE_SET_AE_WINDOW:
         case SENSOR_FEATURE_GET_EXIF_INFO:
 		case SENSOR_FEATURE_GET_DELAY_INFO:
+        case SENSOR_FEATURE_GET_AE_AWB_LOCK_INFO:
 		case SENSOR_FEATURE_SET_MAX_FRAME_RATE_BY_SCENARIO:
 		case SENSOR_FEATURE_GET_DEFAULT_FRAME_RATE_BY_SCENARIO:
             //
@@ -1435,7 +1450,7 @@ inline static int  adopt_CAMERA_HW_FeatureControl(void *pBuf)
 
     //
     if (g_pSensorFunc) {
-            g_pSensorFunc->SensorFeatureControl(pFeatureCtrl->InvokeCamera, pFeatureCtrl->FeatureId,(unsigned char*)pFeaturePara,(unsigned int*) &FeatureParaLen);
+            ret = g_pSensorFunc->SensorFeatureControl(pFeatureCtrl->InvokeCamera, pFeatureCtrl->FeatureId,(unsigned char*)pFeaturePara,(unsigned int*) &FeatureParaLen);
     }
     else {
         PK_DBG("[CAMERA_HW]ERROR:NULL g_pSensorFunc\n");
@@ -1460,6 +1475,7 @@ inline static int  adopt_CAMERA_HW_FeatureControl(void *pBuf)
         case SENSOR_FEATURE_GET_SHUTTER_GAIN_AWB_GAIN:
         case SENSOR_FEATURE_GET_EXIF_INFO:
 		case SENSOR_FEATURE_GET_DELAY_INFO:
+		case SENSOR_FEATURE_GET_AE_AWB_LOCK_INFO:
         case SENSOR_FEATURE_GET_RESOLUTION:
         case SENSOR_FEATURE_GET_PERIOD:
         case SENSOR_FEATURE_GET_PIXEL_CLOCK_FREQ:
@@ -1508,7 +1524,7 @@ inline static int  adopt_CAMERA_HW_FeatureControl(void *pBuf)
         PK_DBG("[CAMERA_HW][pFeatureParaLen] ioctl copy to user failed\n");
         return -EFAULT;
     }
-    return 0;
+    return ret;
 }	/* adopt_CAMERA_HW_FeatureControl() */
 
 
@@ -1835,6 +1851,15 @@ struct i2c_driver CAMERA_HW_i2c_driver = {
     .id_table = CAMERA_HW_i2c_id,
 };
 
+static ssize_t tinno_camera_info_show(struct device *dev, struct device_attribute *attr, char *buf)
+{
+    char camerainfo[256] ={ 0};
+
+    printk("camera infomation : %s\n", (char*)g_invokeSensorNameStr[0]);
+
+    return sprintf(buf, "%s", (char*)g_invokeSensorNameStr[0]);
+}
+static DEVICE_ATTR(camera_info, S_IRUGO, tinno_camera_info_show, NULL);
 
 /*******************************************************************************
 * i2c relative end
@@ -2023,6 +2048,9 @@ struct i2c_driver CAMERA_HW_i2c_driver2 = {
 ********************************************************************************/
 static int CAMERA_HW_probe(struct platform_device *pdev)
 {
+    if (device_create_file(&pdev->dev, &dev_attr_camera_info)){
+	PK_ERR("Register the attributes camera infomation is failed.");
+    }
     return i2c_add_driver(&CAMERA_HW_i2c_driver);
 }
 
@@ -2244,6 +2272,34 @@ static int  CAMERA_HW_Reg_Debug2( struct file *file, const char *buffer, unsigne
 }
 
 
+/*******************************************************************************
+  * CAMERA_HW_Reg_Debug3()
+  * Used for sensor register read/write by proc file
+********************************************************************************/
+static int  CAMERA_HW_Reg_Debug3( struct file *file, const char *buffer, unsigned long count,void *data)
+{
+    char regBuf[64] = {'\0'};
+    u32 u4CopyBufSize = (count < (sizeof(regBuf) - 1)) ? (count) : (sizeof(regBuf) - 1);
+    MSDK_SENSOR_REG_INFO_STRUCT sensorReg;
+    memset(&sensorReg, 0, sizeof(MSDK_SENSOR_REG_INFO_STRUCT));
+    if (copy_from_user(regBuf, buffer, u4CopyBufSize))
+        return -EFAULT;
+    if (sscanf(regBuf, "%x %x",  &sensorReg.RegAddr, &sensorReg.RegData) == 2) {
+        if (g_pSensorFunc != NULL) {
+            g_pSensorFunc->SensorFeatureControl(DUAL_CAMERA_SUB_SENSOR, SENSOR_FEATURE_SET_REGISTER, (MUINT8*)&sensorReg, (MUINT32*)sizeof(MSDK_SENSOR_REG_INFO_STRUCT));
+            g_pSensorFunc->SensorFeatureControl(DUAL_CAMERA_SUB_SENSOR, SENSOR_FEATURE_GET_REGISTER, (MUINT8*)&sensorReg, (MUINT32*)sizeof(MSDK_SENSOR_REG_INFO_STRUCT));
+            PK_DBG("write addr = 0x%08x, data = 0x%08x\n", sensorReg.RegAddr, sensorReg.RegData);
+        }
+    }
+    else if (sscanf(regBuf, "%x", &sensorReg.RegAddr) == 1) {
+        if (g_pSensorFunc != NULL) {
+            g_pSensorFunc->SensorFeatureControl(DUAL_CAMERA_SUB_SENSOR, SENSOR_FEATURE_GET_REGISTER, (MUINT8*)&sensorReg, (MUINT32*)sizeof(MSDK_SENSOR_REG_INFO_STRUCT));
+            PK_DBG("read addr = 0x%08x, data = 0x%08x\n", sensorReg.RegAddr, sensorReg.RegData);
+        }
+    }
+    return count;
+}
+
 /*=======================================================================
   * platform driver
   *=======================================================================*/
@@ -2298,6 +2354,17 @@ static int __init CAMERA_HW_i2C_init(void)
     else {
         PK_ERR("add /proc/driver/camsensor2 entry fail \n");
     }
+
+    //Register proc file for sub sensor register debug
+    prEntry = create_proc_entry("driver/camsensor3", 0, NULL);
+    if (prEntry) {
+        prEntry->read_proc = CAMERA_HW_DumpReg_To_Proc;
+        prEntry->write_proc = CAMERA_HW_Reg_Debug3;
+    }
+    else {
+        PK_ERR("add /proc/driver/camsensor entry fail \n");
+    }
+
     atomic_set(&g_CamHWOpend, 0); 
     atomic_set(&g_CamHWOpend2, 0);
     atomic_set(&g_CamDrvOpenCnt, 0);

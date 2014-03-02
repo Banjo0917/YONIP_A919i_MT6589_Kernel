@@ -245,29 +245,87 @@ int smi_bwc_config( MTK_SMI_BWC_CONFIG* p_conf )
     /*Bandwidth Limiter*/
     switch( p_conf->scenario )
     {
-    case SMI_BWC_SCEN_VP1066:
-        M4U_WriteReg32( 0x0, REG_SMI_L1ARB0, 0x0   );   //larb0 venc:default
-        M4U_WriteReg32( 0x0, REG_SMI_L1ARB1, 0x9b1 );   //larb1 vdec
-        M4U_WriteReg32( 0x0, REG_SMI_L1ARB2, 0xaa8 );   //larb2 disp
-        M4U_WriteReg32( 0x0, REG_SMI_L1ARB3, 0x909 );   //larb3 cdp
-        M4U_WriteReg32( 0x0, REG_SMI_L1ARB4, 0x0   );   //larb4 isp:default
-        break;
-        
-    case SMI_BWC_SCEN_VR1066:
+    case SMI_BWC_SCEN_VRCAMERA1066:
+        SMIMSG( "[SMI_PROFILE] : %s\n", "SMI_BWC_SCEN_VRCAMERA1066");
         M4U_WriteReg32( 0x0, REG_SMI_L1ARB0, 0xb92 );   //larb0 venc
         M4U_WriteReg32( 0x0, REG_SMI_L1ARB1, 0x0   );   //larb1 vdec:default
         M4U_WriteReg32( 0x0, REG_SMI_L1ARB2, 0xa4b );   //larb2 disp
         M4U_WriteReg32( 0x0, REG_SMI_L1ARB3, 0x96d );   //larb3 cdp
         M4U_WriteReg32( 0x0, REG_SMI_L1ARB4, 0x9a7 );   //larb4 isp
+
+        #if 1 /*Jackie custom*/
+        M4U_WriteReg32( 0x0, REG_SMI_BUS_SEL, 0x140 );
+        //M4U_WriteReg32( 0x0, REG_SMI_READ_FIFO_TH, 0x1560 );
+        M4U_WriteReg32( LARB0_BASE, 0x14, 0x400420 );
+        M4U_WriteReg32( LARB1_BASE, 0x14, 0x400420 );
+//        M4U_WriteReg32( LARB2_BASE, 0x14, 0x400420 );
+        M4U_WriteReg32( LARB3_BASE, 0x14, 0x400420 );
+        #endif
+
+//        M4U_WriteReg32( 0x0 , REG_SMI_L1ARB6 ,  0);//
+        break;
+    
+    case SMI_BWC_SCEN_VR1066:
+        SMIMSG( "[SMI_PROFILE] : %s\n", "SMI_BWC_SCEN_VR1066");
+        M4U_WriteReg32( 0x0, REG_SMI_L1ARB0, 0xb92 );   //larb0 venc
+        M4U_WriteReg32( 0x0, REG_SMI_L1ARB1, 0x0   );   //larb1 vdec:default
+        M4U_WriteReg32( 0x0, REG_SMI_L1ARB2, 0xa4b );   //larb2 disp
+        M4U_WriteReg32( 0x0, REG_SMI_L1ARB3, 0x96d );   //larb3 cdp
+        M4U_WriteReg32( 0x0, REG_SMI_L1ARB4, 0x9a7 );   //larb4 isp
+
+        #if 1/*Jackie custom*/
+        M4U_WriteReg32( 0x0, REG_SMI_BUS_SEL, 0x140 );
+        //M4U_WriteReg32( 0x0, REG_SMI_READ_FIFO_TH, 0x1560 );
+        M4U_WriteReg32( LARB0_BASE, 0x14, 0x400420 );
+        M4U_WriteReg32( LARB1_BASE, 0x14, 0x400420 );
+//        M4U_WriteReg32( LARB2_BASE, 0x14, 0x400420 );
+        M4U_WriteReg32( LARB3_BASE, 0x14, 0x400420 );
+        #endif
+
+//        M4U_WriteReg32( 0x0 , REG_SMI_L1ARB6 ,  0x1c22);//
+        break;
+
+        
+    case SMI_BWC_SCEN_VP1066:
+        SMIMSG( "[SMI_PROFILE] : %s\n", "SMI_BWC_SCEN_VP1066");
+        M4U_WriteReg32( 0x0, REG_SMI_L1ARB0, 0x0   );   //larb0 venc:default
+        M4U_WriteReg32( 0x0, REG_SMI_L1ARB1, 0x9b1 );   //larb1 vdec
+        M4U_WriteReg32( 0x0, REG_SMI_L1ARB2, 0xaa8 );   //larb2 disp
+        M4U_WriteReg32( 0x0, REG_SMI_L1ARB3, 0x909 );   //larb3 cdp
+        M4U_WriteReg32( 0x0, REG_SMI_L1ARB4, 0x0   );   //larb4 isp:default
+
+        #if 1/*Jackie custom*/
+        M4U_WriteReg32( 0x0, REG_SMI_BUS_SEL, 0x140 );
+        //M4U_WriteReg32( 0x0, REG_SMI_READ_FIFO_TH, 0xD60 );
+        M4U_WriteReg32( LARB0_BASE, 0x18, 0x420 );       
+        M4U_WriteReg32( LARB1_BASE, 0x18, 0x420 );       
+//        M4U_WriteReg32( LARB2_BASE, 0x18, 0x420 );       
+        M4U_WriteReg32( LARB3_BASE, 0x18, 0x420 );    
+        #endif
+
+//        M4U_WriteReg32( 0x0 , REG_SMI_L1ARB6 ,  0);//
         break;
         
+        
     case SMI_BWC_SCEN_NORMAL:
+        SMIMSG( "[SMI_PROFILE] : %s\n", "SMI_BWC_SCEN_NORMAL");
     default:
         M4U_WriteReg32( 0x0, REG_SMI_L1ARB0, 0x0   );   //larb0 venc:default
         M4U_WriteReg32( 0x0, REG_SMI_L1ARB1, 0x0   );   //larb1 vdec:default
         M4U_WriteReg32( 0x0, REG_SMI_L1ARB2, 0x0   );   //larb2 disp:default
         M4U_WriteReg32( 0x0, REG_SMI_L1ARB3, 0x0   );   //larb3 cdp:default
         M4U_WriteReg32( 0x0, REG_SMI_L1ARB4, 0x0   );   //larb4 isp:default
+
+        #if 1/*Jackie custom*/
+        M4U_WriteReg32( 0x0, REG_SMI_BUS_SEL, 0x140 );
+        //M4U_WriteReg32( 0x0, REG_SMI_READ_FIFO_TH, 0xD60 );
+        M4U_WriteReg32( LARB0_BASE, 0x18, 0x420 );       
+        M4U_WriteReg32( LARB1_BASE, 0x18, 0x420 );       
+//        M4U_WriteReg32( LARB2_BASE, 0x18, 0x420 );       
+        M4U_WriteReg32( LARB3_BASE, 0x18, 0x420 );    
+        #endif
+
+//        M4U_WriteReg32( 0x0 , REG_SMI_L1ARB6 ,  0);//
         break;
     }
 
@@ -289,8 +347,9 @@ int smi_bwc_config( MTK_SMI_BWC_CONFIG* p_conf )
     #if 1 /*dump message*/
     {
         #define _SMI_BC_DUMP_REG( _base_, _off_ ) \
-            SMIMSG( "[SMI_REG] %s + %s = 0x%08X\n", #_base_, #_off_, M4U_ReadReg32( _base_, _off_ ) );
+            SMIMSG( "\t[SMI_REG] %s + %s = 0x%08X\n", #_base_, #_off_, M4U_ReadReg32( _base_, _off_ ) );
 
+        SMIMSG( "[SMI_REG] : %s\n", "<Bandwidth Limiter>");
         /*Bandwidth Limiter*/
         _SMI_BC_DUMP_REG( 0x0, REG_SMI_L1ARB0 );   //larb0 venc
         _SMI_BC_DUMP_REG( 0x0, REG_SMI_L1ARB1 );   //larb1 vdec
@@ -298,16 +357,19 @@ int smi_bwc_config( MTK_SMI_BWC_CONFIG* p_conf )
         _SMI_BC_DUMP_REG( 0x0, REG_SMI_L1ARB3 );   //larb3 cdp
         _SMI_BC_DUMP_REG( 0x0, REG_SMI_L1ARB4 );   //larb4 isp
 
-        
+        SMIMSG( "[SMI_REG] : %s\n", "<Reduce Command Buffer- Common>");
         /*SMI COMMON reduce command buffer*/
         _SMI_BC_DUMP_REG( 0x0, REG_SMI_READ_FIFO_TH );
-        
+
+        SMIMSG( "[SMI_REG] : %s\n", "<Reduce Command Buffer - LARB>");
         /*SMI LARB reduce command buffer (RO register)*/
         _SMI_BC_DUMP_REG( LARB0_BASE, 0x10 );
         _SMI_BC_DUMP_REG( LARB1_BASE, 0x10 );
         _SMI_BC_DUMP_REG( LARB2_BASE, 0x10 );
         _SMI_BC_DUMP_REG( LARB3_BASE, 0x10 );
         _SMI_BC_DUMP_REG( LARB4_BASE, 0x10 );
+
+        
     }
     #endif
 
@@ -345,7 +407,22 @@ int smi_common_init(void)
         }  
     }
 
+    /** make sure all larb power is on before we register callback func.
+        then, when larb power is first off, default register value will be backed up.
+    **/     
+
+    for(i=0; i<SMI_LARB_NR; i++)
+    {
+        larb_clock_on(i);
+    }
+
     register_larb_monitor(&larb_monitor_handler);
+    
+    for(i=0; i<SMI_LARB_NR; i++)
+    {
+        larb_clock_off(i);
+    }
+    
     return 0;
 }
 
@@ -490,6 +567,29 @@ static int smi_probe(struct platform_device *pdev)
     MTK_SPC_Init(&(pdev->dev));
 
     SMI_DBG_Init();
+
+    //init mau to monitor mva 0~0x2ffff & 0x40000000~0xffffffff
+    {
+        MTK_MAU_CONFIG cfg;
+        int i;
+        for(i=0; i<SMI_LARB_NR; i++)
+        {
+            cfg.larb = i;
+            cfg.entry = 0;
+            cfg.port_msk = 0xffffffff;
+            cfg.virt = 1;
+            cfg.monitor_read = 1;
+            cfg.monitor_write = 1;
+            cfg.start = 0;
+            cfg.end = 0x2ffff;
+            mau_config(&cfg);
+
+            cfg.entry = 1;
+            cfg.start = 0x40000000;
+            cfg.end = 0xffffffff;
+            mau_config(&cfg);
+        }
+    }
     
     return 0;
 }

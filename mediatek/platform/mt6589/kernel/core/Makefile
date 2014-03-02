@@ -41,6 +41,7 @@ obj-y += mtk_ccci_helper.o
 obj-$(CONFIG_SMP) += fiq_smp_call.o
 obj-y += mssv.o
 obj-y += mt_dsizer.o
+obj-$(CONFIG_MTK_MEMCFG) += mtk_memcfg.o
 
 ifneq ($(CONFIG_MTK_CCCI_DEVICES),y)
 ccflags-y  += -D__USING_DUMMY_CCCI_API__
@@ -51,8 +52,10 @@ ifeq ($(CONFIG_THERMAL),y)
     obj-y += mtk_ts_pmic.o
     obj-y += mtk_ts_pa.o
 	
-    ifeq ($(MODEM_UMTS_TDD128_MODE),yes)
-	    obj-y += mtk_ts_tdpa.o
+    ifeq ($(MTK_ENABLE_MD2),yes)
+    	ifeq ($(MTK_MD2_SUPPORT),modem2_3g)
+	    	obj-y += mtk_ts_tdpa.o
+	    endif
     endif
 	
     ifeq ($(CONFIG_POWER_EXT), y)
@@ -60,10 +63,10 @@ ifeq ($(CONFIG_THERMAL),y)
         ifeq ($(CONFIG_MTK_SMART_BATTERY), y)
             # Always align the Makefile in mediatek/platform/mt6589/kernel/drivers/power/
             ifeq ($(MTK_NCP1851_SUPPORT),yes)
-                # BCCT not supported
+                obj-y += mtk_ts_battery.o
             else
                 ifeq ($(MTK_BQ24196_SUPPORT),yes) 
-                    # BCCT not supported
+                    obj-y += mtk_ts_battery.o
                 else
                     # FAN5405 or PMIC6320 pulse charging
                     obj-y += mtk_ts_battery.o
@@ -71,9 +74,22 @@ ifeq ($(CONFIG_THERMAL),y)
             endif
         endif
     endif
+    ifeq ($(MTK_PCB_BATTERY_SENSOR), yes)
+        obj-y += mtk_ts_battery2.o
+    endif
 endif
 
 obj-y += mt_ptp.o
 
+# Hibernation
+AFLAGS_swsusp.o	:= -DTEXT_OFFSET=$(TEXT_OFFSET)
+obj-$(CONFIG_HIBERNATION)	+= cpu_hibernate.o swsusp.o
+obj-$(CONFIG_MTK_HIBERNATION) += mtk_hibernate_dpm.o mtk_hibernate_core.o
+
+ifneq ($(MTK_TABLET_HARDWARE), )
+ccflags-y += -DMTK_TABLET_PLATFORM=\"$(shell echo $(MTK_TABLET_HARDWARE) | tr a-z A-Z )\"
+endif
+
 KBUILD_AFLAGS	:=$(KBUILD_AFLAGS:-msoft-float=-Wa,-mfpu=neon)
+
 

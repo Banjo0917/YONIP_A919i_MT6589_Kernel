@@ -185,11 +185,13 @@ int OVLLayerConfig(unsigned int layer,
                    unsigned int source, 
                    unsigned int fmt, 
                    unsigned int addr, 
-                   unsigned int x,     // ROI x offset
-                   unsigned int y,     // ROI y offset
-                   unsigned int w,     // ROT width
-                   unsigned int h,     // ROI height
-                   unsigned int pitch,
+                   unsigned int src_x,     // ROI x offset
+                   unsigned int src_y,     // ROI y offset
+                   unsigned int src_pitch,
+                   unsigned int dst_x,     // ROI x offset
+                   unsigned int dst_y,     // ROI y offset
+                   unsigned int dst_w,     // ROT width
+                   unsigned int dst_h,     // ROI height
                    bool keyEn,
                    unsigned int key,   // color key
                    bool aen,       // alpha enable
@@ -198,13 +200,28 @@ int OVLLayerConfig(unsigned int layer,
     unsigned bpp;
     unsigned input_color_space;
     unsigned mode = 0xdeaddead;                     // yuv to rgb conversion required
+    unsigned int rgb_swap = 0;
 
-    ASSERT((w <= OVL_MAX_WIDTH) && (h <= OVL_MAX_HEIGHT));
+    ASSERT((dst_w <= OVL_MAX_WIDTH) && (dst_h <= OVL_MAX_HEIGHT));
+
+    if(fmt==OVL_INPUT_FORMAT_ABGR8888  ||
+       fmt==OVL_INPUT_FORMAT_PABGR8888 ||
+       fmt==OVL_INPUT_FORMAT_xBGR8888 ||
+       fmt==OVL_INPUT_FORMAT_BGR888    ||
+       fmt==OVL_INPUT_FORMAT_BGR565 )
+    {
+        rgb_swap = 1;
+        fmt -= OVL_COLOR_BASE;
+    }
+    else
+    {
+        rgb_swap = 0;
+    }
     
     switch (fmt) {
         case OVL_INPUT_FORMAT_ARGB8888:
         case OVL_INPUT_FORMAT_PARGB8888:
-        case OVL_INPUT_FORMAT_xARGB8888:
+        case OVL_INPUT_FORMAT_xRGB8888:
             bpp = 4;
             break;
         case OVL_INPUT_FORMAT_RGB888:
@@ -237,7 +254,7 @@ int OVLLayerConfig(unsigned int layer,
     switch (fmt) {
         case OVL_INPUT_FORMAT_ARGB8888:
         case OVL_INPUT_FORMAT_PARGB8888:
-        case OVL_INPUT_FORMAT_xARGB8888:
+        case OVL_INPUT_FORMAT_xRGB8888:
         case OVL_INPUT_FORMAT_RGB888:
         case OVL_INPUT_FORMAT_RGB565:
             input_color_space = OVL_COLOR_SPACE_RGB;
@@ -269,14 +286,15 @@ int OVLLayerConfig(unsigned int layer,
             DISP_REG_SET_FIELD(L0_CON_FLD_ALPHA_EN, DISP_REG_OVL_L0_CON, aen);
             DISP_REG_SET_FIELD(L0_CON_FLD_ALPHA, DISP_REG_OVL_L0_CON, alpha);
             DISP_REG_SET_FIELD(L0_CON_FLD_SRCKEY_EN, DISP_REG_OVL_L0_CON, keyEn);
+            DISP_REG_SET_FIELD(L0_CON_FLD_RGB_SWAP, DISP_REG_OVL_L0_CON, rgb_swap);
 			
-            DISP_REG_SET(DISP_REG_OVL_L0_SRC_SIZE, h<<16 | w);
+            DISP_REG_SET(DISP_REG_OVL_L0_SRC_SIZE, dst_h<<16 | dst_w);
 
-            DISP_REG_SET(DISP_REG_OVL_L0_OFFSET, y<<16 | x);
+            DISP_REG_SET(DISP_REG_OVL_L0_OFFSET, dst_y<<16 | dst_x);
 
-            DISP_REG_SET(DISP_REG_OVL_L0_ADDR, addr);
-    
-            DISP_REG_SET_FIELD(L0_PITCH_FLD_L0_SRC_PITCH, DISP_REG_OVL_L0_PITCH, pitch);
+            DISP_REG_SET(DISP_REG_OVL_L0_ADDR, addr+src_x*bpp+src_y*src_pitch);
+
+            DISP_REG_SET_FIELD(L0_PITCH_FLD_L0_SRC_PITCH, DISP_REG_OVL_L0_PITCH, src_pitch);
 
             DISP_REG_SET(DISP_REG_OVL_L0_SRCKEY, key);
 
@@ -313,14 +331,15 @@ int OVLLayerConfig(unsigned int layer,
             DISP_REG_SET_FIELD(L1_CON_FLD_ALPHA_EN, DISP_REG_OVL_L1_CON, aen);
             DISP_REG_SET_FIELD(L1_CON_FLD_ALPHA, DISP_REG_OVL_L1_CON, alpha);
             DISP_REG_SET_FIELD(L1_CON_FLD_SRCKEY_EN, DISP_REG_OVL_L1_CON, keyEn);
+            DISP_REG_SET_FIELD(L1_CON_FLD_RGB_SWAP, DISP_REG_OVL_L1_CON, rgb_swap);
 
-            DISP_REG_SET(DISP_REG_OVL_L1_SRC_SIZE, h<<16 | w);
+            DISP_REG_SET(DISP_REG_OVL_L1_SRC_SIZE, dst_h<<16 | dst_w);
 
-            DISP_REG_SET(DISP_REG_OVL_L1_OFFSET, y<<16 | x);
+            DISP_REG_SET(DISP_REG_OVL_L1_OFFSET, dst_y<<16 | dst_x);
 
-            DISP_REG_SET(DISP_REG_OVL_L1_ADDR, addr);
+            DISP_REG_SET(DISP_REG_OVL_L1_ADDR, addr+src_x*bpp+src_y*src_pitch);
     
-            DISP_REG_SET_FIELD(L1_PITCH_FLD_L1_SRC_PITCH, DISP_REG_OVL_L1_PITCH, pitch);
+            DISP_REG_SET_FIELD(L1_PITCH_FLD_L1_SRC_PITCH, DISP_REG_OVL_L1_PITCH, src_pitch);
 
             DISP_REG_SET(DISP_REG_OVL_L1_SRCKEY, key);
 
@@ -356,14 +375,15 @@ int OVLLayerConfig(unsigned int layer,
             DISP_REG_SET_FIELD(L2_CON_FLD_ALPHA_EN, DISP_REG_OVL_L2_CON, aen);
             DISP_REG_SET_FIELD(L2_CON_FLD_ALPHA, DISP_REG_OVL_L2_CON, alpha);
             DISP_REG_SET_FIELD(L2_CON_FLD_SRCKEY_EN, DISP_REG_OVL_L2_CON, keyEn);
+            DISP_REG_SET_FIELD(L2_CON_FLD_RGB_SWAP, DISP_REG_OVL_L2_CON, rgb_swap);
 
-            DISP_REG_SET(DISP_REG_OVL_L2_SRC_SIZE, h<<16 | w);
+            DISP_REG_SET(DISP_REG_OVL_L2_SRC_SIZE, dst_h<<16 | dst_w);
 
-            DISP_REG_SET(DISP_REG_OVL_L2_OFFSET, y<<16 | x);
+            DISP_REG_SET(DISP_REG_OVL_L2_OFFSET, dst_y<<16 | dst_x);
 
-            DISP_REG_SET(DISP_REG_OVL_L2_ADDR, addr);
+            DISP_REG_SET(DISP_REG_OVL_L2_ADDR, addr+src_x*bpp+src_y*src_pitch);
     
-            DISP_REG_SET_FIELD(L2_PITCH_FLD_L2_SRC_PITCH, DISP_REG_OVL_L2_PITCH, pitch);
+            DISP_REG_SET_FIELD(L2_PITCH_FLD_L2_SRC_PITCH, DISP_REG_OVL_L2_PITCH, src_pitch);
 
             DISP_REG_SET(DISP_REG_OVL_L2_SRCKEY, key);
 
@@ -400,14 +420,15 @@ int OVLLayerConfig(unsigned int layer,
             DISP_REG_SET_FIELD(L3_CON_FLD_ALPHA_EN, DISP_REG_OVL_L3_CON, aen);
             DISP_REG_SET_FIELD(L3_CON_FLD_ALPHA, DISP_REG_OVL_L3_CON, alpha);
             DISP_REG_SET_FIELD(L3_CON_FLD_SRCKEY_EN, DISP_REG_OVL_L3_CON, keyEn);
+            DISP_REG_SET_FIELD(L3_CON_FLD_RGB_SWAP, DISP_REG_OVL_L3_CON, rgb_swap);
 
-            DISP_REG_SET(DISP_REG_OVL_L3_SRC_SIZE, h<<16 | w);
+            DISP_REG_SET(DISP_REG_OVL_L3_SRC_SIZE, dst_h<<16 | dst_w);
 
-            DISP_REG_SET(DISP_REG_OVL_L3_OFFSET, y<<16 | x);
+            DISP_REG_SET(DISP_REG_OVL_L3_OFFSET, dst_y<<16 | dst_x);
 
-            DISP_REG_SET(DISP_REG_OVL_L3_ADDR, addr);
+            DISP_REG_SET(DISP_REG_OVL_L3_ADDR, addr+src_x*bpp+src_y*src_pitch);
     
-            DISP_REG_SET_FIELD(L3_PITCH_FLD_L3_SRC_PITCH, DISP_REG_OVL_L3_PITCH, pitch);
+            DISP_REG_SET_FIELD(L3_PITCH_FLD_L3_SRC_PITCH, DISP_REG_OVL_L3_PITCH, src_pitch);
 
             DISP_REG_SET(DISP_REG_OVL_L3_SRCKEY, key);
 

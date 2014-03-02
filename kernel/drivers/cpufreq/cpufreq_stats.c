@@ -198,7 +198,7 @@ static int cpufreq_stats_create_table(struct cpufreq_policy *policy,
 	unsigned int alloc_size;
 	unsigned int cpu = policy->cpu;
 	if (per_cpu(cpufreq_stats_table, cpu))
-		return -EBUSY;
+		return 0; //-EBUSY;
 	stat = kzalloc(sizeof(struct cpufreq_stats), GFP_KERNEL);
 	if ((stat) == NULL)
 		return -ENOMEM;
@@ -413,7 +413,7 @@ static void __exit cpufreq_stats_exit(void)
 	unregister_hotcpu_notifier(&cpufreq_stat_cpu_notifier);
 	for_each_online_cpu(cpu) {
 		cpufreq_stats_free_table(cpu);
-		cpufreq_stats_free_sysfs(cpu);
+//		cpufreq_stats_free_sysfs(cpu);
 	}
 }
 

@@ -1,3 +1,4 @@
+
 #ifndef _CAMERA_CUSTOM_NVRAM_H_
 #define _CAMERA_CUSTOM_NVRAM_H_
 
@@ -16,9 +17,6 @@ using namespace NSIspTuning;
 #define NVRAM_CAMERA_LENS_FILE_VERSION          1
 #define NVRAM_CAMERA_STROBE_FILE_VERSION          1
 
-/*******************************************************************************
-* shading
-********************************************************************************/
 #define SHADING_SUPPORT_CT_NUM          (4)
 #define SHADING_SUPPORT_OP_NUM          (6)
 #define SHADING_SUPPORT_CH_NUM          (4)
@@ -93,9 +91,6 @@ typedef struct
    	ISP_SHADING_STRUCT  Shading;
 } NVRAM_CAMERA_SHADING_STRUCT, *PNVRAM_CAMERA_SHADING_STRUCT;
 
-/*******************************************************************************
-* 3A
-********************************************************************************/
 
 //____AE NVRAM____
 
@@ -603,9 +598,6 @@ typedef struct
 
 
 
-/*******************************************************************************
-* ISP NVRAM parameter
-********************************************************************************/
 #define NVRAM_OBC_TBL_NUM               (12)
 #define NVRAM_BPC_TBL_NUM               (9)
 #define NVRAM_NR1_TBL_NUM               (9)
@@ -817,9 +809,6 @@ private:    ////    Data Members.
     ISP_NVRAM_REG_INDEX_STRUCT&     m_rIdx;
 };
 
-/*******************************************************************************
-*
-********************************************************************************/
 
 typedef struct
 {
@@ -830,9 +819,6 @@ typedef struct
 } NVRAM_LENS_PARA_STRUCT, *PNVRAM_LENS_PARA_STRUCT;
 
 
-/*******************************************************************************
-*
-********************************************************************************/
 #define CAL_GET_DEFECT_FLAG     0x01
 #define CAL_GET_3ANVRAM_FLAG    0x02
 #define CAL_GET_SHADING_FLAG    0x04
@@ -850,9 +836,6 @@ typedef struct
     AWB_GAIN_T 						rCalGain;
 } GET_SENSOR_CALIBRATION_DATA_STRUCT, *PGET_SENSOR_CALIBRATION_DATA_STRUCT;
 
-/*******************************************************************************
-*
-********************************************************************************/
 typedef enum
 {
     CAMERA_NVRAM_DATA_ISP = 0,

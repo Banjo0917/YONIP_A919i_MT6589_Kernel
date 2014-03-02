@@ -1577,7 +1577,7 @@ static int addrconf_ifid_gre(u8 *eui, struct net_device *dev)
 static int ipv6_generate_eui64(u8 *eui, struct net_device *dev)
 {
   
-    if (strncmp(dev->name, "ccmni", 2) == 0)
+    if (strncmp(dev->name, "ccmni", 5) == 0)
         return -1;
  		
 	switch (dev->type) {

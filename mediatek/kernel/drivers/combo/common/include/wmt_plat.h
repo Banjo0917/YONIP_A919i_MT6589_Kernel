@@ -24,6 +24,20 @@
 ********************************************************************************
 */
 
+
+
+
+#if (CONFIG_ARCH_MT6589)
+    #if defined(MTK_MERGE_INTERFACE_SUPPORT) && defined(MT6628)
+        #define MTK_WCN_CMB_MERGE_INTERFACE_SUPPORT 1
+	#else
+	    #define MTK_WCN_CMB_MERGE_INTERFACE_SUPPORT 0
+    #endif
+#else
+    #define MTK_WCN_CMB_MERGE_INTERFACE_SUPPORT 0
+#endif
+
+
 /*******************************************************************************
 *                              C O N S T A N T S
 ********************************************************************************
@@ -102,6 +116,9 @@ typedef enum _ENUM_WL_OP_{
     WL_OP_MAX
 } ENUM_WL_OP, *P_ENUM_WL_OP;
 
+typedef VOID (*irq_cb)(VOID);
+typedef INT32 (*device_audio_if_cb) (CMB_STUB_AIF_X aif, MTK_WCN_BOOL share);
+
 
 /*******************************************************************************
 *                    E X T E R N A L   R E F E R E N C E S
@@ -158,12 +175,6 @@ wmt_plat_eirq_ctrl (
     );
 
 INT32
-wmt_plat_audio_ctrl (
-    CMB_STUB_AIF_X state,
-    CMB_STUB_AIF_CTRL ctrl
-    );
-
-INT32
 wmt_plat_sdio_ctrl (
     UINT32 sdioPortNum,
     ENUM_FUNC_STATE on
@@ -174,6 +185,23 @@ INT32
 wmt_plat_wake_lock_ctrl(
     ENUM_WL_OP opId
     );
+
+VOID wmt_lib_plat_irq_cb_reg (irq_cb bgf_irq_cb);
+
+INT32
+wmt_plat_audio_ctrl (
+    CMB_STUB_AIF_X state,
+    CMB_STUB_AIF_CTRL ctrl
+    );
+
+VOID wmt_lib_plat_aif_cb_reg (device_audio_if_cb aif_ctrl_cb);
+
+INT32
+wmt_plat_merge_if_flag_ctrl (UINT32 enagle);
+
+INT32
+wmt_plat_merge_if_flag_get (VOID);
+
 
 /*******************************************************************************
 *                              F U N C T I O N S

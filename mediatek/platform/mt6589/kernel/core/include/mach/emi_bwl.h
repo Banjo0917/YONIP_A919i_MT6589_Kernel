@@ -12,6 +12,7 @@
 #define EMI_CONE    (EMI_BASE + 0x0020)
 #define EMI_CONG    (EMI_BASE + 0x0030)
 #define EMI_CONH    (EMI_BASE + 0x0038)
+#define EMI_CONM    (EMI_BASE + 0x0060)
 #define EMI_TESTB    (EMI_BASE + 0x0E8)
 #define EMI_TESTD    (EMI_BASE + 0x0F8)
 #define EMI_ARBA    (EMI_BASE + 0x0100)

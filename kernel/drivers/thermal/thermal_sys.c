@@ -1019,6 +1019,11 @@ void thermal_zone_device_update(struct thermal_zone_device *tz)
 	struct thermal_cooling_device_instance *instance;
 	struct thermal_cooling_device *cdev;
 
+#ifdef CONFIG_DEBUG_MUTEXES
+	if (NULL == tz->lock.magic)
+	    return;
+#endif
+
 	mutex_lock(&tz->lock);
 
 	if (tz->ops->get_temp(tz, &temp)) {
@@ -1249,12 +1254,10 @@ void thermal_zone_device_unregister(struct thermal_zone_device *tz)
 	list_del(&tz->node);
 	if (tz->ops->unbind)
 		list_for_each_entry(cdev, &thermal_cdev_list, node)
-        {
-            cdev->ops->set_cur_state(cdev, 0);
 		    tz->ops->unbind(tz, cdev);
-        }
 	mutex_unlock(&thermal_list_lock);
 
+    mutex_lock(&tz->lock); // avoid destroy a locked mutex
 	thermal_zone_device_set_polling(tz, 0);
 
 	if (tz->type[0])
@@ -1272,6 +1275,7 @@ void thermal_zone_device_unregister(struct thermal_zone_device *tz)
 	thermal_remove_hwmon_sysfs(tz);
 	release_idr(&thermal_tz_idr, &thermal_idr_lock, tz->id);
 	idr_destroy(&tz->idr);
+	mutex_unlock(&tz->lock); // avoid destroy a locked mutex
 	mutex_destroy(&tz->lock);
 	device_unregister(&tz->device);
 	return;

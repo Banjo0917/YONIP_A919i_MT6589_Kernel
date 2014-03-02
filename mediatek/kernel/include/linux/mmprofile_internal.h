@@ -41,6 +41,7 @@ typedef struct
     unsigned int new_buffer_size_record;
     unsigned int new_meta_buffer_size;
     unsigned int selected_buffer;
+    unsigned int max_event_count;
     unsigned int event_state[MMProfileMaxEventCount];
 } MMProfile_Global_t;
 

@@ -1,7 +1,7 @@
 #include <ccci.h>
 #include <mach/emi_mpu.h>
 #include <linux/delay.h>
-//#include <mach/sec_osal.h>
+#include <mach/sec_osal.h>
 #include <linux/sched.h>
 #include <linux/kernel.h>
 #include <linux/module.h>
@@ -19,7 +19,6 @@
 #include <ccci_rpc.h>
 #include <ccci_common.h>
 #include <linux/fs.h>
-#include <mach/mt_pm_ldo.h>
 #include <mach/mtk_rtc.h>
 #include <mach/bus_fabric.h>
 
@@ -92,9 +91,10 @@ static atomic_t			wdt_irq_en_count[MAX_MD_NUM];
 
 /* -------------power on/off md function----------------*/
 static DEFINE_SPINLOCK(md1_power_change_lock);
-static int             md1_power_on_cnt;
+static int		md1_power_on_cnt;
 static DEFINE_SPINLOCK(md2_power_change_lock);
-static int             md2_power_on_cnt;
+static int		md2_power_on_cnt;
+static unsigned int	md2_hw_mode = 0;
 
 /*--------------MD WDT recover ----------------------*/
 static DEFINE_SPINLOCK(md1_wdt_mon_lock);
@@ -341,9 +341,13 @@ EXPORT_SYMBOL(send_battery_info);
 /*                                                                                                                                   */
 /*********************************************************************************/
 #ifdef ENABLE_MD_IMG_SECURITY_FEATURE
+typedef enum{
+    SECRO_MD1 = 0,
+    SECRO_MD2,    
+} SECRO_USER;
 extern unsigned char sec_secro_en(void);
-extern unsigned int sec_secro_md_len(void);
-extern unsigned int sec_secro_md_get_data(unsigned char *buf, unsigned int offset, unsigned int len);
+extern unsigned int sec_secro_md_len(SECRO_USER user);
+extern unsigned int sec_secro_md_get_data(SECRO_USER user, unsigned char *buf, unsigned int offset, unsigned int len);
 extern unsigned int sec_secro_blk_sz(void);
 #endif
 
@@ -402,9 +406,9 @@ void ccci_rpc_work_helper(int md_id, int *p_pkt_num, RPC_PKT pkt[], RPC_BUF *p_r
 			unsigned char log_buf[128];
 
 			if(Direction == TRUE)
-				CCCI_MSG_INF(md_id, "rpc", "SEJ_S: EnCrypt_src:\n");
+				CCCI_MSG_INF(md_id, "rpc", "HACC_S: EnCrypt_src:\n");
 			else
-				CCCI_MSG_INF(md_id, "rpc", "SEJ_S: DeCrypt_src:\n");
+				CCCI_MSG_INF(md_id, "rpc", "HACC_S: DeCrypt_src:\n");
 			for(i = 0; i < ContentLen; i++)
 			{
 				if(i % 16 == 0){
@@ -412,7 +416,7 @@ void ccci_rpc_work_helper(int md_id, int *p_pkt_num, RPC_PKT pkt[], RPC_BUF *p_r
 						CCCI_RPC_MSG(md_id, "%s\n", log_buf);
 					}
 					curr = 0;
-					curr += snprintf(log_buf, sizeof(log_buf)-curr, "SEJ_S: ");
+					curr += snprintf(log_buf, sizeof(log_buf)-curr, "HACC_S: ");
 				}
 				//CCCI_MSG("0x%02X ", *(unsigned char*)(ContentAddr+i));
 				curr += snprintf(&log_buf[curr], sizeof(log_buf)-curr, "0x%02X ", *(unsigned char*)(ContentAddr+i));					
@@ -437,7 +441,7 @@ void ccci_rpc_work_helper(int md_id, int *p_pkt_num, RPC_PKT pkt[], RPC_BUF *p_r
 				break;
 			}
 
-			#ifdef ENABLE_MD_IMG_SECURITY_FEATURE
+			#if (defined(ENABLE_MD_IMG_SECURITY_FEATURE) && defined(MTK_SEC_MODEM_NVRAM_ANTI_CLONE))
 			if(!SST_Secure_Init())
 			{
 				CCCI_MSG_INF(md_id, "rpc", "SST_Secure_Init fail!\n");
@@ -457,18 +461,19 @@ void ccci_rpc_work_helper(int md_id, int *p_pkt_num, RPC_PKT pkt[], RPC_BUF *p_r
 			pkt[pkt_num++].buf = (void*) &tmp_data[0];
 			pkt[pkt_num].len = ContentLen;	
 			
-			#ifdef ENABLE_MD_IMG_SECURITY_FEATURE
+			#if (defined(ENABLE_MD_IMG_SECURITY_FEATURE) && defined(MTK_SEC_MODEM_NVRAM_ANTI_CLONE))
 			memcpy(pkt[pkt_num++].buf, ResText, ContentLen);
+			CCCI_MSG_INF(md_id, "rpc","RPC_Secure memory copy OK: %d!", ContentLen);
 			#else
 			memcpy(pkt[pkt_num++].buf, (void *)ContentAddr, ContentLen);
+			CCCI_MSG_INF(md_id, "rpc","RPC_NORMAL memory copy OK: %d!", ContentLen);
 			#endif
-			CCCI_MSG_INF(md_id, "rpc","RPC_Secure memory copy OK: %d!", ContentLen);	
 			
 			#ifdef ENCRYPT_DEBUG
 			if(Direction == TRUE)
-				CCCI_RPC_MSG(md_id, "SEJ_D: EnCrypt_dst:\n");
+				CCCI_RPC_MSG(md_id, "HACC_D: EnCrypt_dst:\n");
 			else
-				CCCI_RPC_MSG(md_id, "SEJ_D: DeCrypt_dst:\n");
+				CCCI_RPC_MSG(md_id, "HACC_D: DeCrypt_dst:\n");
 			for(i = 0; i < ContentLen; i++)
 			{
 				if(i % 16 == 0){
@@ -476,7 +481,7 @@ void ccci_rpc_work_helper(int md_id, int *p_pkt_num, RPC_PKT pkt[], RPC_BUF *p_r
 						CCCI_RPC_MSG(md_id, "%s\n", log_buf);
 					}
 					curr = 0;
-					curr += snprintf(&log_buf[curr], sizeof(log_buf)-curr, "SEJ_D: ");
+					curr += snprintf(&log_buf[curr], sizeof(log_buf)-curr, "HACC_D: ");
 				}
 				//CCCI_MSG("%02X ", *(ResText+i));
 				curr += snprintf(&log_buf[curr], sizeof(log_buf)-curr, "0x%02X ", *(ResText+i));
@@ -518,7 +523,11 @@ void ccci_rpc_work_helper(int md_id, int *p_pkt_num, RPC_PKT pkt[], RPC_BUF *p_r
 				
 			req_len = *(unsigned int*)(pkt[0].buf);
 			if(sec_secro_en()) {
-				img_len = sec_secro_md_len();
+				if(md_id == MD_SYS1) {
+					img_len = sec_secro_md_len(SECRO_MD1);
+				} else {
+					img_len = sec_secro_md_len(SECRO_MD2);
+				}
 
 				if((img_len > RPC1_MAX_BUF_SIZE) || (req_len > RPC1_MAX_BUF_SIZE)) {
 					pkt_num = 0;
@@ -565,7 +574,11 @@ void ccci_rpc_work_helper(int md_id, int *p_pkt_num, RPC_PKT pkt[], RPC_BUF *p_r
 				img_len = ((img_len + (blk_sz-1)) >> cnt) << cnt;
 
 				addr = p_rpc_buf->buf + 4*sizeof(unsigned int);
-				tmp_data[0] = sec_secro_md_get_data(addr, 0, img_len);
+				if(md_id == MD_SYS1) {
+					tmp_data[0] = sec_secro_md_get_data(SECRO_MD1, addr, 0, img_len);
+				} else {
+					tmp_data[0] = sec_secro_md_get_data(SECRO_MD2, addr, 0, img_len);
+				}
 
 
 				/* TODO : please check it */
@@ -1012,14 +1025,14 @@ static struct file *open_img_file(char *name, int *sec_fp_id)
 {
 	#ifdef ENABLE_MD_IMG_SECURITY_FEATURE
 	int fp_id = OSAL_FILE_NULL;
-	//CCCI_DBG_COM_MSG("sec_open!\n");
 	fp_id = osal_filp_open_read_only(name);  
+	CCCI_DBG_COM_MSG("sec_open (%d)!\n", fp_id); 
 
 	if(sec_fp_id != NULL)
-		sec_fp_id = fp_id;
+		*sec_fp_id = fp_id;
 	return (struct file *)osal_get_filp_struct(fp_id);
 	#else
-	//CCCI_DBG_COM_MSG("std_open!\n");
+	CCCI_DBG_COM_MSG("std_open!\n");
 	return filp_open(name, O_RDONLY, 0644);// 0777
 	#endif
 }
@@ -1027,10 +1040,10 @@ static struct file *open_img_file(char *name, int *sec_fp_id)
 static void close_img_file(struct file *filp_id, int sec_fp_id)
 {
 	#ifdef ENABLE_MD_IMG_SECURITY_FEATURE
-	//CCCI_DBG_COM_MSG("sec_close!\n");
+	CCCI_DBG_COM_MSG("sec_close (%d)!\n", sec_fp_id);
 	osal_filp_close(sec_fp_id);
 	#else
-	//CCCI_DBG_COM_MSG("std_close!\n");
+	CCCI_DBG_COM_MSG("std_close!\n");
 	filp_close(filp_id,current->files);
 	#endif
 }
@@ -2038,7 +2051,7 @@ static void recover_md_wdt_irq(unsigned long data)
 	}
 	#endif
 
-	CCCI_MSG_INF(md_id, "ctl", "R MD_WDT_STA=%04x(%d)\n", sta, (md_id+1));
+	CCCI_MSG_INF(md_id, "ctl", "MD_WDT_STA=%04x(%d)(R)\n", sta, (md_id+1));
 
 	if(sta!=0)
 		md_wdt_notify(md_id);
@@ -2174,7 +2187,6 @@ static int ccci_dis_md2_clock(unsigned int timeout)
 //========================================================
 int ccci_power_on_md(int md_id)
 {
-	int count;
 	CCCI_MSG_INF(md_id, "ctl", "[ccci/cci] power on md%d to run\n", md_id+1);
 	
 	switch(md_id)
@@ -2186,37 +2198,10 @@ int ccci_power_on_md(int md_id)
 			
 		case MD_SYS2:// MD2
 		       *((volatile unsigned int*)0xF0000018) |= 0x00000020;//<==================
-			// Power on MD PMIC
-			hwPowerOn(MT65XX_POWER_LDO_VTCXO_2,  VOL_2800, "ccci_md2");
+			power_on_md_ldo(MD_SYS2);
 
-			//;;A) Make sure AP RGU assert reset to MD2
-			//&REG_DATA=data.long(SD:0x10000018)
-			//&REG_DATA=&REG_DATA|0x00000020
-			//d.s SD:0x10000018 %LE %LONG &REG_DATA
-		
-			//;;B) Enable CLKSQ2
-			//;#define AP_PLL_CON0_BASE     (0x10209000)
-			//;DRV_WriteReg32(AP_PLL_CON0, 0x00001137);                 // enable CLKSQ2
-			//d.s SD:0x10209000 %LE %LONG 0x00001137
-			//;gpt_busy_wait_us(200);               // wait for CLKSQ2 ready (min delay is 100us)
-			//wait 10.ms
-			//;DRV_WriteReg32(AP_PLL_CON0, 0x0000113F);                 // enable CLKSQ2 low pass filter
-			//d.s SD:0x10209000 %LE %LONG 0x0000113F
-			*((volatile unsigned int*)0xF0209000) = 0x00001137;
-			count = 1000;
-			while(count-->0);
-			*((volatile unsigned int*)0xF0209000) = 0x0000113F; // |= 1007
-
-			//;;C) Make sure AP RGU not assert reset to MD2
-			//;;   0x1000_0018 &= ~(1<<5)
-			//&REG_DATA=data.long(SD:0x10000018)
-			//&REG_DATA=&REG_DATA&0xFFFFFFDF
-			//d.s SD:0x10000018 %LE %LONG &REG_DATA
 			*((volatile unsigned int*)0xF0000018) &= ~(1<<5);
 		
-			md_power_on(MD_SYS2);
-			*((volatile unsigned int*)(md2_rgu_base)) = 0x2200;
-			//--------------
 			break;
 			
 		default:
@@ -2249,27 +2234,7 @@ static void ungate_md1(void)
 		return;
 	}
 
-	// Chao, add GPIO hardcode ========
-	//; ## MD1 GPIO INIT
-	//print "MD1 GPIO Setting for SIM ... "
-	//D.S SD:0x10005990 %LE %LONG 0x0470
-	//*((volatile unsigned int*)0xF0005990) = 0x0470;
-	//D.S SD:0x100059B0 %LE %LONG 0x0470
-	//*((volatile unsigned int*)0xF00059B0) = 0x0470;
-	//D.S SD:0x10005980 %LE %LONG 0x0111
-	//*((volatile unsigned int*)0xF0005980) = 0x0111;
-	//D.S SD:0x100059A0 %LE %LONG 0x0111
-	//*((volatile unsigned int*)0xF00059A0) = 0x0111;
-	// Chao, end
-
-	/* Setting MD & DSP to its default status */
-	//WDT_MD_LENGTH(md1_rgu_base) = WDT_MD_LENGTH_DEFAULT|WDT_MD_LENGTH_KEY;
-	//WDT_MD_RESTART(md1_rgu_base) = WDT_MD_RESTART_KEY;
-	//WDT_MD_MODE(md1_rgu_base) = WDT_MD_MODE_DEFAULT|WDT_MD_MODE_KEY;
-
-	//CCCI_CTL_MSG(0, "md_infra_base <%d>, jumpaddr_val <%x>\n",
-	//	md1_infra_sys, *((unsigned int*)(md1_infra_sys + BOOT_JUMP_ADDR)));	
-	/* Power on MD */
+	/* Power on MD MTCMOS*/
 	ccci_en_md1_clock();
 
 	/*set the start address to let modem to run*/ 
@@ -2278,7 +2243,6 @@ static void ungate_md1(void)
 	ccci_write32(md1_boot_slave_Vector, 0x0); 
 	ccci_write32(md1_boot_slave_En, 0xA3B66175); 
 }
-
 
 static void ungate_md2(void)
 {
@@ -2289,19 +2253,13 @@ static void ungate_md2(void)
 		return;
 	}
 
-	/* Setting MD & DSP to its default status */
-	//WDT_MD_LENGTH(md1_rgu_base) = WDT_MD_LENGTH_DEFAULT|WDT_MD_LENGTH_KEY;
-	//WDT_MD_RESTART(md1_rgu_base) = WDT_MD_RESTART_KEY;
-	//WDT_MD_MODE(md1_rgu_base) = WDT_MD_MODE_DEFAULT|WDT_MD_MODE_KEY;
-
-	//CCCI_CTL_MSG(0, "md_infra_base <%d>, jumpaddr_val <%x>\n",
-	//	md1_infra_sys, *((unsigned int*)(md1_infra_sys + BOOT_JUMP_ADDR)));	
-	//*((volatile unsigned int*)0xF0005990) = 0x0470;
-	//*((volatile unsigned int*)0xF00059B0) = 0x0470;
-	//*((volatile unsigned int*)0xF0005980) = 0x0444;
-	//*((volatile unsigned int*)0xF00059A0) = 0x0444;
-	//*((volatile unsigned int*)0xF0000018) |= 0x00000020;
 	ccci_en_md2_clock();
+
+	if(!md2_hw_mode) {
+		md2_hw_mode = 1;
+		switch_md_ldo(MD_SYS2, 1);
+	}
+
 	//*((volatile unsigned int*)0xF0000018) &= ~(1<<5);
 	ccci_write32(md2_rgu_base, 0x2200);
 
@@ -2550,6 +2508,7 @@ int ccci_ipo_h_platform_restore(int md_id)
 		case MD_SYS2:
 			//wdt_irq = MT_MD_WDT2_IRQ_ID;
 			need_restore = 1;
+			md2_hw_mode = 0;
 			break;
 			
 		default:

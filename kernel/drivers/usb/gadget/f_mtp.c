@@ -1071,6 +1071,11 @@ static void receive_file_work(struct work_struct *data)
 	int64_t count;
 	int ret, cur_buf = 0;
 	int r = 0;
+	//Modification for ALPS00434059 begin
+#if defined(MTK_SHARED_SDCARD)
+	int64_t total_size=0;
+#endif
+	//Modification for ALPS00434059 begin
 
 	/* read our parameters */
 	smp_rmb();
@@ -1100,9 +1105,23 @@ static void receive_file_work(struct work_struct *data)
 
 			read_req->length = (count > MTP_BULK_BUFFER_SIZE
 					? MTP_BULK_BUFFER_SIZE : count);
+
+		//Modification for ALPS00434059 begin
+		//This might be modified TBD, 
+		//so far, there is only sharedSD with EXT4 FFS could transfer Object with size oevr 4GBs
+		#if defined(MTK_SHARED_SDCARD)
+			if(total_size >= 0xFFFFFFFF)
+				read_req->short_not_ok = 0;
+			else
+				read_req->short_not_ok = 1;
+		#else
+		//Modification for ALPS00434059 end
 			//Add for RX mode 1
 			read_req->short_not_ok = 1;
 			//Add for RX mode 1
+		//Modification for ALPS00434059 end
+		#endif
+		//Modification for ALPS00434059 end
 			dev->rx_done = 0;
 			ret = usb_ep_queue(dev->ep_out, read_req, GFP_KERNEL);
 			if (ret < 0) {
@@ -1208,6 +1227,14 @@ static void receive_file_work(struct work_struct *data)
 			 */
 			if (count != 0xFFFFFFFF)
 				count -= read_req->actual;
+
+		//Modification for ALPS00434059 begin
+		#if defined(MTK_SHARED_SDCARD)
+			total_size +=read_req->actual;
+			DBG(cdev, "%s, line %d: count = %d, total_size = %d, read_req->actual = %d, read_req->length= %d\n", __func__, __LINE__, count, total_size, read_req->actual, read_req->length);
+		#endif
+		//Modification for ALPS00434059 begin
+
 			if (read_req->actual < read_req->length) {
 				/*
 				 * short packet is used to signal EOF for

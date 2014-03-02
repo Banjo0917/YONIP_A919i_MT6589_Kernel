@@ -118,6 +118,10 @@ static void mtk_set_vbus(struct musb *musb, int is_on)
         fan5405_set_opa_mode(1);
         fan5405_set_otg_pl(1);
         fan5405_set_otg_en(1);
+    #elif defined(MTK_BQ24158_SUPPORT)
+        bq24158_set_opa_mode(1);
+	bq24158_set_otg_pl(1);
+	bq24158_set_otg_en(1);
     #elif defined(MTK_NCP1851_SUPPORT) || defined(MTK_BQ24196_SUPPORT)
         tbl_charger_otg_vbus((work_busy(&musb->id_pin_work.work)<< 8)| 1);
     #else
@@ -128,6 +132,9 @@ static void mtk_set_vbus(struct musb *musb, int is_on)
     #ifdef MTK_FAN5405_SUPPORT
         fan5405_config_interface_liao(0x01,0x30);
 	fan5405_config_interface_liao(0x02,0x8e);
+    #elif defined(MTK_BQ24158_SUPPORT)
+        bq24158_config_interface_reg(0x01,0x30);
+	bq24158_config_interface_reg(0x02,0x8e);
     #elif defined(MTK_NCP1851_SUPPORT) || defined(MTK_BQ24196_SUPPORT)
         tbl_charger_otg_vbus((work_busy(&musb->id_pin_work.work)<< 8)| 0);
     #else
@@ -271,6 +278,15 @@ bool mt_usb_is_device(void)
 		DBG(4,"is_host=%d\n",mtk_musb->is_host);
 	}
   return !mtk_musb->is_host;
+}
+
+bool mt_usb_is_ready(void)
+{
+	printk("[MUSB] USB is ready or not\n");
+	if(!mtk_musb || !mtk_musb->is_ready)
+        return false;
+    else
+        return true;
 }
 
 void mt_usb_connect(void)
@@ -569,7 +585,7 @@ static ssize_t mt_usb_store_cmode(struct device* dev, struct device_attribute *a
 #ifdef CONFIG_USB_MTK_OTG
 			if(cmode == CABLE_MODE_CHRG_ONLY) {
 				if(mtk_musb && mtk_musb->is_host) { // shut down USB host for IPO
-					//musb_stop(mtk_musb);
+					musb_stop(mtk_musb);
 					/* Think about IPO shutdown with A-cable, then switch to B-cable and IPO bootup. We need a point to clear session bit */
 					musb_writeb(mtk_musb->mregs, MUSB_DEVCTL, (~MUSB_DEVCTL_SESSION)&musb_readb(mtk_musb->mregs,MUSB_DEVCTL));
 				} else {
@@ -736,7 +752,7 @@ int __init musb_platform_init(struct musb *musb)
 	#endif
 
 	musb_platform_enable(musb);
-	emi_mpu_notifier_register(MST_ID_MMPERI_1, musb_check_mpu_violation);
+        emi_mpu_notifier_register(MST_ID_MMPERI_1, musb_check_mpu_violation);
 
 	musb->isr = mt_usb_interrupt;
 	musb_writel(musb->mregs,MUSB_HSDMA_INTR,0xff | (0xff << DMA_INTR_UNMASK_SET_OFFSET));

@@ -11,6 +11,7 @@
 #ifdef CONFIG_HOTPLUG_WITH_POWER_CTRL
 #include <mach/mt_spm_mtcmos.h>
 #endif
+#include <mach/mt_spm_idle.h>
 #include <asm/fiq_glue.h>
 
 
@@ -49,18 +50,21 @@ volatile int pen_release = -1;
 
 
 int L2CTLR_get_core_count(void){
-
     unsigned int cores = 0;
-    asm volatile(
-    "MRC p15, 1, %0, c9, c0, 2\n"
-    : "=r" (cores)
-    :
-    : "cc"
-    );
+    extern u32 get_devinfo_with_index(u32 index);
+    u32 idx = 3;
+    u32 value = 0;
+    value = get_devinfo_with_index(idx);
 
-    cores = cores >> 24;
-    cores += 1;    
-    return cores;  
+    value = (value >> 24) & 0xF;
+    if (value == 0x0)
+        cores = 4;
+    else
+        cores = 2;
+
+    printk("[CORE] num:%d\n",cores);
+    return cores;
+
 }
 
 void __cpuinit platform_secondary_init(unsigned int cpu)
@@ -82,6 +86,10 @@ void __cpuinit platform_secondary_init(unsigned int cpu)
 
 #ifdef CONFIG_FIQ_GLUE
     fiq_glue_resume();
+#endif
+
+#ifdef SPM_MCDI_FUNC
+    spm_hot_plug_in_before(cpu);
 #endif
 
     /*

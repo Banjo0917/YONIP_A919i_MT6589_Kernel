@@ -28,7 +28,7 @@
 #define FREE_RAW_DATA_BUF_SIZE    2048
 #define FREE_COOKED_DATA_BUF_SIZE 2048
 #define SUPPORT_FRAME_NUM 1
-#define SUPPORT_PKT_NUM 100
+#define SUPPORT_PKT_NUM 1024
 
 enum frame_flag_t
 {

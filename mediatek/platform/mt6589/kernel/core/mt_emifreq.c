@@ -165,7 +165,7 @@ void mt_emifreq_early_suspend(struct early_suspend *h)
     if(mt_emifreq_pause == false)
     {
         mt_h2l_mempll();
-        xlog_printk(ANDROID_LOG_INFO, "Power/EMI_DFS", "mt_emifreq_early_suspend\n");
+        dprintk("mt_emifreq_early_suspend\n");
     }
 }
 
@@ -177,7 +177,7 @@ void mt_emifreq_late_resume(struct early_suspend *h)
     if(mt_emifreq_pause == false)
     {
         mt_l2h_mempll();
-        xlog_printk(ANDROID_LOG_INFO, "Power/EMI_DFS", "mt_emifreq_late_resume\n");
+        dprintk("mt_emifreq_late_resume\n");
     }
 }
 

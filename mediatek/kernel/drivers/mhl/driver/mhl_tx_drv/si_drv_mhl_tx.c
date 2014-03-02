@@ -536,7 +536,7 @@ void	SwitchToD3( void )
 		{
 #endif
 		ForceUsbIdSwitchOpen();
-		HalTimerWait(50);
+		//HalTimerWait(50);
 		ReleaseUsbIdSwitchOpen();
 
 		//HalTimerWait(50);
@@ -1098,6 +1098,8 @@ void SiiMhlTxHwReset(uint16_t hwResetPeriod,uint16_t hwResetDelay)
 	msleep(hwResetDelay);
 }
 
+#if 0
+//mt6577
 void SiiMhlTxHwGpioSuspend(void)
 {
 	int i;
@@ -1120,7 +1122,31 @@ void SiiMhlTxHwGpioSuspend(void)
 		mt_set_gpio_pull_enable(gpio[i], GPIO_PULL_ENABLE);
 	}	
 }
+#else
+void SiiMhlTxHwGpioSuspend(void)
+{
+    int i;
+    u32 gpio[]={
+        GPIO143, GPIO144, GPIO145, GPIO146, GPIO147,
+        GPIO148, GPIO149, GPIO150, GPIO151, GPIO152,
+        GPIO153, GPIO154, GPIO155, GPIO156, GPIO157,
+        GPIO158, GPIO159, GPIO160, GPIO161, GPIO162,
+        GPIO163, GPIO164, GPIO165, GPIO166, GPIO167,
+        GPIO168, GPIO169, GPIO170, GPIO120, GPIO121,
+        GPIO122,
+    };
+    printk("%s,%d\n", __func__, __LINE__);
+    for(i=0; i<ARRAY_SIZE(gpio); i++){
+        mt_set_gpio_mode(gpio[i], GPIO_MODE_00);
+        mt_set_gpio_dir(gpio[i], GPIO_DIR_IN);
+        mt_set_gpio_pull_select(gpio[i], GPIO_PULL_DOWN);
+        mt_set_gpio_pull_enable(gpio[i], GPIO_PULL_ENABLE);
+    }
+}
+#endif
 
+#if 0
+//mt6577
 void SiiMhlTxHwGpioResume(void)
 {
 	int i;
@@ -1148,6 +1174,33 @@ void SiiMhlTxHwGpioResume(void)
 		mt_set_gpio_pull_enable(gpio_i2s[i], GPIO_PULL_ENABLE);
 	}	
 }
+#else
+void SiiMhlTxHwGpioResume(void)
+{
+    int i;
+    u32 gpio_rgb[]={
+        GPIO143, GPIO144, GPIO145, GPIO146, GPIO147,
+        GPIO148, GPIO149, GPIO150, GPIO151, GPIO152,
+        GPIO153, GPIO154, GPIO155, GPIO156, GPIO157,
+        GPIO158, GPIO159, GPIO160, GPIO161, GPIO162,
+        GPIO163, GPIO164, GPIO165, GPIO166, GPIO167,
+        GPIO168, GPIO169, GPIO170
+    };
+    u32 gpio_i2s[]={GPIO120, GPIO121, GPIO122};
+    printk("%s,%d\n", __func__, __LINE__);
+    for(i=0; i<ARRAY_SIZE(gpio_rgb); i++){
+        mt_set_gpio_mode(gpio_rgb[i], GPIO_MODE_01);
+        mt_set_gpio_pull_enable(gpio_rgb[i], GPIO_PULL_DISABLE);
+    }
+
+    for(i=0; i<ARRAY_SIZE(gpio_i2s); i++){
+        mt_set_gpio_mode(gpio_i2s[i], GPIO_MODE_01);
+        mt_set_gpio_pull_select(gpio_i2s[i], GPIO_PULL_DOWN);
+        mt_set_gpio_pull_enable(gpio_i2s[i], GPIO_PULL_ENABLE);
+    }
+}
+#endif
+
 
 #if defined(USE_PROC)&&defined(__KERNEL__)
 void drv_mhl_seq_show(struct seq_file *s)

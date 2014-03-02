@@ -1496,7 +1496,7 @@ int cpu_power_down(int mode)
     cpu_id = read_cpuid();
 
     power_state[cpu_id] = mode;
-
+    
 #if 1   
     __disable_dcache();
 

@@ -113,35 +113,35 @@ static const u32 HVSYNC_TOTAL_WIDTH_ACTIVE[HDMI_VIDEO_RESOLUTION_NUM][6] = {
  };
 
 static const u32 HVSYNC_DELAY[HDMI_VIDEO_RESOLUTION_NUM] = {
-   0x00130008,//480p@27M
-   0x000b0004,//576p@27M
-   0x000b0066,//720p@60Hz
-   0x000b01b0,//720p@50Hz
+   0x00130007,//480p@27M
+   0x000b0003,//576p@27M
+   0x000b0065,//720p@60Hz
+   0x000b01af,//720p@50Hz
    0x000b01b0,//1080i@60Hz
    0x000b01b0,//1080i@50Hz
-   0x00090050,//1080p@30Hz
-   0x00090208,//1080p@25Hz
-   0x00090276,//1080p@24Hz
+   0x0009004f,//1080p@30Hz
+   0x00090207,//1080p@25Hz
+   0x00090275,//1080p@24Hz
    0x00090276,//1080p@23.976Hz
-   0x00090050,//1080p@29.97Hz
+   0x0009004f,//1080p@29.97Hz
    0x000b01b0,//1080p@60Hz
    0x000b01b0//1080p@50Hz
  };
 
 static const u32 CBCR_PRELOAD[HDMI_VIDEO_RESOLUTION_NUM] = {
-   0x1,//480p@27M
-   0x1,//576p@27M
-   0x1,//720p@60Hz
-   0x1,//720p@50Hz
-   0x1,//1080i@60Hz
-   0x1,//1080i@50Hz
-   0x1,//1080p@30Hz
-   0x1,//1080p@25Hz
-   0x1,//1080p@24Hz
-   0x1,//1080p@23.976Hz
-   0x1,//1080p@29.97Hz
-   0x1,//1080p@60Hz
-   0x1//1080p@50Hz
+   0x0,//480p@27M
+   0x0,//576p@27M
+   0x0,//720p@60Hz
+   0x0,//720p@50Hz
+   0x0,//1080i@60Hz
+   0x0,//1080i@50Hz
+   0x0,//1080p@30Hz
+   0x0,//1080p@25Hz
+   0x0,//1080p@24Hz
+   0x0,//1080p@23.976Hz
+   0x0,//1080p@29.97Hz
+   0x0,//1080p@60Hz
+   0x0//1080p@50Hz
  };
 
 static const u8 HDMI_VIDEO_ID_CODE[HDMI_VIDEO_RESOLUTION_NUM]=

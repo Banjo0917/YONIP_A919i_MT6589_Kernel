@@ -205,14 +205,10 @@ struct mt_chip_conf {
   enum spi_tckdly tckdly;
 };
 
-#include <mach/sync_write.h>
 #define spi_readl(port,offset) \
   __raw_readl((port)->regs+(offset))
-/*
 #define spi_writel(port, offset,value) \
   __raw_writel((value),(port)->regs+(offset))
-*/
-#define spi_writel(port, offset,value) \
-  mt65xx_reg_sync_writel((value),(port)->regs+(offset))
+
 #endif
 

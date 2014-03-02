@@ -18,6 +18,7 @@
 #include <linux/buffer_head.h> /* for inode_has_buffers */
 #include <linux/ratelimit.h>
 #include "internal.h"
+#include <mach/mtk_memcfg.h>
 
 /*
  * Inode locking rules:
@@ -167,18 +168,22 @@ int inode_init_always(struct super_block *sb, struct inode *inode)
 
         // for performance: take memory from low memory zone if possible
         // for robustenss: if there are too many inodes, then allocate pages from high memory
-#if 1
-        if (get_nr_inodes() >= 5500) {
-            mapping_set_gfp_mask(mapping, GFP_HIGHUSER_MOVABLE);
-        } else {
+#ifdef CONFIG_MTK_MEMCFG
+        if (unlikely(mtk_memcfg_get_force_inode_gfp_lowmem())) {
             mapping_set_gfp_mask(mapping, GFP_HIGHUSER_MOVABLE & 
                     ~__GFP_HIGHMEM);
+        } else {
+#else
+        {
+#endif 
+            // default path
+            if (get_nr_inodes() >= 4625) {
+                mapping_set_gfp_mask(mapping, GFP_HIGHUSER_MOVABLE);
+            } else {
+                mapping_set_gfp_mask(mapping, GFP_HIGHUSER_MOVABLE & 
+                        ~__GFP_HIGHMEM);
+            }
         }
-#endif 
-#if 0
-        mapping_set_gfp_mask(mapping, GFP_HIGHUSER_MOVABLE & 
-                ~__GFP_HIGHMEM);
-#endif 
 
 	mapping->assoc_mapping = NULL;
 	mapping->backing_dev_info = &default_backing_dev_info;

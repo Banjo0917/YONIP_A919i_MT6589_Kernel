@@ -708,6 +708,7 @@ struct _P2P_FSM_INFO_T {
     WFD_CFG_SETTINGS_T rWfdConfigureSettings;
 #endif
 
+    BOOLEAN fgIsWPSMode;
 };
 
 

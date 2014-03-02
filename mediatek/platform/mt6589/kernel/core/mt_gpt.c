@@ -13,12 +13,6 @@
 #include <mach/timer.h>
 #include <mach/irqs.h>
 #include <mach/mt_boot.h>
-#include <mach/sync_write.h>
-
-
-#undef  DRV_WriteReg32
-#define DRV_WriteReg32(a, v)			mt65xx_reg_sync_writel(v, a) //write32
-
 
 #ifdef CONFIG_MT6589_FPGA
 #define SYS_CLK_RATE        (6000000)    /* FPGA clock source is 6M */

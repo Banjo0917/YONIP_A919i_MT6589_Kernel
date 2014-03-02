@@ -1113,7 +1113,7 @@ static void do_generic_file_read(struct file *filp, loff_t *ppos,
     }
 
     j = 0;
-    if (('l' == *(current->comm)) && ('m' == *(current->comm + 1)) && ('d' == *(current->comm + 2)) && ('d' == *(current->comm + 3))){
+    if (('l' == *(current->comm)) && ('m' == *(current->comm + 1)) && ('d' == *(current->comm + 2)) && ('d' == *(current->comm + 3)) && (g_check_read_write == 18)){
 		g_dbg_raw_count ++;   /* increment 1 means trigger 8k r/w */ 
         g_req_buf[(g_dbg_raw_count-1) * 2 + j][0] = sched_clock(); /* start time, static with 4k each */
     }	
@@ -1134,7 +1134,7 @@ find_page:
 					index, last_index - index);
 
 #ifdef MTK_IO_PERFORMANCE_DEBUG   
-    if (('l' == *(current->comm)) && ('m' == *(current->comm + 1)) && ('d' == *(current->comm + 2)) && ('d' == *(current->comm + 3))){
+    if (('l' == *(current->comm)) && ('m' == *(current->comm + 1)) && ('d' == *(current->comm + 2)) && ('d' == *(current->comm + 3)) && (g_check_read_write == 18)){
         g_req_buf[(g_dbg_raw_count-1) * 2 + j][1] = sched_clock(); 
     }	
 #endif
@@ -1149,7 +1149,7 @@ find_page:
 					index, last_index - index);
 
 #ifdef MTK_IO_PERFORMANCE_DEBUG   
-    if (('l' == *(current->comm)) && ('m' == *(current->comm + 1)) && ('d' == *(current->comm + 2)) && ('d' == *(current->comm + 3))){
+    if (('l' == *(current->comm)) && ('m' == *(current->comm + 1)) && ('d' == *(current->comm + 2)) && ('d' == *(current->comm + 3)) && (g_check_read_write == 18)){
         g_req_buf[(g_dbg_raw_count-1) * 2 + j][2] = sched_clock(); 
     }	
 #endif
@@ -1171,7 +1171,7 @@ find_page:
 page_ok:
 
 #ifdef MTK_IO_PERFORMANCE_DEBUG   
-    if (('l' == *(current->comm)) && ('m' == *(current->comm + 1)) && ('d' == *(current->comm + 2)) && ('d' == *(current->comm + 3))){
+    if (('l' == *(current->comm)) && ('m' == *(current->comm + 1)) && ('d' == *(current->comm + 2)) && ('d' == *(current->comm + 3)) && (g_check_read_write == 18)){
         g_req_buf[(g_dbg_raw_count-1) * 2 + j][3] = sched_clock(); 
     }	
 #endif
@@ -1234,7 +1234,7 @@ page_ok:
 		prev_offset = offset;
 
 #ifdef MTK_IO_PERFORMANCE_DEBUG   
-    if (('l' == *(current->comm)) && ('m' == *(current->comm + 1)) && ('d' == *(current->comm + 2)) && ('d' == *(current->comm + 3))){
+    if (('l' == *(current->comm)) && ('m' == *(current->comm + 1)) && ('d' == *(current->comm + 2)) && ('d' == *(current->comm + 3)) && (g_check_read_write == 18)){
         g_req_buf[(g_dbg_raw_count-1) * 2 + j][4] = sched_clock(); 
     }	
 #endif
@@ -2556,7 +2556,7 @@ ssize_t __generic_file_aio_write(struct kiocb *iocb, const struct iovec *iov,
 	ssize_t		written;
 	ssize_t		err;
 #ifdef MTK_IO_PERFORMANCE_DEBUG
-		if (('l' == *(current->comm)) && ('m' == *(current->comm + 1)) && ('d' == *(current->comm + 2)) && ('d' == *(current->comm + 3))){
+		if (('l' == *(current->comm)) && ('m' == *(current->comm + 1)) && ('d' == *(current->comm + 2)) && ('d' == *(current->comm + 3)) && (g_check_read_write == 25)){
 			g_req_write_buf[g_dbg_write_count][1] = sched_clock(); 
 		}	
 #endif
@@ -2566,7 +2566,7 @@ ssize_t __generic_file_aio_write(struct kiocb *iocb, const struct iovec *iov,
 	if (err)
 		return err;
 #ifdef MTK_IO_PERFORMANCE_DEBUG   
-		if (('l' == *(current->comm)) && ('m' == *(current->comm + 1)) && ('d' == *(current->comm + 2)) && ('d' == *(current->comm + 3))){
+		if (('l' == *(current->comm)) && ('m' == *(current->comm + 1)) && ('d' == *(current->comm + 2)) && ('d' == *(current->comm + 3)) && (g_check_read_write == 25)){
 			g_req_write_buf[g_dbg_write_count][2] = sched_clock(); 
 		}	
 #endif
@@ -2576,7 +2576,7 @@ ssize_t __generic_file_aio_write(struct kiocb *iocb, const struct iovec *iov,
 
 	vfs_check_frozen(inode->i_sb, SB_FREEZE_WRITE);
 #ifdef MTK_IO_PERFORMANCE_DEBUG   
-		if (('l' == *(current->comm)) && ('m' == *(current->comm + 1)) && ('d' == *(current->comm + 2)) && ('d' == *(current->comm + 3))){
+		if (('l' == *(current->comm)) && ('m' == *(current->comm + 1)) && ('d' == *(current->comm + 2)) && ('d' == *(current->comm + 3)) && (g_check_read_write == 25)){
 			g_req_write_buf[g_dbg_write_count][3] = sched_clock(); 
 		}	
 #endif
@@ -2589,7 +2589,7 @@ ssize_t __generic_file_aio_write(struct kiocb *iocb, const struct iovec *iov,
 	if (err)
 		goto out;
 #ifdef MTK_IO_PERFORMANCE_DEBUG   
-		if (('l' == *(current->comm)) && ('m' == *(current->comm + 1)) && ('d' == *(current->comm + 2)) && ('d' == *(current->comm + 3))){
+		if (('l' == *(current->comm)) && ('m' == *(current->comm + 1)) && ('d' == *(current->comm + 2)) && ('d' == *(current->comm + 3)) && (g_check_read_write == 25)){
 			g_req_write_buf[g_dbg_write_count][4] = sched_clock(); 
 		}	
 #endif
@@ -2601,14 +2601,14 @@ ssize_t __generic_file_aio_write(struct kiocb *iocb, const struct iovec *iov,
 	if (err)
 		goto out;
 #ifdef MTK_IO_PERFORMANCE_DEBUG   
-		if (('l' == *(current->comm)) && ('m' == *(current->comm + 1)) && ('d' == *(current->comm + 2)) && ('d' == *(current->comm + 3))){
+		if (('l' == *(current->comm)) && ('m' == *(current->comm + 1)) && ('d' == *(current->comm + 2)) && ('d' == *(current->comm + 3)) && (g_check_read_write == 25)){
 			g_req_write_buf[g_dbg_write_count][5] = sched_clock(); 
 		}	
 #endif
 
 	file_update_time(file);
 #ifdef MTK_IO_PERFORMANCE_DEBUG   
-		if (('l' == *(current->comm)) && ('m' == *(current->comm + 1)) && ('d' == *(current->comm + 2)) && ('d' == *(current->comm + 3))){
+		if (('l' == *(current->comm)) && ('m' == *(current->comm + 1)) && ('d' == *(current->comm + 2)) && ('d' == *(current->comm + 3)) && (g_check_read_write == 25)){
 			g_req_write_buf[g_dbg_write_count][6] = sched_clock(); 
 		}	
 #endif
@@ -2621,7 +2621,7 @@ ssize_t __generic_file_aio_write(struct kiocb *iocb, const struct iovec *iov,
 		written = generic_file_direct_write(iocb, iov, &nr_segs, pos,
 							ppos, count, ocount);
 #ifdef MTK_IO_PERFORMANCE_DEBUG   
-		if (('l' == *(current->comm)) && ('m' == *(current->comm + 1)) && ('d' == *(current->comm + 2)) && ('d' == *(current->comm + 3))){
+		if (('l' == *(current->comm)) && ('m' == *(current->comm + 1)) && ('d' == *(current->comm + 2)) && ('d' == *(current->comm + 3)) && (g_check_read_write == 25)){
 				g_req_write_buf[g_dbg_write_count][7] = sched_clock(); 
 		}	
 #endif
@@ -2638,7 +2638,7 @@ ssize_t __generic_file_aio_write(struct kiocb *iocb, const struct iovec *iov,
 						nr_segs, pos, ppos, count,
 						written);
 #ifdef MTK_IO_PERFORMANCE_DEBUG   
-		if (('l' == *(current->comm)) && ('m' == *(current->comm + 1)) && ('d' == *(current->comm + 2)) && ('d' == *(current->comm + 3))){
+		if (('l' == *(current->comm)) && ('m' == *(current->comm + 1)) && ('d' == *(current->comm + 2)) && ('d' == *(current->comm + 3)) && (g_check_read_write == 25)){
 				g_req_write_buf[g_dbg_write_count][8] = sched_clock(); 
 		}	
 #endif
@@ -2662,7 +2662,7 @@ ssize_t __generic_file_aio_write(struct kiocb *iocb, const struct iovec *iov,
 		endbyte = pos + written_buffered - written - 1;
 		err = filemap_write_and_wait_range(file->f_mapping, pos, endbyte);
 #ifdef MTK_IO_PERFORMANCE_DEBUG   
-		if (('l' == *(current->comm)) && ('m' == *(current->comm + 1)) && ('d' == *(current->comm + 2)) && ('d' == *(current->comm + 3))){
+		if (('l' == *(current->comm)) && ('m' == *(current->comm + 1)) && ('d' == *(current->comm + 2)) && ('d' == *(current->comm + 3)) && (g_check_read_write == 25)){
 			g_req_write_buf[g_dbg_write_count][9] = sched_clock(); 
 		}	
 #endif
@@ -2672,7 +2672,7 @@ ssize_t __generic_file_aio_write(struct kiocb *iocb, const struct iovec *iov,
 						 pos >> PAGE_CACHE_SHIFT,
 						 endbyte >> PAGE_CACHE_SHIFT);
 #ifdef MTK_IO_PERFORMANCE_DEBUG   
-		if (('l' == *(current->comm)) && ('m' == *(current->comm + 1)) && ('d' == *(current->comm + 2)) && ('d' == *(current->comm + 3))){
+		if (('l' == *(current->comm)) && ('m' == *(current->comm + 1)) && ('d' == *(current->comm + 2)) && ('d' == *(current->comm + 3)) && (g_check_read_write == 25)){
 			g_req_write_buf[g_dbg_write_count][10] = sched_clock(); 
 		}	
 #endif
@@ -2686,7 +2686,7 @@ ssize_t __generic_file_aio_write(struct kiocb *iocb, const struct iovec *iov,
 		written = generic_file_buffered_write(iocb, iov, nr_segs,
 				pos, ppos, count, written);
 #ifdef MTK_IO_PERFORMANCE_DEBUG   
-		if (('l' == *(current->comm)) && ('m' == *(current->comm + 1)) && ('d' == *(current->comm + 2)) && ('d' == *(current->comm + 3))){
+		if (('l' == *(current->comm)) && ('m' == *(current->comm + 1)) && ('d' == *(current->comm + 2)) && ('d' == *(current->comm + 3)) && (g_check_read_write == 25)){
 			g_req_write_buf[g_dbg_write_count][11] = sched_clock(); 
 		}	
 #endif
@@ -2726,14 +2726,14 @@ ssize_t generic_file_aio_write(struct kiocb *iocb, const struct iovec *iov,
 	if (ret > 0 || ret == -EIOCBQUEUED) {
 		ssize_t err;
 #ifdef MTK_IO_PERFORMANCE_DEBUG   
-	if (('l' == *(current->comm)) && ('m' == *(current->comm + 1)) && ('d' == *(current->comm + 2)) && ('d' == *(current->comm + 3))){
+	if (('l' == *(current->comm)) && ('m' == *(current->comm + 1)) && ('d' == *(current->comm + 2)) && ('d' == *(current->comm + 3)) && (g_check_read_write == 25)){
 		g_req_write_buf[g_dbg_write_count][12] = sched_clock(); 
 	}	
 #endif
 
 		err = generic_write_sync(file, pos, ret);
 #ifdef MTK_IO_PERFORMANCE_DEBUG   
-	if (('l' == *(current->comm)) && ('m' == *(current->comm + 1)) && ('d' == *(current->comm + 2)) && ('d' == *(current->comm + 3))){
+	if (('l' == *(current->comm)) && ('m' == *(current->comm + 1)) && ('d' == *(current->comm + 2)) && ('d' == *(current->comm + 3)) && (g_check_read_write == 25)){
 		g_req_write_buf[g_dbg_write_count][13] = sched_clock(); 
 	}	
 #endif

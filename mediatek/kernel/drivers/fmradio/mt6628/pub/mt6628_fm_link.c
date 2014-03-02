@@ -20,6 +20,7 @@
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
+ #if 0
 #include <linux/slab.h>
 #include <linux/interrupt.h>
 
@@ -207,9 +208,8 @@ sw_retry:
 #endif
 
     //send cmd to FM firmware
-    if ((ret_time = mtk_wcn_stp_send_data(buf, len, FM_TASK_INDX)) <= 0) 
-	{
-        WCN_DBG(FM_EMG | LINK, "send data over stp failed=[%d]\n",ret_time);
+    if (mtk_wcn_stp_send_data(buf, len, FM_TASK_INDX) == 0) {
+        WCN_DBG(FM_EMG | LINK, "send data over stp failed\n");
         return -FM_ELINK;
     }
 
@@ -468,4 +468,4 @@ extern fm_s32 fm_print_evt_fifo(void)
 
     return 0;
 }
-
+#endif

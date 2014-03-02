@@ -14,9 +14,6 @@
 #include "kd_imgsensor_define.h"
 #include "kd_camera_feature.h"
 
-/******************************************************************************
- * Debug configuration
-******************************************************************************/
 #define PFX "[kd_camera_hw]"
 #define PK_DBG_NONE(fmt, arg...)    do {} while (0)
 #define PK_DBG_FUNC(fmt, arg...)    xlog_printk(ANDROID_LOG_INFO, PFX , fmt, ##arg)

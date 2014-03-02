@@ -1195,11 +1195,11 @@ static int cpufreq_governor_dbs(struct cpufreq_policy *policy,
 	return 0;
 }
 
-int cpufreq_gov_dbs_get_sum_load(void)
-{
+//int cpufreq_gov_dbs_get_sum_load(void)
+//{
 	/* only for dual core turbo mode */
-	return g_sum_load;
-}
+//	return g_sum_load;
+//}
 
 static int __init cpufreq_gov_dbs_init(void)
 {

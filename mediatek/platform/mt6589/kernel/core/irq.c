@@ -324,6 +324,7 @@ void irq_raise_softirq(const struct cpumask *mask, unsigned int irq)
 
     cpu = 0;
     cpu_bmask = 0;
+
 #if defined(SPM_MCDI_FUNC)
     /*
      * Processors cannot receive interrupts during power-down.
@@ -332,7 +333,7 @@ void irq_raise_softirq(const struct cpumask *mask, unsigned int irq)
     for_each_cpu(cpu, mask) {
         cpu_bmask |= 1 << cpu;
     }
-    spm_check_core_status(cpu_bmask);
+    spm_check_core_status_before(cpu_bmask);
 #endif
 
     /*
@@ -342,6 +343,11 @@ void irq_raise_softirq(const struct cpumask *mask, unsigned int irq)
     dsb();
     *(volatile u32 *)(GIC_DIST_BASE + 0xf00) = (map << 16) | satt | irq;
     dsb();
+
+#if defined(SPM_MCDI_FUNC)
+    spm_check_core_status_after(cpu_bmask);
+#endif
+
 }
 
 int mt_irq_is_active(const unsigned int irq)
@@ -667,6 +673,16 @@ void mt_irq_mask_for_sleep(unsigned int irq)
 
     *(volatile u32 *)(GIC_DIST_BASE + GIC_DIST_ENABLE_CLEAR + irq / 32 * 4) = mask;
     dsb();
+}
+
+/* add this debugging code temporarily in the WDT FIQ handler for debugging */
+extern void aee_wdt_printf(const char *fmt, ...);
+void mt_irq_dump(void)
+{
+    aee_wdt_printf("GICD_ISENABLER0 = 0x%x, GICD_ISPENDR0 = 0x%x, GICD_ISACTIVER0 = 0x%x\n",
+                    *(volatile u32 *)(GIC_DIST_BASE + 0x100),
+                    *(volatile u32 *)(GIC_DIST_BASE + 0x200),
+                    *(volatile u32 *)(GIC_DIST_BASE + 0x300));
 }
 
 #if defined(CONFIG_FIQ_GLUE)

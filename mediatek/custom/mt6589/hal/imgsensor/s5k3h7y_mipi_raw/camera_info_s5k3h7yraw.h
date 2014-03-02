@@ -1,17 +1,13 @@
+
+
 #ifndef _CAMERA_INFO_S5K3H7YRAW_H
 #define _CAMERA_INFO_S5K3H7YRAW_H
 
-/*******************************************************************************
-*   Configuration
-********************************************************************************/
 #define SENSOR_ID                           S5K3H7Y_SENSOR_ID
 #define SENSOR_DRVNAME                      SENSOR_DRVNAME_S5K3H7Y_MIPI_RAW
 #define INCLUDE_FILENAME_ISP_REGS_PARAM     "camera_isp_regs_s5k3h7yraw.h"
 #define INCLUDE_FILENAME_ISP_PCA_PARAM      "camera_isp_pca_s5k3h7yraw.h"
 #define INCLUDE_FILENAME_ISP_LSC_PARAM      "camera_isp_lsc_s5k3h7yraw.h"
-/*******************************************************************************
-*
-********************************************************************************/
 
 #if defined(ISP_SUPPORT)
 

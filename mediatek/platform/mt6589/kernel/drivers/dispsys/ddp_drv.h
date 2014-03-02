@@ -29,6 +29,10 @@ typedef enum DISP_MODULE_ENUM_
     DISP_MODULE_G2D,	//20
     DISP_MODULE_MUTEX,  // For interrupt handling
     DISP_MODULE_SMI,  // For interrupt handling
+    DISP_MODULE_MUTEX0,
+    DISP_MODULE_MUTEX1,
+    DISP_MODULE_MUTEX2,
+    DISP_MODULE_MUTEX3,
     DISP_MODULE_MAX
 } DISP_MODULE_ENUM;
 
@@ -268,6 +272,9 @@ typedef struct {
 #define DISP_IOCTL_LOCK_MUTEX      _IOW     (DISP_IOCTL_MAGIC, 20, int)
 #define DISP_IOCTL_UNLOCK_MUTEX    _IOR     (DISP_IOCTL_MAGIC, 21, int) 
 
+#define DISP_IOCTL_LOCK_RESOURCE   _IOW     (DISP_IOCTL_MAGIC, 25, int)
+#define DISP_IOCTL_UNLOCK_RESOURCE _IOR     (DISP_IOCTL_MAGIC, 26, int) 
+
 #define DISP_IOCTL_SET_INTR        _IOR     (DISP_IOCTL_MAGIC, 10, int)
 #define DISP_IOCTL_TEST_PATH       _IOR     (DISP_IOCTL_MAGIC, 11, int)
 
@@ -309,9 +316,10 @@ typedef struct {
 #define DISP_IOCTL_GET_TDSHPINDEX     _IOR    (DISP_IOCTL_MAGIC, 54 , DISPLAY_TDSHP_T)
 #define DISP_IOCTL_MUTEX_CONTROL     _IOW    (DISP_IOCTL_MAGIC, 55 , int)
 #define DISP_IOCTL_GET_LCMINDEX     _IOR    (DISP_IOCTL_MAGIC, 56 , int)
-
-
-
+#define DISP_IOCTL_SET_PQ_CAM_PARAM     _IOW    (DISP_IOCTL_MAGIC, 57 , DISP_PQ_PARAM)
+#define DISP_IOCTL_GET_PQ_CAM_PARAM     _IOR    (DISP_IOCTL_MAGIC, 58 , DISP_PQ_PARAM)
+#define DISP_IOCTL_SET_PQ_GAL_PARAM     _IOW    (DISP_IOCTL_MAGIC, 59 , DISP_PQ_PARAM)
+#define DISP_IOCTL_GET_PQ_GAL_PARAM     _IOR    (DISP_IOCTL_MAGIC, 60 , DISP_PQ_PARAM)
 typedef struct
 {
     DISP_MODULE_ENUM module;
@@ -342,6 +350,11 @@ void disp_power_on(DISP_MODULE_ENUM eModule , unsigned int * pu4Record);
 DISPLAY_TDSHP_T *get_TDSHP_index(void);
 
 
+void disp_aal_lock(void);
+void disp_aal_unlock(void);
+
+int disp_module_clock_on(DISP_MODULE_ENUM module, char* caller_name);
+int disp_module_clock_off(DISP_MODULE_ENUM module, char* caller_name);
 
 #endif
 

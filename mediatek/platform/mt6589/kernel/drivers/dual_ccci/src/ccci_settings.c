@@ -36,7 +36,7 @@ static int net_v2_ul_ctl_mem_size[MAX_MD_NUM] = {CCMNI_UL_CTRL_MEM_SIZE, 0};
 //==============================================================//
 // Common
 #define CCCI_MD_EX_EXP_INFO_SMEM_SIZE		(sizeof(modem_exception_exp_t))//reserve for dump md info when AP no physical channel
-#define CCCI_MISC_INFO_SMEM_SIZE			(2*1024)
+//#define CCCI_MISC_INFO_SMEM_SIZE			(2*1024)
 
 // For MD1
 #define CCCI1_RPC_SMEM_SIZE		((sizeof(RPC_BUF)+sizeof(unsigned char)*RPC1_MAX_BUF_SIZE) * RPC1_REQ_BUF_NUM)

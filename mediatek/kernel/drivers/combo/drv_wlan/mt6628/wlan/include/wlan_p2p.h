@@ -436,6 +436,14 @@ wlanoidSetP2pSupplicantVersion(
     OUT PUINT_32          pu4SetInfoLen
     );
 
+WLAN_STATUS
+wlanoidSetP2pWPSmode (
+    IN  P_ADAPTER_T prAdapter,
+    IN  PVOID       pvQueryBuffer,
+    IN  UINT_32     u4QueryBufferLen,
+    OUT PUINT_32    pu4QueryInfoLen
+    );
+
 #if CFG_SUPPORT_P2P_RSSI_QUERY
 WLAN_STATUS
 wlanoidQueryP2pRssi(

@@ -148,6 +148,20 @@ typedef struct
 	unsigned mem_start1		: 8;
 } DSI_T3_INS, *PDSI_T3_INS;
 
+typedef struct
+{
+	unsigned TXDIV0			: 2;
+	unsigned TXDIV1			: 2;
+	unsigned FBK_SEL		: 2;
+	unsigned FBK_DIV		: 7;
+	unsigned PRE_DIV		: 2;
+	unsigned RG_BR			: 2;
+	unsigned RG_BC			: 2;
+	unsigned RG_BIR			: 4;
+	unsigned RG_BIC			: 4;
+	unsigned RG_BP			: 4;
+}DSI_PLL_CONFIG;
+
 DSI_STATUS DSI_Init(BOOL isDsiPoweredOn);
 DSI_STATUS DSI_Deinit(void);
 
@@ -161,6 +175,7 @@ DSI_STATUS DSI_StartTransfer(bool isMutexLocked);
 DSI_STATUS DSI_EnableClk(void);
 DSI_STATUS DSI_DisableClk(void);
 DSI_STATUS DSI_Reset(void);
+DSI_STATUS DSI_LP_Reset(void);
 DSI_STATUS DSI_SetMode(unsigned int mode);
 void DSI_WaitTE(void);
 void DSI_InitVSYNC(unsigned int vsync_interval);
@@ -247,7 +262,7 @@ DSI_STATUS DSI_Get_Current_CLK(unsigned int *clk);
 DSI_STATUS DSI_Change_CLK(unsigned int clk);
 DSI_STATUS DSI_Capture_Framebuffer(unsigned int pvbuf, unsigned int bpp, bool cmd_mode);
 DSI_STATUS DSI_TE_Enable(BOOL enable);
-
+void DSI_PLL_Select(unsigned int pll_select);
 #ifdef __cplusplus
 }
 #endif

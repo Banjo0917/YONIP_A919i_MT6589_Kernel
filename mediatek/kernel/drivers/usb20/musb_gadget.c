@@ -2292,16 +2292,22 @@ static void musb_pullup(struct musb *musb, int is_on)
 		musb->gadget_driver->function, is_on ? "on" : "off");
 	musb_writeb(musb->mregs, MUSB_POWER, power);*/
 
-	/* This is a workaround to check if need to turn on USB clock */
+	/* This is a workaround to check if need to turn on USB */
 	/* The init.usb.rc would always write enable to 1 when device booting */
+#if 0
 	if (unlikely(first_enable == 0 && is_on)) {
 		first_enable++;
 		if (!is_usb_connected()) {
-			DBG(0,"no USB cable, don't need to turn on USB\n");
-			return;
+		    DBG(0, "no USB cable, don't need to turn on USB\n");
+		    return;
 		}
 	}
-
+#else
+	if (!is_usb_connected()&& is_on) {
+		DBG(0, "no USB cable, don't need to turn on USB\n");
+		return;
+	}
+#endif
 	down(&musb->musb_lock);
 
 	DBG(0,"MUSB: gadget pull up %d start\n", is_on);

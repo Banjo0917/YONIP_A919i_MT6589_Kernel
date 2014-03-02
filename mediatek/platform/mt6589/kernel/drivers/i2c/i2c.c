@@ -108,6 +108,7 @@ enum I2C_REGS_OFFSET {
 #define DMA_ADDRESS_HIGH				(0xC0000000)
 
 //#define I2C_DEBUG
+volatile U32 I2C_TIMING_REG_BACKUP[7]={0};
 
 #ifdef I2C_DEBUG
 #define I2C_BUG_ON(a) BUG_ON(a)
@@ -351,7 +352,7 @@ static int mt_i2c_set_speed(struct mt_i2c *i2c,struct i2c_msg *msg)
 	unsigned long diff, min_diff = i2c->clk;
 	unsigned short sample_div = MAX_SAMPLE_CNT_DIV;
 	unsigned short step_div = max_step_cnt_div;
-
+    unsigned short i2c_timing_reg=0;
 	//dev_err(i2c->dev, "mt_i2c_set_speed=================\n");
 	if(0 == (msg->timing & 0xFFFF)){
 			mode	= ST_MODE;
@@ -375,7 +376,8 @@ static int mt_i2c_set_speed(struct mt_i2c *i2c,struct i2c_msg *msg)
 		ret = -EINVAL;
 		goto end;
 	}
-	if((mode == i2c->mode) && (khz == i2c->sclk)) {
+	i2c_timing_reg=i2c_readl(i2c, OFFSET_TIMING);
+	if((mode == i2c->mode) && (khz == i2c->sclk)&&(i2c_timing_reg==I2C_TIMING_REG_BACKUP[i2c->id])) {
 		I2C_INFO(i2c, I2C_T_SPEED, "mt-i2c: set sclk to %ldkhz\n", i2c->sclk);
 		return 0;
 	}
@@ -417,6 +419,7 @@ static int mt_i2c_set_speed(struct mt_i2c *i2c,struct i2c_msg *msg)
 		tmp	= i2c_readl(i2c, OFFSET_TIMING) & ~((0x7 << 8) | (0x3f << 0));
 		tmp	= (0 & 0x7) << 8 | (16 & 0x3f) << 0 | tmp;
 		i2c_writel(i2c, OFFSET_TIMING, tmp);
+        I2C_TIMING_REG_BACKUP[i2c->id]=tmp;
 
 		/*Set the hign speed mode register*/
 		tmp	= i2c_readl(i2c, OFFSET_HS) & ~((0x7 << 12) | (0x7 << 8));
@@ -430,6 +433,8 @@ static int mt_i2c_set_speed(struct mt_i2c *i2c,struct i2c_msg *msg)
 		tmp  = i2c_readl(i2c, OFFSET_TIMING) & ~((0x7 << 8) | (0x3f << 0));
 		tmp  = (sample_cnt_div & 0x7) << 8 | (step_cnt_div & 0x3f) << 0 | tmp;
 		i2c_writel(i2c, OFFSET_TIMING, tmp);
+        I2C_TIMING_REG_BACKUP[i2c->id]=tmp;
+
 		/*Disable the high speed transaction*/
 		//dev_err(i2c->dev, "NOT HS_MODE============================1\n");
 		tmp	= i2c_readl(i2c, OFFSET_HS) & ~(0x0001);

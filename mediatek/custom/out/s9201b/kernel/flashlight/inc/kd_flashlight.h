@@ -38,6 +38,9 @@ typedef signed int      MINT32;
 #define KD_PEAK_FLASHLIGHT_ID       2
 #define KD_TORCH_FLASHLIGHT_ID      3
 #define KD_CONSTANT_FLASHLIGHT_ID   4
+#if defined (SGM3780_FLASHLIGHT)
+#define KD_SGM3780_FLASHLIGHT_ID   5
+#endif
 
 typedef struct
 {

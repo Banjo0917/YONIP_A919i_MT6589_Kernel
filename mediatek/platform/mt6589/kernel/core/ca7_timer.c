@@ -138,49 +138,51 @@ do {    \
 #define CNTP_CTL_IMASK      (1 << 1)
 #define CNTP_CTL_ISTATUS    (1 << 2)
 
+#define MT_LOCAL_TIMER_DEBUG
+static void save_localtimer_info(unsigned long evt, int ext);
+
 static unsigned long generic_timer_rate;
 
 static struct clock_event_device __percpu **timer_evt;
 static int timer_ppi;
 
 static void generic_timer_set_mode(enum clock_event_mode mode,
-			struct clock_event_device *clk)
+            struct clock_event_device *clk)
 {
-	unsigned long ctrl;
+    unsigned int ctrl;
 
-	switch (mode) {
-	case CLOCK_EVT_MODE_ONESHOT:
-		ctrl = CNTP_CTL_ENABLE;
-		break;
-	case CLOCK_EVT_MODE_PERIODIC:
-	case CLOCK_EVT_MODE_UNUSED:
-	case CLOCK_EVT_MODE_SHUTDOWN:
-	default:
-		ctrl = CNTP_CTL_IMASK;
-	}
+    switch (mode) {
+    case CLOCK_EVT_MODE_ONESHOT:
+        ctrl = CNTP_CTL_ENABLE;
+        break;
+    case CLOCK_EVT_MODE_PERIODIC:
+    case CLOCK_EVT_MODE_UNUSED:
+    case CLOCK_EVT_MODE_SHUTDOWN:
+    default:
+        ctrl = CNTP_CTL_IMASK;
+    }
 
     write_cntp_ctl(ctrl);
 }
 
 static int generic_timer_set_next_event(unsigned long evt,
-			struct clock_event_device *unused)
+            struct clock_event_device *unused)
 {
     write_cntp_tval(evt);
     write_cntp_ctl(CNTP_CTL_ENABLE);
 
-#ifdef LOCAL_TIME_DEBUG
-	save_localtimer_register(evt, ctrl, 0);
-#endif
-	return 0;
+    save_localtimer_info(evt, 0);
+
+    return 0;
 }
 
 int localtimer_set_next_event(unsigned long evt)
 {
-	generic_timer_set_next_event(evt, NULL);
-#ifdef LOCAL_TIME_DEBUG	
-	save_localtimer_register(evt, 0, 1);
-#endif
-	return 0;
+    generic_timer_set_next_event(evt, NULL);
+
+    save_localtimer_info(evt, 1);
+
+    return 0;
 }
 
 unsigned long localtimer_get_counter(void)
@@ -203,79 +205,79 @@ static int generic_timer_ack(void)
     unsigned int cntp_ctl;
     read_cntp_ctl(cntp_ctl);
 
-	if (cntp_ctl & CNTP_CTL_ISTATUS) {
+    if (cntp_ctl & CNTP_CTL_ISTATUS) {
         write_cntp_ctl(CNTP_CTL_IMASK);
-		return 1;
-	}
+        return 1;
+    }
 
-	printk("WARNING: Generic Timer CNTP_CTL = 0x%x\n", cntp_ctl);
-	return 0;
+    printk("WARNING: Generic Timer CNTP_CTL = 0x%x\n", cntp_ctl);
+    return 0;
 }
 
 static void generic_timer_stop(struct clock_event_device *clk)
 {
-	generic_timer_set_mode(CLOCK_EVT_MODE_UNUSED, clk);
-	disable_percpu_irq(clk->irq);
+    generic_timer_set_mode(CLOCK_EVT_MODE_UNUSED, clk);
+    disable_percpu_irq(clk->irq);
 }
 
 static void __cpuinit generic_timer_calibrate_rate(void)
 {
-	unsigned long count;
-	u64 waitjiffies;
+    unsigned long count;
+    u64 waitjiffies;
 
-	/*
-	 * If this is the first time round, we need to work out how fast
-	 * the timer ticks
-	 */
-	if (generic_timer_rate == 0) {
-		printk("Calibrating local timer... ");
+    /*
+     * If this is the first time round, we need to work out how fast
+     * the timer ticks
+     */
+    if (generic_timer_rate == 0) {
+        printk("Calibrating local timer... ");
 
-		/* Wait for a tick to start */
-		waitjiffies = get_jiffies_64() + 1;
+        /* Wait for a tick to start */
+        waitjiffies = get_jiffies_64() + 1;
 
-		while (get_jiffies_64() < waitjiffies)
-			udelay(10);
+        while (get_jiffies_64() < waitjiffies)
+            udelay(10);
 
-		/* OK, now the tick has started, let's get the timer going */
-		waitjiffies += 5;
+        /* OK, now the tick has started, let's get the timer going */
+        waitjiffies += 5;
 
-		/* enable, no interrupt or reload */
+        /* enable, no interrupt or reload */
         write_cntp_ctl(CNTP_CTL_ENABLE | CNTP_CTL_IMASK);
 
-		/* maximum value */
+        /* maximum value */
         write_cntp_tval(0xFFFFFFFFU);
 
-		while (get_jiffies_64() < waitjiffies)
-			udelay(10);
+        while (get_jiffies_64() < waitjiffies)
+            udelay(10);
 
         read_cntp_tval(count);
-		generic_timer_rate = (0xFFFFFFFFU - count) * (HZ / 5);
+        generic_timer_rate = (0xFFFFFFFFU - count) * (HZ / 5);
 
-		printk("%lu.%02luMHz.\n", generic_timer_rate / 1000000,
-			(generic_timer_rate / 10000) % 100);
-	}
+        printk("%lu.%02luMHz.\n", generic_timer_rate / 1000000,
+            (generic_timer_rate / 10000) % 100);
+    }
 }
 
 static irqreturn_t timer_handler(int irq, void *dev_id)
 {
-	struct clock_event_device *evt = *(struct clock_event_device **)dev_id;
+    struct clock_event_device *evt = *(struct clock_event_device **)dev_id;
 //#ifdef CONFIG_MT_SCHED_MONITOR
 #if 0
     // add timer event tracer for wdt debug
     __raw_get_cpu_var(local_timer_ts) = sched_clock();
-	if (generic_timer_ack()) {
-		evt->event_handler(evt);
+    if (generic_timer_ack()) {
+        evt->event_handler(evt);
         __raw_get_cpu_var(local_timer_te) = sched_clock();
-		return IRQ_HANDLED;
-	}
+        return IRQ_HANDLED;
+    }
     __raw_get_cpu_var(local_timer_te) = sched_clock();
-	return IRQ_NONE;
+    return IRQ_NONE;
 #else
-	if (generic_timer_ack()) {
-		evt->event_handler(evt);
-		return IRQ_HANDLED;
-	}
-	return IRQ_NONE;
+    if (generic_timer_ack()) {
+        evt->event_handler(evt);
+        return IRQ_HANDLED;
+    }
+    return IRQ_NONE;
 #endif
 }
 
@@ -285,118 +287,152 @@ static irqreturn_t timer_handler(int irq, void *dev_id)
  */
 static int __cpuinit generic_timer_setup(struct clock_event_device *clk)
 {
-	struct clock_event_device **this_cpu_clk;
+    struct clock_event_device **this_cpu_clk;
 
     pr_info("[ca7_timer]%s entry\n", __func__);
     generic_timer_calibrate_rate();
 
     write_cntp_ctl(0x0);
 
-	clk->name = "generic_timer";
+    clk->name = "generic_timer";
     clk->features = CLOCK_EVT_FEAT_ONESHOT;
-	clk->rating = 350;
-	clk->set_mode = generic_timer_set_mode;
-	clk->set_next_event = generic_timer_set_next_event;
-	clk->irq = timer_ppi;
+    clk->rating = 350;
+    clk->set_mode = generic_timer_set_mode;
+    clk->set_next_event = generic_timer_set_next_event;
+    clk->irq = timer_ppi;
 
-	this_cpu_clk = __this_cpu_ptr(timer_evt);
-	*this_cpu_clk = clk;
+    this_cpu_clk = __this_cpu_ptr(timer_evt);
+    *this_cpu_clk = clk;
 
-	clockevents_config_and_register(clk, generic_timer_rate,
-					0xf, 0x7fffffff);
+    clockevents_config_and_register(clk, generic_timer_rate,
+                    0xf, 0x7fffffff);
 
-	enable_percpu_irq(clk->irq, 0);
+    enable_percpu_irq(clk->irq, 0);
 
-	return 0;
+    return 0;
 }
 
 static struct local_timer_ops generic_timer_ops __cpuinitdata = {
-	.setup	= generic_timer_setup,
-	.stop	= generic_timer_stop,
+    .setup  = generic_timer_setup,
+    .stop   = generic_timer_stop,
 };
 
 int __init generic_timer_register(void)
 {
-	int err;
+    int err;
 
-	if (timer_evt)
-		return -EBUSY;
+    if (timer_evt)
+        return -EBUSY;
 
-	timer_ppi = GIC_PPI_PRIVATE_TIMER;
+    timer_ppi = GIC_PPI_PRIVATE_TIMER;
 
-	timer_evt = alloc_percpu(struct clock_event_device *);
+    timer_evt = alloc_percpu(struct clock_event_device *);
 
-	if (!timer_evt) {
-		err = -ENOMEM;
-		goto out_exit;
-	}
+    if (!timer_evt) {
+        err = -ENOMEM;
+        goto out_exit;
+    }
 
-	err = request_percpu_irq(timer_ppi, timer_handler, "timer", timer_evt);
-	if (err) {
-		pr_err("generic timer: can't register interrupt %d (%d)\n", timer_ppi, err);
-		goto out_free;
-	}
+    err = request_percpu_irq(timer_ppi, timer_handler, "timer", timer_evt);
+    if (err) {
+        pr_err("generic timer: can't register interrupt %d (%d)\n", timer_ppi, err);
+        goto out_free;
+    }
 
-	err = local_timer_register(&generic_timer_ops);
-	if (err)
-		goto out_irq;
+    err = local_timer_register(&generic_timer_ops);
+    if (err)
+        goto out_irq;
 
-	return 0;
+    return 0;
 
 out_irq:
-	free_percpu_irq(timer_ppi, timer_evt);
+    free_percpu_irq(timer_ppi, timer_evt);
 out_free:
-	free_percpu(timer_evt);
+    free_percpu(timer_evt);
     timer_evt = NULL;
 out_exit:
-	return err;
+    return err;
 }
 
-//#include <linux/mt_sched_mon.h>
-//#define LOCAL_TIME_DEBUG
-#ifdef LOCAL_TIME_DEBUG
-unsigned long long sched_clock(void);
-static unsigned long long save_data[4][4] = {{0},{0},{0},{0}};//max cpu 4
-void save_localtimer_register(unsigned long count, unsigned long ctrl, unsigned long dpidle)
+#ifdef MT_LOCAL_TIMER_DEBUG
+#include <linux/sched.h>
+
+struct localtimer_info {
+    unsigned long evt;
+    unsigned int ctrl;
+    int ext;
+    unsigned long long timestamp;
+};
+
+static struct localtimer_info save_data[NR_CPUS];
+
+static void save_localtimer_info(unsigned long evt, int ext)
 {
-	int cpu = smp_processor_id();
-	save_data[cpu][0] = count;
-	save_data[cpu][1] = ctrl;
-	save_data[cpu][2] = dpidle;
-	save_data[cpu][3] = sched_clock();
+    int cpu;
+    unsigned int ctrl; 
+
+    cpu = smp_processor_id();
+    read_cntp_ctl(ctrl);
+
+    save_data[cpu].evt = evt;
+    save_data[cpu].ctrl = ctrl;
+    save_data[cpu].ext = ext;
+    save_data[cpu].timestamp = sched_clock();
 }
 
-int dump_localtimer_register(char* buffer, int size)
+int dump_localtimer_info(char* buffer, int size)
 {
-	int i;
-	int len = 0;
-	if (!buffer) {
-	    return -1;
-	}
-	
-	for (i = 0; i < nr_cpu_ids; i++) {
-        len += snprintf(buffer+len, size, 
-                "[local timer]old:cpu:%d,count:0x%x, ctrl:0x%x,dpidle:%d, time:%llu\n", 
-                i, (int)save_data[i][0], (int)save_data[i][1], (int)save_data[i][2], save_data[i][3]);
-	}
+    int i;
+    int len = 0;
+#define LOCAL_LEN   256
+    char fmt[LOCAL_LEN];
 
-	len += snprintf(buffer+len, size, 
-                "[local timer]new: count:0x%x,control:0x%x,load:0x%x\n", 
-                *((volatile u32*)(TWD_TIMER_COUNTER)), 
-                *((volatile u32*)(TWD_TIMER_CONTROL)), 
-                *((volatile u32*)(TWD_TIMER_LOAD)));
+    unsigned int cntp_ctl;
+    unsigned int cntp_tval;
+    unsigned int cntp_cval_lo, cntp_cval_hi;
+    unsigned int cntpct_lo, cntpct_hi;
 
-	len += snprintf(buffer+len, size, "[local timer]NTSTAT:0x%x\n",
-                *((volatile u32*)(TWD_TIMER_INTSTAT)));
-	len += snprintf(buffer+len, size, "[local timer]generic_timer_rate:%lu\n", 
-                generic_timer_rate);
-
-    if (len >= size) {
-        return -2;// buffer is full
+    if (!buffer || size <= 1) {
+        return 0;
     }
-	  
-	return len;
+    
+    len += snprintf(fmt + len, LOCAL_LEN - len, "[localtimer]cpu evt ctl ext time\n");
+
+    for (i = 0; i < nr_cpu_ids; i++) {
+        len += snprintf(fmt + len, LOCAL_LEN - len, "%d %lx %x %d %llx\n",
+                i, save_data[i].evt, save_data[i].ctrl, 
+                save_data[i].ext, save_data[i].timestamp);
+    }
+
+    read_cntp_ctl(cntp_ctl);
+    read_cntp_cval(cntp_cval_lo, cntp_cval_hi);
+    read_cntp_tval(cntp_tval);
+    read_cntpct(cntpct_lo, cntpct_hi);
+
+    len += snprintf(fmt + len, LOCAL_LEN - len, "cpu ctl tval cval pct\n");
+    len += snprintf(fmt + len, LOCAL_LEN - len, 
+                "%d %x %x (%x,%x) (%x,%x)\n", 
+                smp_processor_id(), cntp_ctl, cntp_tval, 
+                cntp_cval_lo, cntp_cval_hi, cntpct_lo, cntpct_hi);
+      
+    len = min(len, size - 1);
+    memcpy(buffer, fmt, len);
+    *(buffer + len) = '\0';
+
+    return len;
 }
+#else
+
+static inline void save_localtimer_info(unsigned long evt, int ext)
+{
+    return ;
+}
+
+int dump_localtimer_info(char* buffer, int size)
+{
+    return 0;
+}
+
 #endif
 
 
@@ -486,24 +522,24 @@ static int test_ack(void)
     unsigned int cntp_ctl;
     read_cntp_ctl(cntp_ctl);
 
-	printk("test_ack: CNTP_CTL = 0x%x\n", cntp_ctl);
+    printk("test_ack: CNTP_CTL = 0x%x\n", cntp_ctl);
 
-	if (cntp_ctl & CNTP_CTL_ISTATUS) {
+    if (cntp_ctl & CNTP_CTL_ISTATUS) {
         write_cntp_ctl(CNTP_CTL_IMASK);
-		return 1;
-	}
+        return 1;
+    }
 
-	return 0;
+    return 0;
 }
 
 static irqreturn_t test_handler(int irq, void *dev_id)
 {
-	if (test_ack()) {
+    if (test_ack()) {
         //unsigned int pos = gpt_get_cnt(GPT2);
         //printk("[generic_timer:%s]entry, pos=%lu\n", __func__, pos);
-		return IRQ_HANDLED;
-	}
-	return IRQ_NONE;
+        return IRQ_HANDLED;
+    }
+    return IRQ_NONE;
 }
 
 
@@ -523,7 +559,7 @@ static int local_timer_test(void *data)
     int cpu = *(int*)data;
 
     printk("[%s]: thread for cpu%d start\n", __func__, cpu);
-	enable_percpu_irq(GIC_PPI_PRIVATE_TIMER, 0);
+    enable_percpu_irq(GIC_PPI_PRIVATE_TIMER, 0);
 
     while (1) {
         wait_for_completion(&notify[cpu]);
@@ -548,10 +584,10 @@ void local_timer_test_init(void)
         printk(KERN_ERR "fail to request gpt, err=%d\n", err);
     }
 
-	err = request_percpu_irq(GIC_PPI_PRIVATE_TIMER, test_handler, "timer", &evt);
-	if (err) {
-		printk(KERN_ERR "can't register interrupt %d, err=%d\n", GIC_PPI_PRIVATE_TIMER, err);
-	}
+    err = request_percpu_irq(GIC_PPI_PRIVATE_TIMER, test_handler, "timer", &evt);
+    if (err) {
+        printk(KERN_ERR "can't register interrupt %d, err=%d\n", GIC_PPI_PRIVATE_TIMER, err);
+    }
 
     init_completion(&ack);
     for (i = 0; i < nr_cpu_ids; i++) {

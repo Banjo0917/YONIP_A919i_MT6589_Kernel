@@ -23,13 +23,13 @@ int pm_prepare_console(void)
 	orig_kmsg = vt_kmsg_redirect(SUSPEND_CONSOLE);
 	return 0;
 }
+EXPORT_SYMBOL_GPL(pm_prepare_console);
 
 void pm_restore_console(void)
 {
-	pr_info("[%s]: ++\n", __func__);
 	if (orig_fgconsole >= 0) {
 		vt_move_to_console(orig_fgconsole, 0);
 		vt_kmsg_redirect(orig_kmsg);
 	}
-	pr_info("[%s]: --\n", __func__);
 }
+EXPORT_SYMBOL_GPL(pm_restore_console);

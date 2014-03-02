@@ -467,9 +467,9 @@ void MT_trace_hardirqs_on(void)
             t_diff = t_on - t_off;
 
             __raw_get_cpu_var(t_irq_on) = t_on;
-            if(t_diff > TIME_3MS){
+            if(t_diff > TIME_20MS){
                 printk("\n----------------------------[IRQ disable monitor]-------------------------\n");
-                printk("[Sched Latency Warning:IRQ Disable too long(>3ms)] Duration: %lld.%lu ms (off:%lld.%lums, on:%lld.%lums)\n", SPLIT_NS(t_diff), SPLIT_NS(t_off), SPLIT_NS(t_on));
+                printk("[Sched Latency Warning:IRQ Disable too long(>20ms)] Duration: %lld.%lu ms (off:%lld.%lums, on:%lld.%lums)\n", SPLIT_NS(t_diff), SPLIT_NS(t_off), SPLIT_NS(t_on));
                 mt_dump_irq_off_traces();
                 printk("irq on at: %lld.%lu ms\n", SPLIT_NS(t_on));
                 printk("irq on backtraces:\n");

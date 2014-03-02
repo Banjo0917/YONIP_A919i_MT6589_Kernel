@@ -1,3 +1,38 @@
+/* Copyright Statement:
+ *
+ * This software/firmware and related documentation ("MediaTek Software") are
+ * protected under relevant copyright laws. The information contained herein
+ * is confidential and proprietary to MediaTek Inc. and/or its licensors.
+ * Without the prior written permission of MediaTek inc. and/or its licensors,
+ * any reproduction, modification, use or disclosure of MediaTek Software,
+ * and information contained herein, in whole or in part, shall be strictly prohibited.
+ */
+/* MediaTek Inc. (C) 2010. All rights reserved.
+ *
+ * BY OPENING THIS FILE, RECEIVER HEREBY UNEQUIVOCALLY ACKNOWLEDGES AND AGREES
+ * THAT THE SOFTWARE/FIRMWARE AND ITS DOCUMENTATIONS ("MEDIATEK SOFTWARE")
+ * RECEIVED FROM MEDIATEK AND/OR ITS REPRESENTATIVES ARE PROVIDED TO RECEIVER ON
+ * AN "AS-IS" BASIS ONLY. MEDIATEK EXPRESSLY DISCLAIMS ANY AND ALL WARRANTIES,
+ * EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE IMPLIED WARRANTIES OF
+ * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE OR NONINFRINGEMENT.
+ * NEITHER DOES MEDIATEK PROVIDE ANY WARRANTY WHATSOEVER WITH RESPECT TO THE
+ * SOFTWARE OF ANY THIRD PARTY WHICH MAY BE USED BY, INCORPORATED IN, OR
+ * SUPPLIED WITH THE MEDIATEK SOFTWARE, AND RECEIVER AGREES TO LOOK ONLY TO SUCH
+ * THIRD PARTY FOR ANY WARRANTY CLAIM RELATING THERETO. RECEIVER EXPRESSLY ACKNOWLEDGES
+ * THAT IT IS RECEIVER'S SOLE RESPONSIBILITY TO OBTAIN FROM ANY THIRD PARTY ALL PROPER LICENSES
+ * CONTAINED IN MEDIATEK SOFTWARE. MEDIATEK SHALL ALSO NOT BE RESPONSIBLE FOR ANY MEDIATEK
+ * SOFTWARE RELEASES MADE TO RECEIVER'S SPECIFICATION OR TO CONFORM TO A PARTICULAR
+ * STANDARD OR OPEN FORUM. RECEIVER'S SOLE AND EXCLUSIVE REMEDY AND MEDIATEK'S ENTIRE AND
+ * CUMULATIVE LIABILITY WITH RESPECT TO THE MEDIATEK SOFTWARE RELEASED HEREUNDER WILL BE,
+ * AT MEDIATEK'S OPTION, TO REVISE OR REPLACE THE MEDIATEK SOFTWARE AT ISSUE,
+ * OR REFUND ANY SOFTWARE LICENSE FEES OR SERVICE CHARGE PAID BY RECEIVER TO
+ * MEDIATEK FOR SUCH MEDIATEK SOFTWARE AT ISSUE.
+ *
+ * The following software/firmware and/or related documentation ("MediaTek Software")
+ * have been modified by MediaTek Inc. All revisions are subject to any receiver's
+ * applicable license agreements with MediaTek Inc.
+ */
+
 #include <asm/io.h>
 #include <linux/spinlock.h>
 #include <linux/interrupt.h>
@@ -186,7 +221,7 @@ int mt65xx_start_gdma(int channel)
         return -DMA_ERR_CH_FREE;
     }
 
-    mt65xx_reg_sync_writel(DMA_INT_FLAG_CLR_BIT, DMA_INT_FLAG(DMA_BASE_CH(channel)));
+    writel(DMA_INT_FLAG_CLR_BIT, DMA_INT_FLAG(DMA_BASE_CH(channel)));
     mt65xx_reg_sync_writel(DMA_START_BIT, DMA_START(DMA_BASE_CH(channel)));
 
     return 0;
@@ -213,9 +248,9 @@ int mt65xx_stop_gdma(int channel)
         return -DMA_ERR_CH_FREE;
     }
 
-    mt65xx_reg_sync_writel(DMA_FLUSH_BIT, DMA_FLUSH(DMA_BASE_CH(channel)));
+    writel(DMA_FLUSH_BIT, DMA_FLUSH(DMA_BASE_CH(channel)));
     while (readl(DMA_START(DMA_BASE_CH(channel))));
-    mt65xx_reg_sync_writel(DMA_FLUSH_CLR_BIT, DMA_FLUSH(DMA_BASE_CH(channel)));
+    writel(DMA_FLUSH_CLR_BIT, DMA_FLUSH(DMA_BASE_CH(channel)));
     mt65xx_reg_sync_writel(DMA_INT_FLAG_CLR_BIT, DMA_INT_FLAG(DMA_BASE_CH(channel)));
 
     return 0;
@@ -264,30 +299,30 @@ int mt65xx_config_gdma(int channel, struct mt65xx_gdma_conf *config, DMA_CONF_FL
 
     switch (flag) {
     case ALL:
-        mt65xx_reg_sync_writel(config->src, DMA_SRC(DMA_BASE_CH(channel)));
-        mt65xx_reg_sync_writel(config->dst, DMA_DST(DMA_BASE_CH(channel)));
-        mt65xx_reg_sync_writel((config->wplen) & DMA_GDMA_LEN_MAX_MASK, DMA_LEN2(DMA_BASE_CH(channel)));
-        mt65xx_reg_sync_writel(config->wpto, DMA_JUMP_ADDR(DMA_BASE_CH(channel)));
-        mt65xx_reg_sync_writel((config->count) & DMA_GDMA_LEN_MAX_MASK, DMA_LEN1(DMA_BASE_CH(channel)));
+        writel(config->src, DMA_SRC(DMA_BASE_CH(channel)));
+        writel(config->dst, DMA_DST(DMA_BASE_CH(channel)));
+        writel((config->wplen) & DMA_GDMA_LEN_MAX_MASK, DMA_LEN2(DMA_BASE_CH(channel)));
+        writel(config->wpto, DMA_JUMP_ADDR(DMA_BASE_CH(channel)));
+        writel((config->count) & DMA_GDMA_LEN_MAX_MASK, DMA_LEN1(DMA_BASE_CH(channel)));
 
         /*setup coherence bus*/
         if (config->cohen){
-            mt65xx_reg_sync_writel((DMA_READ_COHER_BIT|readl(DMA_AXIATTR(DMA_BASE_CH(channel)))), DMA_AXIATTR(DMA_BASE_CH(channel)));
-            mt65xx_reg_sync_writel((DMA_WRITE_COHER_BIT|readl(DMA_AXIATTR(DMA_BASE_CH(channel)))), DMA_AXIATTR(DMA_BASE_CH(channel)));
+            writel((DMA_READ_COHER_BIT|readl(DMA_AXIATTR(DMA_BASE_CH(channel)))), DMA_AXIATTR(DMA_BASE_CH(channel)));
+            writel((DMA_WRITE_COHER_BIT|readl(DMA_AXIATTR(DMA_BASE_CH(channel)))), DMA_AXIATTR(DMA_BASE_CH(channel)));
         }
 
         /*setup security channel */
         if (config->sec){
-            //printk("1:GMDA GSEC:%x, ChSEC:%x\n",readl(DMA_GLOBAL_GSEC_EN),readl(DMA_GDMA_SEC_EN(channel)));
-            mt65xx_reg_sync_writel((DMA_GSEC_EN_BIT|readl(DMA_GLOBAL_GSEC_EN)), DMA_GLOBAL_GSEC_EN);
-            mt65xx_reg_sync_writel((DMA_SEC_EN_BIT|readl(DMA_GDMA_SEC_EN(channel))), DMA_GDMA_SEC_EN(channel));
-            //printk("2:GMDA GSEC:%x, ChSEC:%x\n",readl(DMA_GLOBAL_GSEC_EN),readl(DMA_GDMA_SEC_EN(channel)));
+            printk("1:GMDA GSEC:%x, ChSEC:%x\n",readl(DMA_GLOBAL_GSEC_EN),readl(DMA_GDMA_SEC_EN(channel)));
+            writel((DMA_GSEC_EN_BIT|readl(DMA_GLOBAL_GSEC_EN)), DMA_GLOBAL_GSEC_EN);
+            writel((DMA_SEC_EN_BIT|readl(DMA_GDMA_SEC_EN(channel))), DMA_GDMA_SEC_EN(channel));
+            printk("2:GMDA GSEC:%x, ChSEC:%x\n",readl(DMA_GLOBAL_GSEC_EN),readl(DMA_GDMA_SEC_EN(channel)));
         }
         else
         {
-            //printk("1:GMDA GSEC:%x, ChSEC:%x\n",readl(DMA_GLOBAL_GSEC_EN),readl(DMA_GDMA_SEC_EN(channel)));
-            mt65xx_reg_sync_writel(((~DMA_GSEC_EN_BIT)&readl(DMA_GLOBAL_GSEC_EN)), DMA_GLOBAL_GSEC_EN);
-            //printk("2:GMDA GSEC:%x, ChSEC:%x\n",readl(DMA_GLOBAL_GSEC_EN),readl(DMA_GDMA_SEC_EN(channel)));
+            printk("1:GMDA GSEC:%x, ChSEC:%x\n",readl(DMA_GLOBAL_GSEC_EN),readl(DMA_GDMA_SEC_EN(channel)));
+            writel(((~DMA_GSEC_EN_BIT)&readl(DMA_GLOBAL_GSEC_EN)), DMA_GLOBAL_GSEC_EN);
+            printk("2:GMDA GSEC:%x, ChSEC:%x\n",readl(DMA_GLOBAL_GSEC_EN),readl(DMA_GDMA_SEC_EN(channel)));
         }
 
         if (config->wpen) {
@@ -299,9 +334,9 @@ int mt65xx_config_gdma(int channel, struct mt65xx_gdma_conf *config, DMA_CONF_FL
         }
 
         if (config->iten) {
-            mt65xx_reg_sync_writel(DMA_INT_EN_BIT, DMA_INT_EN(DMA_BASE_CH(channel)));
+            writel(DMA_INT_EN_BIT, DMA_INT_EN(DMA_BASE_CH(channel)));
         }else {
-            mt65xx_reg_sync_writel(DMA_INT_EN_CLR_BIT, DMA_INT_EN(DMA_BASE_CH(channel)));
+            writel(DMA_INT_EN_CLR_BIT, DMA_INT_EN(DMA_BASE_CH(channel)));
         }
 
         if (config->dinc && config->sinc) {
@@ -327,21 +362,21 @@ int mt65xx_config_gdma(int channel, struct mt65xx_gdma_conf *config, DMA_CONF_FL
             dma_con |= DMA_CON_SLOW_EN;
         }
 
-        mt65xx_reg_sync_writel(dma_con, DMA_CON(DMA_BASE_CH(channel)));
+        writel(dma_con, DMA_CON(DMA_BASE_CH(channel)));
         break;
 
     case SRC:
-        mt65xx_reg_sync_writel(config->src, DMA_SRC(DMA_BASE_CH(channel)));
+        writel(config->src, DMA_SRC(DMA_BASE_CH(channel)));
 
         break;
         
     case DST:
-        mt65xx_reg_sync_writel(config->dst, DMA_DST(DMA_BASE_CH(channel)));
+        writel(config->dst, DMA_DST(DMA_BASE_CH(channel)));
         break;
 
     case SRC_AND_DST:
-        mt65xx_reg_sync_writel(config->src, DMA_SRC(DMA_BASE_CH(channel)));
-        mt65xx_reg_sync_writel(config->dst, DMA_DST(DMA_BASE_CH(channel)));
+        writel(config->src, DMA_SRC(DMA_BASE_CH(channel)));
+        writel(config->dst, DMA_DST(DMA_BASE_CH(channel)));
         break;
 
     default:

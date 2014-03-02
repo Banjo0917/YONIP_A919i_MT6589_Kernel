@@ -109,6 +109,9 @@ struct mmc_host_ops {
 /*++add dma error reset for Mediatek MSDC host++*/
 	void	(*dma_error_reset)(struct mmc_host *host);
 /*--add dma error reset for Mediatek MSDC host--*/
+/*++add written data check for Mediatek MSDC host++*/
+	bool	(*check_written_data)(struct mmc_host *host, struct mmc_request *req);
+/*--add written data check for Mediatek MSDC host--*/
 
 	/*
 	 * Avoid calling these three functions too often or in a "fast path",

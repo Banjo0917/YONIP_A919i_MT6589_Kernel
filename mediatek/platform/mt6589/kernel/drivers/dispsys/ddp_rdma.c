@@ -72,7 +72,7 @@ int RDMAReset(unsigned idx) {
             break;
         }
     }      
-    DISP_REG_SET_FIELD(GLOBAL_CON_FLD_SOFT_RESET, idx * DISP_INDEX_OFFSET + idx * DISP_INDEX_OFFSET + DISP_REG_RDMA_GLOBAL_CON, 0);
+    DISP_REG_SET_FIELD(GLOBAL_CON_FLD_SOFT_RESET, idx * DISP_INDEX_OFFSET + DISP_REG_RDMA_GLOBAL_CON, 0);
     // printk("[DDP] start reset! \n");
     while((DISP_REG_GET(idx * DISP_INDEX_OFFSET + DISP_REG_RDMA_GLOBAL_CON)&0x700)!=0x100)
     {

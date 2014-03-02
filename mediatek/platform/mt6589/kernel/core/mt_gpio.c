@@ -1042,6 +1042,62 @@ s32 mt_get_gpio_pull_enable_chip(u32 pin)
     return (((reg & (1L << bit)) != 0)? 1: 0);        
 }
 /*---------------------------------------------------------------------------*/
+s32 mt_set_gpio_ies_chip(u32 pin, u32 enable)
+{
+    u32 pos;
+    u32 bit;
+    struct mt_gpio_obj *obj = gpio_obj;
+	unsigned long flags = 0;
+	if((pin >= 114) && (pin <= 169)){
+		obj = gpio1_obj;
+	}
+
+    if (!obj)
+        return -ERACCESS;
+    
+    if (pin >= MAX_GPIO_PIN)
+        return -ERINVAL;
+
+    if (enable >= GPIO_IES_MAX)
+        return -ERINVAL;
+	spin_lock_irqsave(&obj->lock, flags);
+    
+	pos = pin / MAX_GPIO_REG_BITS;
+	bit = pin % MAX_GPIO_REG_BITS;
+
+	if (enable == GPIO_IES_DISABLE)
+		GPIO_SET_BITS((1L << bit), &obj->reg->ies[pos].rst);
+	else
+		GPIO_SET_BITS((1L << bit), &obj->reg->ies[pos].set);
+	spin_unlock_irqrestore(&obj->lock, flags);
+
+    return RSUCCESS;
+}
+/*---------------------------------------------------------------------------*/
+s32 mt_get_gpio_ies_chip(u32 pin)
+{
+    u32 pos;
+    u32 bit;
+    u32 reg;
+    struct mt_gpio_obj *obj = gpio_obj;
+
+	//GPIO114~GPIO169 BASE_ADDRESS is different with others
+	if((pin >= 114) && (pin <= 169)){
+		obj = gpio1_obj;
+	}
+    if (!obj)
+        return -ERACCESS;
+    
+    if (pin >= MAX_GPIO_PIN)
+        return -ERINVAL;
+
+	pos = pin / MAX_GPIO_REG_BITS;
+	bit = pin % MAX_GPIO_REG_BITS;
+
+	reg = GPIO_RD32(&obj->reg->ies[pos].val);
+    return (((reg & (1L << bit)) != 0)? 1: 0);        
+}
+/*---------------------------------------------------------------------------*/
 s32 mt_set_gpio_pull_select_chip(u32 pin, u32 select)
 {
     u32 pos;
@@ -1834,6 +1890,20 @@ s32 mt_get_gpio_pull_enable(u32 pin)
 }
 EXPORT_SYMBOL(mt_get_gpio_pull_enable);
 /*---------------------------------------------------------------------------*/
+s32 mt_set_gpio_ies(u32 pin, u32 enable)
+{
+    //return (pin >= GPIO_EXTEND_START) ? mt_set_gpio_ies_ext(pin,enable): mt_set_gpio_ies_chip(pin,enable);
+    return (pin >= GPIO_EXTEND_START) ? -1 : mt_set_gpio_ies_chip(pin,enable);
+}
+EXPORT_SYMBOL(mt_set_gpio_ies);
+/*---------------------------------------------------------------------------*/
+s32 mt_get_gpio_ies(u32 pin)
+{
+    //return (pin >= GPIO_EXTEND_START) ? mt_get_gpio_ies_ext(pin): mt_get_gpio_ies_chip(pin);
+    return (pin >= GPIO_EXTEND_START) ? 1 : mt_get_gpio_ies_chip(pin);
+}
+EXPORT_SYMBOL(mt_get_gpio_ies);
+/*---------------------------------------------------------------------------*/
 s32 mt_set_gpio_pull_select(u32 pin, u32 select)
 {
     return (pin >= GPIO_EXTEND_START) ? mt_set_gpio_pull_select_ext(pin,select): mt_set_gpio_pull_select_chip(pin,select);
@@ -2272,11 +2342,11 @@ EXPORT_SYMBOL(mt_gpio_dump);
 void gpio_dump_regs(void)
 {
     int idx = 0;	
-	GPIOMSG("PIN: [MODE] [PULL_SEL] [DIN] [DOUT] [PULL EN] [DIR] [INV]\n");
+	GPIOMSG("PIN: [MODE] [PULL_SEL] [DIN] [DOUT] [PULL EN] [DIR] [INV] [IES]\n");
     for (idx = 0; idx < MAX_GPIO_PIN; idx++) {
-		printk("idx = %3d: %d %d %d %d %d %d %d\n",
+		printk("idx = %3d: %d %d %d %d %d %d %d %d\n",
 		   idx,mt_get_gpio_mode(idx), mt_get_gpio_pull_select(idx), mt_get_gpio_in(idx),mt_get_gpio_out(idx),
-		   mt_get_gpio_pull_enable(idx),mt_get_gpio_dir(idx),mt_get_gpio_inversion(idx)); 
+		   mt_get_gpio_pull_enable(idx),mt_get_gpio_dir(idx),mt_get_gpio_inversion(idx),mt_get_gpio_ies(idx)); 
     }
 }
 EXPORT_SYMBOL(gpio_dump_regs);
@@ -2284,12 +2354,12 @@ EXPORT_SYMBOL(gpio_dump_regs);
 static ssize_t mt_gpio_dump_regs(char *buf, ssize_t bufLen)
 {
     int idx = 0, len = 0;
-	char tmp[]="PIN: [MODE] [PULL_SEL] [DIN] [DOUT] [PULL EN] [DIR] [INV]\n";
+	char tmp[]="PIN: [MODE] [PULL_SEL] [DIN] [DOUT] [PULL EN] [DIR] [INV] [IES]\n";
 	len += snprintf(buf+len, bufLen-len, "%s",tmp);
     for (idx = 0; idx < MAX_GPIO_PIN; idx++) {
-		len += snprintf(buf+len, bufLen-len, "%3d:%d%d%d%d%d%d%d\n",
+		len += snprintf(buf+len, bufLen-len, "%3d:%d%d%d%d%d%d%d%d\n",
 		   idx,mt_get_gpio_mode(idx), mt_get_gpio_pull_select(idx), mt_get_gpio_in(idx),mt_get_gpio_out(idx),
-		   mt_get_gpio_pull_enable(idx),mt_get_gpio_dir(idx),mt_get_gpio_inversion(idx)); 
+		   mt_get_gpio_pull_enable(idx),mt_get_gpio_dir(idx),mt_get_gpio_inversion(idx),mt_get_gpio_ies(idx)); 
     }
     return len;
 }
@@ -2332,6 +2402,7 @@ static void mt_gpio_read_pin(GPIO_CFG* cfg, int method)
         cfg->dir    = mt_get_gpio_dir(cfg->no);
         cfg->dinv   = mt_get_gpio_inversion(cfg->no);
         cfg->mode   = mt_get_gpio_mode(cfg->no);
+        cfg->ies   = mt_get_gpio_ies(cfg->no);
     }
 }
 /*---------------------------------------------------------------------------*/
@@ -2373,6 +2444,9 @@ static ssize_t mt_gpio_dump_addr(struct device* dev)
     GPIOMSG("# direction\n");
     for (idx = 0; idx < sizeof(reg->dir)/sizeof(reg->dir[0]); idx++)
         GPIOMSG("val[%2d] %p\nset[%2d] %p\nrst[%2d] %p\n", idx, &reg->dir[idx].val, idx, &reg->dir[idx].set, idx, &reg->dir[idx].rst);
+    GPIOMSG("# ies\n");
+    for (idx = 0; idx < sizeof(reg->ies)/sizeof(reg->ies[0]); idx++)
+        GPIOMSG("val[%2d] %p\nset[%2d] %p\nrst[%2d] %p\n", idx, &reg->ies[idx].val, idx, &reg->ies[idx].set, idx, &reg->ies[idx].rst);
     GPIOMSG("# pull enable\n");
     for (idx = 0; idx < sizeof(reg->pullen)/sizeof(reg->pullen[0]); idx++)
         GPIOMSG("val[%2d] %p\nset[%2d] %p\nrst[%2d] %p\n", idx, &reg->pullen[idx].val, idx, &reg->pullen[idx].set, idx, &reg->pullen[idx].rst);
@@ -2479,7 +2553,7 @@ static ssize_t mt_gpio_store_pin(struct device* dev, struct device_attribute *at
                                  const char *buf, size_t count)
 {
     int pin, ret;
-    int mode, pullsel, dout, pullen, dir, dinv, din;
+    int mode, pullsel, dout, pullen, dir, dinv, din, ies;
     u32 num,src,div;
 	char md_str[128]="GPIO_MD_TEST";
     struct mt_gpio_obj *obj = (struct mt_gpio_obj*)dev_get_drvdata(dev);    
@@ -2489,6 +2563,7 @@ static ssize_t mt_gpio_store_pin(struct device* dev, struct device_attribute *at
 		GPIOMSG("echo -wpsel num x > pin #x: 1,pull-up; 0,pull-down\n");
 		GPIOMSG("echo -wdout num x > pin #x: 1,high; 0, low\n");
 		GPIOMSG("echo -wpen num x > pin  #x: 1,pull enable; 0 pull disable\n");
+		GPIOMSG("echo -wies num x > pin  #x: 1,ies enable; 0 ies disable\n");
 		GPIOMSG("echo -wdir num x > pin  #x: 1, output; 0, input\n");
 		GPIOMSG("echo -wdinv num x > pin #x: 1, inversion enable; 0, disable\n");
 		GPIOMSG("echo -w=num x x x x x x > pin #set all property one time\n");
@@ -2513,6 +2588,8 @@ static ssize_t mt_gpio_store_pin(struct device* dev, struct device_attribute *at
             GPIOMSG("set dout(%3d, %d)=%d\n", pin, dout, mt_set_gpio_out(pin, dout));
         else if (!strncmp(buf, "pen", 3) &&  (2 == sscanf(buf+3, "%d %d", &pin, &pullen)))
             GPIOMSG("set pen (%3d, %d)=%d\n", pin, pullen, mt_set_gpio_pull_enable(pin, pullen));
+        else if (!strncmp(buf, "ies", 3) &&  (2 == sscanf(buf+3, "%d %d", &pin, &ies)))
+            GPIOMSG("set ies (%3d, %d)=%d\n", pin, ies, mt_set_gpio_ies(pin, ies));
         else if (!strncmp(buf, "dir", 3) &&  (2 == sscanf(buf+3, "%d %d", &pin, &dir)))
             GPIOMSG("set dir (%3d, %d)=%d\n", pin, dir, mt_set_gpio_dir(pin, dir));
         else if (!strncmp(buf, "dinv", 4) && (2 == sscanf(buf+4, "%d %d", &pin, &dinv)))

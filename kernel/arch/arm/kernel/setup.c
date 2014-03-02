@@ -55,6 +55,7 @@
 #include <asm/traps.h>
 #include <asm/unwind.h>
 #include <asm/memblock.h>
+#include <mach/mtk_memcfg.h>
 
 #if defined(CONFIG_DEPRECATED_PARAM_STRUCT)
 #include "compat.h"
@@ -541,7 +542,7 @@ int __init arm_add_memory(phys_addr_t start, unsigned long size)
 	bank->size = size & PAGE_MASK;
 
         if (bank->size) {
-            printk(KERN_ALERT
+            MTK_MEMCFG_LOG_AND_PRINTK(KERN_ALERT
                     "[PHY layout]kernel   :   0x%08lx - 0x%08lx  (0x%08lx)\n",
                     (unsigned long)bank->start, 
                     (unsigned long)(bank->start + bank->size - 1), 

@@ -13,10 +13,11 @@
 /*
 ** $Log: p2p_fsm.c $
 **
-** 12 07 2012 yuche.tsai
+** 12 20 2012 yuche.tsai
 ** [ALPS00410124] [Rose][Free Test][KE][rlmUpdateParamsForAP]The device reboot automaticly and then "Fatal/Kernel" pops up during use data service.(Once)
-** Fix possible station record NULL issue.
-** May due to variable not initial.
+** Fix possible NULL station record cause KE under AP mode.
+** May due to variable uninitial.
+** Review: http://mtksap20:8080/go?page=NewReview&reviewid=49970
 ** 
 ** 09 12 2012 wcpadmin
 ** [ALPS00276400] Remove MTK copyright and legal header on GPL/LGPL related packages
@@ -904,8 +905,10 @@ p2pFsmInit (
         LINK_INITIALIZE(&(prP2pFsmInfo->rMsgEventQueue));
         LINK_INITIALIZE(&(prP2pBssInfo->rStaRecOfClientList));
 
+
         prP2pFsmInfo->eCurrentState = prP2pFsmInfo->ePreviousState = P2P_STATE_IDLE;
         prP2pFsmInfo->prTargetBss = NULL;
+		prP2pFsmInfo->fgIsWPSMode = 0;
 
         cnmTimerInitTimer(prAdapter,
                             &(prP2pFsmInfo->rP2pFsmTimeoutTimer),
@@ -1392,7 +1395,8 @@ p2pFsmRunEventChGrant (
         }
         else {
             /* Channel requsted, but released. */
-            ASSERT(!prChnlReqInfo->fgIsChannelRequested);
+            //ASSERT(!prChnlReqInfo->fgIsChannelRequested);
+            DBGLOG(P2P, TRACE, ("Channel requsted, but released\n"));
         }
     } while (FALSE);
 
@@ -2036,6 +2040,8 @@ p2pFsmRunEventBeaconUpdate (
 
         DBGLOG(P2P, TRACE, ("p2pFsmRunEventBeaconUpdate\n"));
 
+		printk("p2pFsmRunEventBeaconUpdate\n");
+
         prP2pFsmInfo = prAdapter->rWifiVar.prP2pFsmInfo;
 
         if (prP2pFsmInfo == NULL) {
@@ -2398,11 +2404,7 @@ p2pFsmRunEventDeauthTxDone (
         prP2pBssInfo = &(prAdapter->rWifiVar.arBssInfo[NETWORK_TYPE_P2P_INDEX]);
         eOriMediaStatus = prP2pBssInfo->eConnectionState;
 
-        /* Change station state. */
-        cnmStaRecChangeState(prAdapter, prStaRec, STA_STATE_1);
 
-        /* Reset Station Record Status. */
-        p2pFuncResetStaRecStatus(prAdapter, prStaRec);
 
         /**/
         cnmStaRecFree(prAdapter, prStaRec, TRUE);
@@ -2598,7 +2600,7 @@ p2pFsmRunEventJoinComplete (
             if(prAdapter->rWifiVar.arBssInfo[NETWORK_TYPE_P2P_INDEX].eConnectionState == PARAM_MEDIA_STATE_CONNECTED) {
             /* Return to IDLE state. */
             p2pFsmStateTransition(prAdapter, prP2pFsmInfo, P2P_STATE_IDLE);
-             }
+        }
 	    else {
             //p2pFsmStateTransition(prAdapter, prP2pFsmInfo, P2P_STATE_IDLE);
                  /* one more scan */

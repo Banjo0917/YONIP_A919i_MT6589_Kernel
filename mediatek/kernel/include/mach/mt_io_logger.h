@@ -132,6 +132,7 @@ extern void dump_trace_log(const char *func_name, unsigned long long timeoffset)
 
 extern bool en_IOLogger(void);
 
+extern void mt_disable_io_logger(void);
 
 #define AddIOTrace(msg_id,name, ...) \
 	add_io_trace(LOGGER_TYPE_IO, msg_id, __LINE__, \

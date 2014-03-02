@@ -206,6 +206,11 @@ enum logger_type
 
 #endif
 
+/*
+ * add the api to disable the storage logger
+ */
+extern void storage_logger_switch( bool enabled);
+
 extern void add_trace(enum logger_type type, unsigned int msg_id,
 			unsigned int line_cnt, unsigned int func_id, ...);
 

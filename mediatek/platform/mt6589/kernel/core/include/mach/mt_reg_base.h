@@ -88,6 +88,10 @@
 #define VRZ1_BASE                   0xF20A4000
 #endif
 
+#define TVC_BASE                    0xF209D000
+#define TVE_BASE                    0xF209E000
+#define TV_ROT_BASE                 0xF209F000
+
 #define DEBUGTOP_BASE               0xF0100000
 #define EMI_BASE                            0xF0203000
 #define SMI_MMU_TOP_BASE            0xF0205000

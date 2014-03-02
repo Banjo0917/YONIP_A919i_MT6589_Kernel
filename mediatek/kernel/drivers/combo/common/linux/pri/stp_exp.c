@@ -240,7 +240,6 @@ VOID stp_drv_exit(VOID)
     return;
 }
 
-#if !defined(MT6628)
 EXPORT_SYMBOL(mtk_wcn_stp_register_if_tx);
 EXPORT_SYMBOL(mtk_wcn_stp_register_if_rx);
 EXPORT_SYMBOL(mtk_wcn_stp_register_event_cb);
@@ -254,7 +253,7 @@ EXPORT_SYMBOL(mtk_wcn_stp_set_bluez);
 EXPORT_SYMBOL(mtk_wcn_stp_is_ready);
 EXPORT_SYMBOL(mtk_wcn_stp_dbg_log_ctrl);
 
-#endif
+
 
 
 

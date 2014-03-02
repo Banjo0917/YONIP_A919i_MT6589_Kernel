@@ -58,7 +58,7 @@ static int mtk_mdm_enable(void);
 static int mtk_mdm_disable(void);
 extern bool is_meta_mode(void);
 extern bool is_advanced_meta_mode(void);
-static int signal_period = 1; // 1s
+static int signal_period = 60; // 1s
 
 struct md_info g_pinfo_list[] = 
 {{"TXPWR_MD1", -127, "db", -127, 0}, 
@@ -339,7 +339,7 @@ static int __init mtk_mdm_txpwr_init(void)
         }
     }
     // Add for thermal all on scenary
-    mtk_mdm_start_query();
+    //mtk_mdm_start_query();
 
     return 0;
 }

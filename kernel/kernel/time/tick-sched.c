@@ -164,8 +164,8 @@ update_ts_time_stats(int cpu, struct tick_sched *ts, ktime_t now, u64 *last_upda
 		delta = ktime_sub(now, ts->idle_entrytime);
 		if (nr_iowait_cpu(cpu) > 0)
 			ts->iowait_sleeptime = ktime_add(ts->iowait_sleeptime, delta);
-		
-		ts->idle_sleeptime = ktime_add(ts->idle_sleeptime, delta);
+		else
+			ts->idle_sleeptime = ktime_add(ts->idle_sleeptime, delta);
 		ts->idle_entrytime = now;
 	}
 
@@ -191,7 +191,7 @@ static void tick_nohz_stop_idle(int cpu, ktime_t now)
 static ktime_t tick_nohz_start_idle(int cpu, struct tick_sched *ts)
 {
 	ktime_t now = ktime_get();
-    update_ts_time_stats(cpu, ts, now, NULL);
+
 	ts->idle_entrytime = now;
 	ts->idle_active = 1;
 	

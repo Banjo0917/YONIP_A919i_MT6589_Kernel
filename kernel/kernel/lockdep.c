@@ -68,13 +68,12 @@ module_param(lock_stat, int, 0644);
 #define lock_stat 0
 #endif
 
-static char mt_warn[25];
-static void lockdep_aee(const char* warn)
+static void lockdep_aee(void)
 {
     char aee_str[40];
     sprintf( aee_str, "[%s]LockProve Warning", current->comm);
     aee_kernel_warning( aee_str,"LockProve Debug\n");
-    strlcpy(mt_warn, warn, 25);
+
 }
 /*
  * lockdep_lock: protects the lockdep graph, the hashes and the
@@ -1159,7 +1158,7 @@ print_circular_bug_header(struct lock_list *entry, unsigned int depth,
 		return 0;
 
     //Add by Mtk
-    lockdep_aee("[CircularLock]");
+    lockdep_aee();
 
 	printk("\n");
 	printk("======================================================\n");
@@ -1500,7 +1499,7 @@ print_bad_irq_dependency(struct task_struct *curr,
 		return 0;
 
     //Add by Mtk
-    lockdep_aee("[Bad irq dep]");
+    lockdep_aee();
 
 	printk("\n");
 	printk("======================================================\n");
@@ -1733,7 +1732,7 @@ print_deadlock_bug(struct task_struct *curr, struct held_lock *prev,
 		return 0;
 
     //Add by Mtk
-    lockdep_aee("[RecursiveLock]");
+    lockdep_aee();
 
 	printk("\n");
 	printk("=============================================\n");
@@ -2243,7 +2242,7 @@ print_usage_bug(struct task_struct *curr, struct held_lock *this,
 		return 0;
 
     //Add by Mtk
-    lockdep_aee("[Inconsistent]");
+    lockdep_aee();
 
 	printk("\n");
 	printk("=================================\n");
@@ -2311,7 +2310,7 @@ print_irq_inversion_bug(struct task_struct *curr,
 		return 0;
 
     //Add by Mtk
-    lockdep_aee("[IrqInvertion]");
+    lockdep_aee();
 
 	printk("\n");
 	printk("=========================================================\n");
@@ -3197,7 +3196,7 @@ print_unlock_inbalance_bug(struct task_struct *curr, struct lockdep_map *lock,
 		return 0;
 
     //Add by Mtk
-    lockdep_aee("[UnlockInbalance]");
+    lockdep_aee();
 
 	printk("\n");
 	printk("=====================================\n");
@@ -3653,7 +3652,7 @@ print_lock_contention_bug(struct task_struct *curr, struct lockdep_map *lock,
 		return 0;
 
     //Add by Mtk
-    lockdep_aee("[BadContent]");
+    lockdep_aee();
 
 	printk("\n");
 	printk("=================================\n");
@@ -4020,7 +4019,6 @@ void __init lockdep_info(void)
 		print_stack_trace(&lockdep_init_trace, 0);
 	}
 #endif
-    strcpy(mt_warn,"[NULL]");
 }
 
 static void
@@ -4033,7 +4031,7 @@ print_freed_lock_bug(struct task_struct *curr, const void *mem_from,
 		return;
 
     //Add by Mtk
-    lockdep_aee("[BadFree]");
+    lockdep_aee();
 
 	printk("\n");
 	printk("=========================\n");
@@ -4094,7 +4092,7 @@ static void print_held_locks_bug(struct task_struct *curr)
 		return;
 
     //Add by Mtk
-    lockdep_aee("[ExitLock]");
+    lockdep_aee();
 
 	printk("\n");
 	printk("=====================================\n");
@@ -4218,7 +4216,7 @@ void lockdep_rcu_suspicious(const char *file, const int line, const char *s)
 	/* Note: the following can be executed concurrently, so be careful. */
 
     //Add by Mtk
-    lockdep_aee("[RCU]");
+    lockdep_aee();
 
 	printk("\n");
 	printk("===============================\n");
@@ -4261,24 +4259,3 @@ void lockdep_rcu_suspicious(const char *file, const int line, const char *s)
 	dump_stack();
 }
 EXPORT_SYMBOL_GPL(lockdep_rcu_suspicious);
-
-void mt_check_lockoff(void)
-{
-    if(debug_locks == 0)
-        printk("LockOff!%s@%s:%llu\n", mt_warn, lockoff_caller, lockoff_time);
-    
-}
-void mt_lockdep_print_held_locks(struct task_struct *curr)
-{
-	int i, depth = curr->lockdep_depth;
-    if(!curr)
-        return;
-
-	printk("[%s:%d]hold %d lock\n",
-		curr->comm, task_pid_nr(curr), depth);
-
-	for (i = 0; i < depth; i++) {
-		printk(" %d:", i);
-		print_lock(curr->held_locks + i);
-	}
-}

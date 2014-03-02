@@ -1506,20 +1506,6 @@ static void sched_ttwu_pending(void)
 	raw_spin_lock(&rq->lock);
 
 	while (llist) {
-#ifdef CONFIG_MT_SCHED_DEBUG_ONLY
-		int i=0;  
-		char llist_str[80]="", llist_addr[13];
-
-		i++;
-		if( i > 295 ){
-			snprintf( llist_addr, 12, "0x%x ", (unsigned int) llist);
-			strncat(llist_str, llist_addr, 12);
-			if( 300 == i){
-				printk(KERN_ERR "debug for sched_ttwu_pending: %s", llist_str);
-			}
-		}
-		BUG_ON(i>=300);
-#endif
 		p = llist_entry(llist, struct task_struct, wake_entry);
 		llist = llist_next(llist);
 		ttwu_do_activate(rq, p, 0);

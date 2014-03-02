@@ -39,10 +39,13 @@ ccflags-y += \
 #    -include $(MTK_PATH_PLATFORM)/drivers/gpu/pvr/include4/config_kernel_eng.h
 #endif
 
-ifeq ($(MTK_FORCE_GPU_89M), true)
-ccflags-y += -DMTK_FORCE_M
+ifeq ($(MTK_FORCE_GPU_89T), yes)
+ccflags-y += -DMTK_FORCE_T
 endif
 
+ifeq ($(MTK_FORCE_GPU_89M), yes)
+ccflags-y += -DMTK_FORCE_M
+endif
 
 pvrsrvkm-y := \
 	services4/srvkm/env/linux/osfunc.o \

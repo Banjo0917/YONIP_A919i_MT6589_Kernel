@@ -317,6 +317,15 @@ DPI_STATUS DPI_Init(BOOL isDpiPoweredOn)
 }
 EXPORT_SYMBOL(DPI_Init);
 
+DPI_STATUS DPI_FreeIRQ(void)
+{
+#if ENABLE_DPI_INTERRUPT
+    free_irq(MT6589_DISP_DPI0_IRQ_ID, NULL);
+#endif
+    return DPI_STATUS_OK;
+}
+EXPORT_SYMBOL(DPI_FreeIRQ);
+
 DPI_STATUS DPI_Deinit(void)
 {
     DPI_DisableClk();
@@ -343,16 +352,13 @@ void DPI_mipi_switch(bool on)
 #ifndef BULID_UBOOT
 extern UINT32 FB_Addr;
 #endif
-#define HJ101NA02A 1
-#define BP101WX1   2
-#define AT070TNA2  3
 DPI_STATUS DPI_Init_PLL(unsigned int mipi_pll_clk_ref,unsigned int mipi_pll_clk_div1,unsigned int mipi_pll_clk_div2)
 {
-    MASKREG32(0xF0000154, 0x400, 0x400);  // CLK_CFG_5[10] rg_lvds_tv_sel
+	MASKREG32(CLK_CFG_5, 0x400, 0x400);  // CLK_CFG_5[10] rg_lvds_tv_sel
                                           // 0:dpi0_ck from tvhdmi pll
                                           // 1:dpi0_ck from lvds pll
 
-    MASKREG32(0xF000015C, 0x07000000, 0x01000000); // CLK_CFG_7[26:24] lvdspll clock divider selection
+	MASKREG32(CLK_CFG_7, 0x07000000, 0x01000000); // CLK_CFG_7[26:24] lvdspll clock divider selection
                                                    // 0: from 26M
                                                    // 1: lvds_pll_ck
                                                    // 2: lvds_pll_ck/2
@@ -364,150 +370,13 @@ DPI_STATUS DPI_Init_PLL(unsigned int mipi_pll_clk_ref,unsigned int mipi_pll_clk_
     udelay(2);
     DRV_ClrReg32(LVDSPLL_PWR_CON0, (0x1 << 1));  //PLL_ISO_EN
 
-    if(HJ101NA02A == mipi_pll_clk_div1) //HJ101NA02A: LVDSCLK=144.8M, PCLK=72.4M for 1280x800
-    {
-        OUTREG32(LVDSPLL_CON1, 0x800b2376);
-        OUTREG32(LVDSPLL_CON0, 0x80000081);
-    }
-    else if(BP101WX1 == mipi_pll_clk_div1) //BP101WX1: LVDSCLK=130M, PCLK=65M for 1280x800
-    {
-        OUTREG32(LVDSPLL_CON1, 0x800a0000);
-        OUTREG32(LVDSPLL_CON0, 0x80000081);
-    }
-    else if(AT070TNA2 == mipi_pll_clk_div1) //AT070TNA2: LVDSCLK=204.8M, PCLK=51.2M for 1024x600
-    {
-        OUTREG32(LVDSPLL_CON1, 0x800FC0FC);
-        OUTREG32(LVDSPLL_CON0, 0x80000081);
-    }
+	OUTREG32(LVDSPLL_CON1, mipi_pll_clk_div2);
+	OUTREG32(LVDSPLL_CON0, mipi_pll_clk_div1);
     udelay(20);
 
-    if(BP101WX1 == mipi_pll_clk_div1) //BP101WX1: LVDSCLK=130M, PCLK=65M for 1280x800)
-    {
-        //DPI1 PLL
-        DRV_SetReg32(TVDPLL_PWR_CON0, (0x1 << 0));  //PLL_PWR_ON
-        udelay(2);
-        DRV_ClrReg32(TVDPLL_PWR_CON0, (0x1 << 1));  //PLL_ISO_EN
-        OUTREG32(TVDPLL_CON1, 0x800B6C4E);
-        OUTREG32(TVDPLL_CON0, 0x80000081);
-        udelay(20);
-    }
-	//mtk70349 [2012/11/13] PCLK 51.2MHz issue
-    //MASKREG32(DPI_BASE + 0x14, 0x1F1F, 0x101);  // DPI_CK_DUT =1, DPI_CK_DIV = 1
-
-    if(BP101WX1 == mipi_pll_clk_div1) //BP101WX1: LVDSCLK=130M, PCLK=65M for 1280x800)
-    {
-        MASKREG32(DISPSYS_BASE + 0x60, 0xa00, 0xa00); // [1]: DPI0_I2X_EN
-    	                                          // 0: DPI0 IO is single edge mode
-                                                    //1: DPI0 IO is dual edge mode
-        //OUTREG32(0xf400f014, 0x800000101);  // DPI_CK_DUT =1, DPI_CK_DIV = 1
-        //OUTREG32(0xf400f000, 0x1); //dpi1 enable
-        //OUTREG32(0xf400f0b4, 0x41); //output color bar
-        //OUTREG32(0xf400f010, 0x100); //embedded sync
-        //OUTREG32(DPI_BASE+ 0xB4, 0x41); //output color bar
-        //OUTREG32(0xf020c590, 0x77777777); //driving
-    }
-
-#if 0
-    MIPITX_CFG0_REG con0 = DSI_PHY_REG_DPI->MIPITX_CON0;
-    MIPITX_CFG1_REG con1 = DSI_PHY_REG_DPI->MIPITX_CON1;
-#ifdef DPI_MIPI_API
-	enable_mipi(MT65XX_MIPI_TX, "DPI");
-#endif
-    #ifdef BUILD_UBOOT
-	OUTREG16(0xc2080858, 0x8000);
-	OUTREG16(0xc20a3824, 0x4008);
-	MASKREG16(0xc20a380c, 0x000c, 0x0000); //default value is 0x7008, but should be 0x7000
-	#else
-	OUTREG16(0xf2080858, 0x8000); //??
-	OUTREG16(0xf20a3824, 0x4008);
-	MASKREG16(0xf20a380c, 0x000c, 0x0000); //default value is 0x7008, but should be 0x7000
-	MASKREG16(PLL_SOURCE, 0x0010, 0x0010); //
-	#endif
-    con1.RG_PLL_DIV1 = mipi_pll_clk_div1;
-    con1.RG_PLL_DIV2 = mipi_pll_clk_div2;
-
-	con0.PLL_CLKR_EN = 1;
-	con0.PLL_EN = 1;
-	con0.RG_DPI_EN = 1;
-
-    // Set to DSI_PHY_REG
-
-    OUTREG32(&DSI_PHY_REG_DPI->MIPITX_CON0, AS_UINT32(&con0));
-    OUTREG32(&DSI_PHY_REG_DPI->MIPITX_CON1, AS_UINT32(&con1));
-#else
-//#ifndef BUILD_UBOOT
-#if 0
-	OUTREG32(DISPSYS_BASE + 0x34, 0x02);//set RDMA0 to DPI
-#if 0
-	//CG
-	OUTREG32(DISPSYS_BASE + 0x104, 0xffffffff);//set CG
-	OUTREG32(DISPSYS_BASE + 0x108, 0xffffffff);
-	OUTREG32(DISPSYS_BASE + 0x114, 0xffffffff);
-	OUTREG32(DISPSYS_BASE + 0x118, 0xffffffff);
-#endif
-	OUTREG32(DISP_MUTEX_BASE + 0x28, 0x01);//reset mutex
-	OUTREG32(DISP_MUTEX_BASE + 0x28, 0);
-
-	OUTREG32(DISP_MUTEX_BASE + 0x2c, 0x80); //rdma0 is in the mutex
-	OUTREG32(DISP_MUTEX_BASE + 0x30, 0x2);  //dpi0 is the dst
-
-	OUTREG32(DISP_MUTEX_BASE + 0x24, 0x1);  //lock mutex0
-
-	OUTREG32(DISP_MUTEX_BASE + 0, 0x1);  //lock mutex0
-	// OUTREG32(MUTEX_BASE + 0x4, 0x1);  //lock mutex0
-
-	while((INREG32(DISP_MUTEX_BASE + 0x24)&0x02)!=0x02){} // polling until mutex lock complete
-
-	OUTREG32(DISPSYS_BASE + 0xC08, 0x01);//select DPI pin
-	OUTREG32(DISPSYS_BASE + 0x60, 0x8);// DPI src clock
-
-	//RDMA0 setting
-	OUTREG32(RDMA0_BASE + 0x10, 0); //stop rdma0
-
-	// width, height and format
-	OUTREG32(RDMA0_BASE + 0x14, DISP_GetScreenWidth());
-	OUTREG32(RDMA0_BASE + 0x18, DISP_GetScreenHeight());
-
-	OUTREG32(RDMA0_BASE + 0x24, 0x40);//input format ARGB888
-#ifndef BUILD_UBOOT
-	OUTREG32(RDMA0_BASE + 0x28, FB_Addr);//input addr
-#else
-	OUTREG32(RDMA0_BASE + 0x28, mt65xx_get_fb_addr());//input addr
-#endif
-	OUTREG32(RDMA0_BASE + 0x2C, DISP_GetScreenWidth()*2);//input pitch
-
-	OUTREG32(RDMA0_BASE + 0x30, 0x10101010);
-	OUTREG32(RDMA0_BASE + 0x40, 0x80f00008);
-
-	OUTREG32(RDMA0_BASE + 0x50, 0);
-	OUTREG32(RDMA0_BASE + 0x54, 0);
-	OUTREG32(RDMA0_BASE + 0x58, 0);
-	OUTREG32(RDMA0_BASE + 0x5C, 0);
-	OUTREG32(RDMA0_BASE + 0x60, 0);
-	OUTREG32(RDMA0_BASE + 0x64, 0);
-	OUTREG32(RDMA0_BASE + 0x68, 0);
-	OUTREG32(RDMA0_BASE + 0x6C, 0);
-	OUTREG32(RDMA0_BASE + 0x70, 0);
-	OUTREG32(RDMA0_BASE + 0x74, 0);
-	OUTREG32(RDMA0_BASE + 0x78, 0);
-	OUTREG32(RDMA0_BASE + 0x7C, 0);
-	OUTREG32(RDMA0_BASE + 0x80, 0);
-	OUTREG32(RDMA0_BASE + 0x84, 0);
-	OUTREG32(RDMA0_BASE + 0x88, 0);
-	OUTREG32(RDMA0_BASE + 0x8C, 0);
-
-	//start rdma
-	OUTREG32(RDMA0_BASE + 0x10, 0x03); //start + memory mode
-
-    // dump register
-
-    //release mutex0
-    // OUTREG32(MUTEX_BASE + 0x24, 0);
-    // while((INREG32(MUTEX_BASE + 0x24)&&0x02)!=0){} // polling until mutex lock complete
-#endif
-#endif
 	return DPI_STATUS_OK;
 }
+
 EXPORT_SYMBOL(DPI_Init_PLL);
 
 DPI_STATUS DPI_Set_DrivingCurrent(LCM_PARAMS *lcm_params)
@@ -561,6 +430,7 @@ DPI_STATUS DPI_PowerOn()
 			DISP_LOG_PRINT(ANDROID_LOG_ERROR, "DPI", "power manager API return FALSE\n");
 		}
 #endif
+        enable_pll(LVDSPLL, "dpi0");
         _RestoreDPIRegisters();
         s_isDpiPowerOn = TRUE;
     }
@@ -573,6 +443,7 @@ DPI_STATUS DPI_PowerOff()
     {
         int ret = TRUE;
         _BackupDPIRegisters();
+		disable_pll(LVDSPLL, "dpi0");
 #if 1
         ret = disable_clock(MT_CG_DISP1_DPI0, "DPI");
 		if(1 == ret)
@@ -655,6 +526,12 @@ DPI_STATUS DPI_ConfigLVDS(LCM_PARAMS *lcm_params)
 }
 EXPORT_SYMBOL(DPI_ConfigLVDS);
 
+DPI_STATUS DPI_ConfigHDMI()
+{
+
+    return DPI_STATUS_OK;
+}
+EXPORT_SYMBOL(DPI_ConfigHDMI);
 
 DPI_STATUS DPI_ConfigDataEnable(DPI_POLARITY polarity)
 {

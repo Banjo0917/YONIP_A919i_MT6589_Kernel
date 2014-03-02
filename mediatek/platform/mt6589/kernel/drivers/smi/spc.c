@@ -26,6 +26,9 @@
 #include <mach/m4u.h>
 #include <mach/mt_device_apc.h>
 #include <mach/sync_write.h>
+#ifdef CONFIG_HIBERNATION
+#include <mach/mtk_hibernate_dpm.h>
+#endif
 
 
 
@@ -61,6 +64,7 @@ int spc_test(int code)
 void spc_config(MTK_SPC_CONFIG* pCfg)
 {
     unsigned int regval;
+    int j;
 
     SPCMSG("spc config prot=(%d,%d,%d,%d), start=0x%x, end=0x%x\n",
         pCfg->domain_0_prot,pCfg->domain_1_prot,
@@ -219,7 +223,17 @@ unsigned int spc_register_isr(void* dev)
     return 0;
 }
 
+#ifdef CONFIG_HIBERNATION
+extern void mt_irq_set_sens(unsigned int irq, unsigned int sens);
+extern void mt_irq_set_polarity(unsigned int irq, unsigned int polarity);
+int spc_pm_restore_noirq(struct device *device)
+{
+    mt_irq_set_sens(MT_APARM_DOMAIN_IRQ_ID, MT65xx_LEVEL_SENSITIVE);
+    mt_irq_set_polarity(MT_APARM_DOMAIN_IRQ_ID, MT65xx_POLARITY_LOW);
 
+    return 0;
+}
+#endif
 
 int MTK_SPC_Init(void* dev)
 {
@@ -239,6 +253,10 @@ int MTK_SPC_Init(void* dev)
     mt65xx_reg_sync_writel(readl(DEVAPC3_D0_VIO_MASK) & ~ABORT_SMI , DEVAPC3_D0_VIO_MASK);
     
     spc_register_isr(dev);
+
+#ifdef CONFIG_MTK_HIBERNATION
+    register_swsusp_restore_noirq_func(ID_M_SPC, spc_pm_restore_noirq, NULL);
+#endif
 
     return 0;
 

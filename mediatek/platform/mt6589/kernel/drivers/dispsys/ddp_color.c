@@ -20,6 +20,22 @@ u4HueAdj:{0,0,0,0},
 u4SatAdj:{0,0,0,0}
 };
 
+static DISP_PQ_PARAM g_Color_Cam_Param = 
+{
+u4SHPGain:0,
+u4SatGain:0,
+u4HueAdj:{0,0,0,0},
+u4SatAdj:{0,0,0,0}
+};
+
+static DISP_PQ_PARAM g_Color_Gal_Param = 
+{
+u4SHPGain:0,
+u4SatGain:0,
+u4HueAdj:{0,0,0,0},
+u4SatAdj:{0,0,0,0}
+};
+
 //COLOR_TUNING_INDEX : 10
 
 //initialize index (because system default is 0, need fill with 0x80)
@@ -423,6 +439,7 @@ SKY_TONE_H:
 
 };
 
+static unsigned long g_Color_Window = 0;
 
 //static unsigned int gHist[LUMA_HIST_BIN];
 static DISP_AAL_STATISTICS gHist;
@@ -470,6 +487,8 @@ void disp_update_hist()
             gHist.histogram[i] = DISP_REG_GET(DISPSYS_COLOR_BASE + 0x0520 + i * 4);
         }
 
+        gHist.ChromHist = DISP_REG_GET(DISPSYS_COLOR_BASE + 0x74C);
+
         DISP_REG_SET((DISPSYS_BLS_BASE + 0x1c) , 1);
         for (i = 0; i < BLS_HIST_BIN; i++)
         {
@@ -481,6 +500,13 @@ void disp_update_hist()
     spin_unlock_irqrestore(&gHistLock , flag);
 
 }
+
+void disp_color_set_window(unsigned int sat_upper, unsigned int sat_lower,
+                           unsigned int hue_upper, unsigned int hue_lower)
+{
+    g_Color_Window = (sat_upper << 24) | (sat_lower << 16) | (hue_upper << 8) | (hue_lower);
+}
+
 
 void disp_onConfig_luma(unsigned long * luma)
 {
@@ -504,6 +530,16 @@ DISP_PQ_PARAM * get_Color_config()
     return &g_Color_Param;
 }
 
+
+DISP_PQ_PARAM * get_Color_Cam_config(void)
+{
+    return &g_Color_Cam_Param;
+}
+
+DISP_PQ_PARAM * get_Color_Gal_config(void)
+{
+    return &g_Color_Gal_Param;
+}
 /*
 *g_Color_Index
 */
@@ -735,6 +771,8 @@ void DpEngine_COLORonConfig(unsigned int srcWidth,unsigned int srcHeight)
 
     }
 
+    // color window
+    DISP_REG_SET((DISPSYS_COLOR_BASE+0x740), g_Color_Window);
 }
 
 

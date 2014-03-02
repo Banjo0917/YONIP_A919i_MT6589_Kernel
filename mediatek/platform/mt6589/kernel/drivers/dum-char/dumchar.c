@@ -18,10 +18,11 @@
 #include <linux/mtd/mtd.h>
 #include <linux/autoconf.h>
 #include <linux/sched.h>	//show_stack(current,NULL)
+#include <mach/env.h>
 
-#include "partition_define.h"
+#include <mach/partition_define.h>
 #include "dumchar.h"		/* local definitions */
-#include "pmt.h"
+#include <mach/pmt.h>
 #include <linux/mmc/host.h>
 #include "../mmc-host/mt_sd.h"
 #include <linux/genhd.h>
@@ -192,7 +193,7 @@ static int init_region_info(void)
 	
 	
 }
-static int eMMC_rw_x(loff_t addr,u32  *buffer, int host_num, int iswrite,u32 totalsize, int transtype, Region part)
+int eMMC_rw_x(loff_t addr,u32  *buffer, int host_num, int iswrite,u32 totalsize, int transtype, Region part)
 {
 	struct msdc_ioctl cmd;
 	int result = 0;
@@ -227,6 +228,7 @@ static int eMMC_rw_x(loff_t addr,u32  *buffer, int host_num, int iswrite,u32 tot
 	
 	return result;
 }
+EXPORT_SYMBOL(eMMC_rw_x);
 int init_pmt(void)
 {
 	int ret = 0;
@@ -1689,6 +1691,7 @@ int dumchar_probe(struct platform_device * dev)
 {
 	int result, i,m,l;
 	dev_t devno;
+	loff_t misc_addr=0;
 #ifdef CONFIG_MTK_MTD_NAND
 	struct mtd_info *mtd;
 #endif
@@ -1823,13 +1826,15 @@ int dumchar_probe(struct platform_device * dev)
 		}else{
 		dumchar_device[l] = device_create(dumchar_class, NULL, MKDEV(major, l),NULL, dumchar_devices[l].dumname);
 		}
+		if(!strcmp(dumchar_devices[l].dumname,"misc"))
+			misc_addr = dumchar_devices[l].start_address;
 		if (IS_ERR(dumchar_device[l])) {
 				result = PTR_ERR(dumchar_device[l]);
 				printk("DumChar: fail in device_create name = %s  minor = %d\n",dumchar_devices[l].dumname,l);
 				goto fail_create_device;
 		}
 	}
-
+	env_init(misc_addr);
 #ifdef CONFIG_MTK_MTD_NAND
 	mtd_create_symlink();
 #endif

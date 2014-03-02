@@ -1,3 +1,38 @@
+/*****************************************************************************
+*  Copyright Statement:
+*  --------------------
+*  This software is protected by Copyright and the information contained
+*  herein is confidential. The software may not be copied and the information
+*  contained herein may not be used or disclosed except with the written
+*  permission of MediaTek Inc. (C) 2008
+*
+*  BY OPENING THIS FILE, BUYER HEREBY UNEQUIVOCALLY ACKNOWLEDGES AND AGREES
+*  THAT THE SOFTWARE/FIRMWARE AND ITS DOCUMENTATIONS ("MEDIATEK SOFTWARE")
+*  RECEIVED FROM MEDIATEK AND/OR ITS REPRESENTATIVES ARE PROVIDED TO BUYER ON
+*  AN "AS-IS" BASIS ONLY. MEDIATEK EXPRESSLY DISCLAIMS ANY AND ALL WARRANTIES,
+*  EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE IMPLIED WARRANTIES OF
+*  MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE OR NONINFRINGEMENT.
+*  NEITHER DOES MEDIATEK PROVIDE ANY WARRANTY WHATSOEVER WITH RESPECT TO THE
+*  SOFTWARE OF ANY THIRD PARTY WHICH MAY BE USED BY, INCORPORATED IN, OR
+*  SUPPLIED WITH THE MEDIATEK SOFTWARE, AND BUYER AGREES TO LOOK ONLY TO SUCH
+*  THIRD PARTY FOR ANY WARRANTY CLAIM RELATING THERETO. MEDIATEK SHALL ALSO
+*  NOT BE RESPONSIBLE FOR ANY MEDIATEK SOFTWARE RELEASES MADE TO BUYER'S
+*  SPECIFICATION OR TO CONFORM TO A PARTICULAR STANDARD OR OPEN FORUM.
+*
+*  BUYER'S SOLE AND EXCLUSIVE REMEDY AND MEDIATEK'S ENTIRE AND CUMULATIVE
+*  LIABILITY WITH RESPECT TO THE MEDIATEK SOFTWARE RELEASED HEREUNDER WILL BE,
+*  AT MEDIATEK'S OPTION, TO REVISE OR REPLACE THE MEDIATEK SOFTWARE AT ISSUE,
+*  OR REFUND ANY SOFTWARE LICENSE FEES OR SERVICE CHARGE PAID BY BUYER TO
+*  MEDIATEK FOR SUCH MEDIATEK SOFTWARE AT ISSUE.
+*
+*  THE TRANSACTION CONTEMPLATED HEREUNDER SHALL BE CONSTRUED IN ACCORDANCE
+*  WITH THE LAWS OF THE STATE OF CALIFORNIA, USA, EXCLUDING ITS CONFLICT OF
+*  LAWS PRINCIPLES.  ANY DISPUTES, CONTROVERSIES OR CLAIMS ARISING THEREOF AND
+*  RELATED THERETO SHALL BE SETTLED BY ARBITRATION IN SAN FRANCISCO, CA, UNDER
+*  THE RULES OF THE INTERNATIONAL CHAMBER OF COMMERCE (ICC).
+*
+*****************************************************************************/
+
 #include <linux/module.h>
 #include <linux/device.h>
 #include <linux/fs.h>
@@ -23,10 +58,17 @@
 #include <mach/upmu_common.h>
 #include <mach/upmu_hw.h>
 
+#include <mach/pmic_mt6320_sw.h>
+#include <mach/upmu_common.h>
+#include <mach/upmu_hw.h>
+#include <mach/mt_pm_ldo.h>
+
 
 #ifndef __USING_DUMMY_CCCI_API__
 
 #define android_bring_up_prepare 1 //when porting ccci drver for android bring up, enable the macro
+
+#define SHOW_WARNING_NUM (5)
 
 
 #define MD1_MEM_SIZE	(22*1024*1024)
@@ -54,6 +96,7 @@ static const int memory_usage_case = 0;
 static const int modem_num = 0;
 #endif
 
+static unsigned char		kern_func_err_num[MAX_MD_NUM][MAX_KERN_API];
 ccci_kern_func_info		ccci_func_table[MAX_MD_NUM][MAX_KERN_API];
 ccci_sys_cb_func_info_t	ccci_sys_cb_table_1000[MAX_MD_NUM][MAX_KERN_API];
 ccci_sys_cb_func_info_t	ccci_sys_cb_table_100[MAX_MD_NUM][MAX_KERN_API];
@@ -304,7 +347,8 @@ EXPORT_SYMBOL(get_md_gpio_info);
 
 int get_md_adc_info(int md_id, char *adc_name, unsigned int len)
 {
-	#if !defined (android_bring_up_prepare)
+	//#if !defined (android_bring_up_prepare)
+	#if 1
 	return IMM_get_adc_channel_num(adc_name, len);
 	
 	#else
@@ -372,6 +416,43 @@ int get_bat_info(unsigned int para)
 }
 EXPORT_SYMBOL(get_bat_info);
 
+int power_on_md_ldo(int md_id)
+{
+	switch(md_id)
+	{
+	case MD_SYS1:
+		return 0;
+	case MD_SYS2:
+		// Power on MD PMIC
+		hwPowerOn(MT65XX_POWER_LDO_VTCXO_2,  VOL_2800, "ccci_md2");
+		return 0;
+	default:
+		return -1;
+	}
+}
+EXPORT_SYMBOL(power_on_md_ldo);
+
+int switch_md_ldo(int md_id, int mode)
+{
+	switch(md_id)
+	{
+	case MD_SYS1:
+		return 0;
+	case MD_SYS2:
+		if(mode != 0) {
+			printk("[ccci/ctl] switch VTCXO2 hw mode\n");
+			// Switch SRCLKEN_MD2 to hardware contorl mode instead ofregisters control
+			pmic_config_interface(0x0128, 0x1, 0x1, 10);
+			// VTCXO_2 to hardware control mode instead of register control
+			pmic_config_interface(0x041C, 0x2, 0x7, 12);
+			pmic_config_interface(0x041C, 0x1, 0x1, 11);
+		}
+		return 0;
+	default:
+		return -1;
+	}
+}
+EXPORT_SYMBOL(switch_md_ldo);
 
 
 /***************************************************************************/
@@ -576,7 +657,10 @@ int exec_ccci_kern_func_by_md_id(int md_id, unsigned int id, char *buf, unsigned
 	}
 	else {
 		ret = E_NO_EXIST;
-		printk("[ccci/ctl] (%d)exec kern func fail: func%d not register!\n", md_id+1, id);
+		if(kern_func_err_num[md_id][id] < SHOW_WARNING_NUM) {
+			kern_func_err_num[md_id][id]++;
+			printk("[ccci/ctl] (%d)exec kern func fail: func%d not register!\n", md_id+1, id);
+		}
 	}
 
 	return ret;
@@ -808,10 +892,87 @@ static int ccci_helper_resume(struct platform_device *dev)
 	return 0;
 }
 
+/*---------------------------------------------------------------------------*/
+#ifdef CONFIG_PM
+/*---------------------------------------------------------------------------*/
+int ccci_helper_pm_suspend(struct device *device)
+{
+    //pr_debug("calling %s()\n", __func__);
+
+    struct platform_device *pdev = to_platform_device(device);
+    BUG_ON(pdev == NULL);
+
+    return ccci_helper_suspend(pdev, PMSG_SUSPEND);
+}
+
+int ccci_helper_pm_resume(struct device *device)
+{
+    //pr_debug("calling %s()\n", __func__);
+
+    struct platform_device *pdev = to_platform_device(device);
+    BUG_ON(pdev == NULL);
+
+    return ccci_helper_resume(pdev);
+}
+
+extern void mt_irq_set_sens(unsigned int irq, unsigned int sens);
+extern void mt_irq_set_polarity(unsigned int irq, unsigned int polarity);
+int ccci_helper_pm_restore_noirq(struct device *device)
+{
+    pr_debug("calling %s()\n", __func__);
+
+    // CCIF AP0
+    mt_irq_set_sens(MT_CCIF0_AP_IRQ_ID, MT65xx_LEVEL_SENSITIVE);
+    mt_irq_set_polarity(MT_CCIF0_AP_IRQ_ID, MT65xx_POLARITY_LOW);
+    // CCIF AP1
+    mt_irq_set_sens(MT_CCIF1_AP_IRQ_ID, MT65xx_LEVEL_SENSITIVE);
+    mt_irq_set_polarity(MT_CCIF1_AP_IRQ_ID, MT65xx_POLARITY_LOW);
+
+    // MD1 WDT
+    mt_irq_set_sens(MT_MD_WDT1_IRQ_ID, MT65xx_EDGE_SENSITIVE);
+    mt_irq_set_polarity(MT_MD_WDT1_IRQ_ID, MT65xx_POLARITY_LOW);
+    // MD2 WDT
+    mt_irq_set_sens(MT_MD_WDT2_IRQ_ID, MT65xx_EDGE_SENSITIVE);
+    mt_irq_set_polarity(MT_MD_WDT2_IRQ_ID, MT65xx_POLARITY_LOW);
+
+    // DST WDT
+    //mt_irq_set_sens(MT_MD_WDT_DSP_IRQ_ID, MT65xx_EDGE_SENSITIVE);
+    //mt_irq_set_polarity(MT_MD_WDT_DSP_IRQ_ID, MT65xx_POLARITY_LOW);
+
+    // MD1
+    exec_ccci_kern_func_by_md_id(0, ID_IPO_H_RESTORE_CB, NULL, 0);
+    // MD2
+    exec_ccci_kern_func_by_md_id(1, ID_IPO_H_RESTORE_CB, NULL, 0);
+
+    return 0;
+
+}
+/*---------------------------------------------------------------------------*/
+#else /*CONFIG_PM*/
+/*---------------------------------------------------------------------------*/
+#define ccci_helper_pm_suspend NULL
+#define ccci_helper_pm_resume  NULL
+#define ccci_helper_pm_restore_noirq NULL
+/*---------------------------------------------------------------------------*/
+#endif /*CONFIG_PM*/
+/*---------------------------------------------------------------------------*/
+struct dev_pm_ops ccci_helper_pm_ops = {
+    .suspend = ccci_helper_pm_suspend,
+    .resume = ccci_helper_pm_resume,
+    .freeze = ccci_helper_pm_suspend,
+    .thaw = ccci_helper_pm_resume,
+    .poweroff = ccci_helper_pm_suspend,
+    .restore = ccci_helper_pm_resume,
+    .restore_noirq = ccci_helper_pm_restore_noirq,
+};
+
 static struct platform_driver ccci_helper_driver =
 {
 	.driver     = {
 		.name	= "ccci-helper",
+#ifdef CONFIG_PM
+        .pm     = &ccci_helper_pm_ops,
+#endif
 	},
 	.probe		= ccci_helper_probe,
 	.remove		= ccci_helper_remove,
@@ -836,6 +997,7 @@ static int __init ccci_helper_init(void)
 
 	// init ccci kernel API register table
 	memset((void*)ccci_func_table, 0, sizeof(ccci_func_table));
+	memset((void*)kern_func_err_num, 0, sizeof(kern_func_err_num));
 
 	// init ccci system channel call back function register table
 	memset((void*)ccci_sys_cb_table_100, 0, sizeof(ccci_sys_cb_table_100));

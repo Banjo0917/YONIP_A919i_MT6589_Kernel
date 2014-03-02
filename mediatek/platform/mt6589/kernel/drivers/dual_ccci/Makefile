@@ -3,7 +3,7 @@ ifeq ($(CONFIG_MTK_CCCI_EXT), y)
 include $(MTK_ROOT_BUILD)/Makefile
 #CCCI_CORE_DRIVER_DIR :=  $(wildcard $(obj)/$(call to-root,$(obj))mediatek/source/kernel/drivers/ccci)
 CCCI_CORE_DRIVER_DIR := $(srctree)/mediatek/kernel/drivers/dual_ccci
-#MASP_CORE_DRIVER_DIR := $(MTK_PATH_PLATFORM)/drivers/masp
+MASP_CORE_DRIVER_DIR := $(MTK_PATH_PLATFORM)/drivers/masp
 
 ifeq ($(CCCI_CORE_DRIVER_DIR),)
 $(error Invalid ccci source path, please check)
@@ -14,16 +14,16 @@ obj-$(CONFIG_MTK_CCCI_DRIVER) += ccci_plat.o
 ccci_plat-y :=src/ccci_platform.o
 ccci_plat-y +=src/ccci_settings.o
 
-#include $(MASP_CORE_DRIVER_DIR)/Makefile.core
-#ccci_plat-y += $(core_obj)
+include $(MASP_CORE_DRIVER_DIR)/Makefile.core
+ccci_plat-y += $(core_obj)
 
 ifeq ($(CUSTOM_SEC_AUTH_SUPPORT),yes)
 CCCI_CUSTOM_DRIVER_DIR := $(call my-dir)$(call to-root,$(obj))mediatek/custom/out/$(call lc,$(MTK_PROJECT))/kernel/ccci
 ccci_plat-y += $(CCCI_CUSTOM_DRIVER_DIR)/cust_auth.o
 else
-#include $(MASP_CORE_DRIVER_DIR)/Makefile.crypto
-#ccci_plat-y += $(crypto_obj)
-#ccci_plat-y += auth/sec_wrapper.o
+include $(MASP_CORE_DRIVER_DIR)/Makefile.crypto
+ccci_plat-y += $(crypto_obj)
+ccci_plat-y += auth/sec_wrapper.o
 endif
 
 #ldflags-y += --whole-archive $(ext-libs)  --no-whole-archive
@@ -48,6 +48,9 @@ ccflags-y  += -DMTK_ENABLE_MD1
 endif
 ifeq ($(MTK_ENABLE_MD2), yes)
 ccflags-y  += -DMTK_ENABLE_MD2
+endif
+ifeq ($(MTK_SEC_MODEM_NVRAM_ANTI_CLONE), yes)
+ccflags-y  += -DMTK_SEC_MODEM_NVRAM_ANTI_CLONE
 endif
 
 else

@@ -4814,7 +4814,7 @@ void idle_balance(int this_cpu, struct rq *this_rq)
 	if (this_rq->avg_idle < sysctl_sched_migration_cost){
 #if defined(CONFIG_MT_LOAD_BALANCE_PROFILER)
 		char strings[128]="";
-		mt_lbprof_update_state_has_lock(this_cpu, MT_LBPROF_UPDATE_STATE);
+		mt_lbprof_update_state_has_lock(this_cpu, MT_LBPROF_ALLOW_UNBLANCE_STATE);
 		sprintf(strings, "%d:idle balance bypass: %llu %lu ", this_cpu, this_rq->avg_idle, counter);
 		mt_lbprof_rqinfo(strings);
 		trace_sched_lbprof_log(strings);

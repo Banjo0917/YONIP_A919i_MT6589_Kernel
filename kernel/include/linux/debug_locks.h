@@ -9,9 +9,8 @@ struct task_struct;
 
 extern int debug_locks;
 extern int debug_locks_silent;
-extern char lockoff_caller[30];
-extern unsigned long long lockoff_time;
-extern unsigned long long sched_clock(void);
+
+
 static inline void debug_locks_on(void)
 {
     debug_locks = 1;
@@ -26,9 +25,6 @@ static inline int __debug_locks_off(void)
         printk("[KERN Warning] Some Kernel ERROR or WARN occur and Force debug_lock off!\n");
         printk("[KERN Warning] check below backtrace first:\n");
         dump_stack();
-	    snprintf( lockoff_caller, 30, "<%p>%pS\n", (void *) _RET_IP_, (void *)_RET_IP_);
-        lockoff_time = sched_clock();
-        printk("Lockoff by:%s, at %llu ns\n", lockoff_caller, lockoff_time);
     }
     return ret;
 	//return xchg(&debug_locks, 0);

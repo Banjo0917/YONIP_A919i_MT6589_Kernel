@@ -20,7 +20,7 @@
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
-
+#if 0
 #ifndef __MT6628_FM_LINK_H__
 #define __MT6628_FM_LINK_H__
 
@@ -64,5 +64,5 @@ struct fm_link_event {
     struct fm_flag_event *ln_event;
     struct fm_res_ctx result; // seek/scan/read/RDS
 };
-
+#endif
 #endif

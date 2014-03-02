@@ -1,5 +1,3 @@
-ccflags-y += -I$(MTK_ROOT_CUSTOM)/../platform/mt6589/kernel/drivers/video
-ccflags-y += -I$(MTK_ROOT_CUSTOM)/../platform/mt6589/kernel/drivers/dispsys
 obj-$(CONFIG_MTK_FB) := dsi_drv.o dpi_drv.o  lcd_drv.o dpi1_drv.o
 # tvc_drv.o tve_drv.o tvrot_drv.o
 ccflags-y += -I$(MTK_PATH_SOURCE)/drivers/video/ \

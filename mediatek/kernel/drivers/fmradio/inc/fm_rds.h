@@ -13,7 +13,7 @@
 #define RDS_RX_BLOCK_PER_GROUP (4)
 #define RDS_RX_GROUP_SIZE (2*RDS_RX_BLOCK_PER_GROUP)
 #define MAX_RDS_RX_GROUP_CNT (12)
-#define RDS_RT_MULTI_REV_TH 16
+#define RDS_RT_MULTI_REV_TH 100
 
 typedef struct rds_packet_t {
     fm_u16 blkA;

@@ -237,7 +237,7 @@ static unsigned short hid_keycode[256] = {
 	  KEY_UNKNOWN,
 	  KEY_UNKNOWN,
 	  KEY_UNKNOWN,
-	  KEY_UNKNOWN,
+	  KEY_MENU,
 	  KEY_ZOOMRESET,
 	  KEY_ZOOMIN,
 	  KEY_ZOOMOUT,
@@ -305,6 +305,8 @@ static long hid_kbd_dev_ioctl(struct file *file, unsigned int cmd, unsigned long
 {
 	void __user *uarg = (void __user *)arg;
 	short value;
+	static short XValue = 0;
+	static short YValue = 0;
 	unsigned char keycode;
 	int err,i;
 	xlog_printk(ANDROID_LOG_INFO,HID_SAY,"hid_kbd_dev_ioctl,cmd=%d\n",cmd);			
@@ -360,20 +362,25 @@ static long hid_kbd_dev_ioctl(struct file *file, unsigned int cmd, unsigned long
 		}
 		case HID_POINTER_X:
 		{
-			if (copy_from_user(&value, uarg, sizeof(value)))
+			if (copy_from_user(&XValue, uarg, sizeof(XValue)))
 				return -EFAULT;
-			xlog_printk(ANDROID_LOG_DEBUG,HID_SAY,"hid pointer X %d \n",value);
+			xlog_printk(ANDROID_LOG_DEBUG,HID_SAY,"hid pointer X %d \n",XValue);
+			/*
 			input_report_rel(hid_input_dev, REL_X, value);
 			input_sync(hid_input_dev);
+			*/
 			break;
 		}
 		case HID_POINTER_Y:
 		{
-			if (copy_from_user(&value, uarg, sizeof(value)))
+			if (copy_from_user(&YValue, uarg, sizeof(YValue)))
 				return -EFAULT;
-			xlog_printk(ANDROID_LOG_DEBUG,HID_SAY,"hid pointer Y %d \n",value);
-			input_report_rel(hid_input_dev, REL_Y, value);
+			xlog_printk(ANDROID_LOG_DEBUG,HID_SAY,"hid pointer Y %d \n",YValue);
+			input_report_rel(hid_input_dev, REL_X, XValue);
+			input_report_rel(hid_input_dev, REL_Y, YValue);
 			input_sync(hid_input_dev);
+			XValue = 0;
+			YValue = 0;
 			break;
 		}
 		case HID_WHEEL:

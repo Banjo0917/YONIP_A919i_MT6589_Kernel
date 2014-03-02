@@ -463,6 +463,42 @@ mtk_cfg80211_get_station (
         }
     }
 
+    sinfo->rx_packets = prGlueInfo->rNetDevStats.rx_packets;
+    sinfo->filled |= STATION_INFO_TX_PACKETS;
+    sinfo->tx_packets = prGlueInfo->rNetDevStats.tx_packets;
+    sinfo->filled |= STATION_INFO_TX_FAILED;
+
+#if 1
+   {
+            WLAN_STATUS rStatus;
+            UINT_32 u4XmitError = 0;
+//           UINT_32 u4XmitOk = 0;
+//          UINT_32 u4RecvError = 0;
+//           UINT_32 u4RecvOk = 0;
+//           UINT_32 u4BufLen;
+
+           /* @FIX ME: need a more clear way to do this */
+
+
+            rStatus = kalIoctl(prGlueInfo,
+                    wlanoidQueryXmitError,
+                    &u4XmitError,
+                    sizeof(UINT_32),
+                    TRUE,
+                    TRUE,
+                    TRUE,
+                    FALSE,
+                    &u4BufLen);
+
+           prGlueInfo->rNetDevStats.tx_errors = u4XmitError;
+
+   }
+#else
+         prGlueInfo->rNetDevStats.tx_errors = 0;
+#endif
+
+    sinfo->tx_failed = prGlueInfo->rNetDevStats.tx_errors;
+
     return 0;
 }
 
@@ -622,6 +658,7 @@ mtk_cfg80211_connect (
     }
 
     if (sme->crypto.n_ciphers_pairwise) {
+        prGlueInfo->prAdapter->rWifiVar.rConnSettings.rRsnInfo.au4PairwiseKeyCipherSuite[0] = sme->crypto.ciphers_pairwise[0];
         switch (sme->crypto.ciphers_pairwise[0]) {
         case WLAN_CIPHER_SUITE_WEP40:
             prGlueInfo->rWpaInfo.u4CipherPairwise = IW_AUTH_CIPHER_WEP40;
@@ -646,6 +683,7 @@ mtk_cfg80211_connect (
     }
 
     if (sme->crypto.cipher_group) {
+        prGlueInfo->prAdapter->rWifiVar.rConnSettings.rRsnInfo.u4GroupKeyCipherSuite = sme->crypto.cipher_group;
         switch (sme->crypto.cipher_group) {
         case WLAN_CIPHER_SUITE_WEP40:
             prGlueInfo->rWpaInfo.u4CipherGroup = IW_AUTH_CIPHER_WEP40;
@@ -670,6 +708,7 @@ mtk_cfg80211_connect (
     }
 
     if (sme->crypto.n_akm_suites) {
+        prGlueInfo->prAdapter->rWifiVar.rConnSettings.rRsnInfo.au4AuthKeyMgtSuite[0] = sme->crypto.akm_suites[0];
         if (prGlueInfo->rWpaInfo.u4WpaVersion == IW_AUTH_WPA_VERSION_WPA) {
             switch (sme->crypto.akm_suites[0]) {
             case WLAN_AKM_SUITE_8021X:

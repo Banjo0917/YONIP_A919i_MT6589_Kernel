@@ -30,6 +30,11 @@
 #define PMIC_WRAP_DVFS_ADR7     (PWRAP_BASE + 0x12C)
 #define PMIC_WRAP_DVFS_WDATA7   (PWRAP_BASE + 0x130)
 
+/****************************
+* MT6320 DVS down software solution.
+*****************************/
+#define CPU_DVS_DOWN_SW_SOL
+
 /*****************
 * extern function 
 ******************/
@@ -39,4 +44,5 @@ void mt_cpufreq_enable_by_ptpod(void);
 unsigned int mt_cpufreq_disable_by_ptpod(void);
 extern unsigned int mt_cpufreq_max_frequency_by_DVS(unsigned int num);
 void mt_cpufreq_return_default_DVS_by_ptpod(void);
+extern unsigned int mt_cpufreq_voltage_set_by_ptpod(unsigned int pmic_volt[], unsigned int array_size);
 #endif

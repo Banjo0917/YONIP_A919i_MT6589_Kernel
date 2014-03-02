@@ -3133,7 +3133,7 @@ qmPopOutDueToFallWithin(
         else{
             if ((fgMissing == TRUE) && 
                 CHECK_FOR_TIMEOUT(rCurrentTime, (*prMissTimeout),
-                                  MSEC_TO_SEC(QM_RX_BA_ENTRY_MISS_TIMEOUT_MS))) {
+                                  MSEC_TO_SYSTIME(QM_RX_BA_ENTRY_MISS_TIMEOUT_MS))) {
                 DBGLOG(QM, TRACE, ("QM:RX BA Timout Next Tid %d SSN %d\n", prReorderQueParm->ucTid, prReorderedSwRfb->u2SSN));
 				fgDequeuHead = TRUE;
                 prReorderQueParm->u2WinStart =

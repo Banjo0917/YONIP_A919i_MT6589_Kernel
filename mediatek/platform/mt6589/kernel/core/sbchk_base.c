@@ -172,7 +172,7 @@ unsigned int sbchk_verify(char* file_path, char* hash_val)
     if (fd < 0) 
     {
         printk("[%s] Open '%s' fail\n",MOD,file_path);     
-        ret = SBCHK_BASE_ENGINE_OPEN_FAIL;
+        ret = SBCHK_BASE_OPEN_FAIL;
         goto _end;        
     }
 
@@ -197,7 +197,7 @@ unsigned int sbchk_verify(char* file_path, char* hash_val)
     /* read image to input buffer */
     if(0 >= (file_size = fd->f_op->read(fd,buf,file_size,&fd->f_pos)))
     {        
-        ret = SBCHK_BASE_ENGINE_READ_FAIL;
+        ret = SBCHK_BASE_READ_FAIL;
         printk("[%s] Read '%s' '%d' byets fail\n",MOD,file_path,file_size);
         goto _end;
     }
@@ -215,10 +215,10 @@ unsigned int sbchk_verify(char* file_path, char* hash_val)
     /* ----------------------- */
     /* verify hash             */
     /* ----------------------- */   
-#if SBCHK_ENGINE_HASH_CHECK
+#if SBCHK_BASE_HASH_CHECK
     {
         unsigned int i = 0;
-        char hash_rsn[HASH_OUTPUT_LEN*2 + 1] = {0};
+        char hash_rsn[HASH_OUTPUT_LEN*2+1] = {0}; 
         char *hash_prsn = hash_rsn;
 
 

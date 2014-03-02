@@ -26,6 +26,7 @@ static UINT32 dsiTmpBufBpp = 0;
 extern LCM_DRIVER *lcm_drv;
 extern LCM_PARAMS *lcm_params;
 extern unsigned int is_video_mode_running;
+extern bool is_ipoh_bootup;
 typedef struct
 {
     UINT32 pa;
@@ -241,7 +242,7 @@ static void init_dpi(BOOL isDpiPoweredOn)
 }
 #endif
 
-
+extern unsigned int lcd_fps;
 void init_dsi(BOOL isDsiPoweredOn)
 {
     DSI_CHECK_RET(DSI_Init(isDsiPoweredOn));
@@ -257,6 +258,17 @@ void init_dsi(BOOL isDsiPoweredOn)
 
     
 	//initialize DSI_PHY
+#ifdef MT65XX_NEW_DISP
+	DSI_PLL_Select(lcm_params->dsi.pll_select);
+#ifdef LVDS_SSC
+#if(LVDS_SSC)
+	if((lcm_params->dsi.pll_select) && (lcm_params->dsi.mode != CMD_MODE)){
+		lcd_fps = lcd_fps * (100 - LVDS_SSC/2) / 100;
+		printk("init_dsi: lcd_fps = %d\n", lcd_fps);
+	}
+#endif
+#endif
+#endif	
 	DSI_PHY_clk_switch(TRUE);
 	DSI_PHY_TIMCONFIG(lcm_params);
 #ifndef MT65XX_NEW_DISP
@@ -303,6 +315,7 @@ static DISP_STATUS dsi_init(UINT32 fbVA, UINT32 fbPA, BOOL isLcmInited)
 		if (NULL != lcm_drv->init && !isLcmInited) 
 		{
 			lcm_drv->init();
+			DSI_LP_Reset();
 		}
 #ifndef MT65XX_NEW_DISP
 		DSI_clk_HS_mode(0);
@@ -338,6 +351,7 @@ static DISP_STATUS dsi_init(UINT32 fbVA, UINT32 fbPA, BOOL isLcmInited)
 
 		if (NULL != lcm_drv->init && !isLcmInited) {
 			lcm_drv->init();
+			DSI_LP_Reset();
 		}
 
 		DSI_SetMode(lcm_params->dsi.mode);
@@ -357,24 +371,12 @@ static DISP_STATUS dsi_init(UINT32 fbVA, UINT32 fbPA, BOOL isLcmInited)
 		if(lcm_params->dsi.lcm_int_te_monitor)
 			DSI_set_int_TE(false, lcm_params->dsi.lcm_int_te_period);			
 
-#endif
+#endif			
 	}
 #ifdef MT65XX_NEW_DISP
 		{
 			struct disp_path_config_struct config = {0};
-			
 			config.srcModule = DISP_MODULE_OVL;
-			
-			if(config.srcModule == DISP_MODULE_RDMA0)
-			{
-				config.inFormat = RDMA_INPUT_FORMAT_RGB565;
-				config.addr = fbPA; 
-				config.pitch = DISP_GetScreenWidth()*2;
-				config.srcROI.x = 0;config.srcROI.y = 0;
-				config.srcROI.height= DISP_GetScreenHeight();config.srcROI.width= DISP_GetScreenWidth();
-			}
-			else
-			{			
 				config.bgROI.x = 0;
 				config.bgROI.y = 0;
 				config.bgROI.width = DISP_GetScreenWidth();
@@ -386,48 +388,84 @@ static DISP_STATUS dsi_init(UINT32 fbVA, UINT32 fbPA, BOOL isLcmInited)
 				config.srcROI.height= DISP_GetScreenHeight();config.srcROI.width= DISP_GetScreenWidth();
 				config.ovl_config.source = OVL_LAYER_SOURCE_MEM; 
 	
-				if(lcm_params->dsi.mode != CMD_MODE){
-					config.ovl_config.layer = FB_LAYER;
-					config.ovl_config.layer_en = 1; 
-					config.ovl_config.fmt = OVL_INPUT_FORMAT_RGB565;
-					config.ovl_config.addr = fbPA;	
-					config.ovl_config.source = OVL_LAYER_SOURCE_MEM; 
-					config.ovl_config.x = 0;	   // ROI
-					config.ovl_config.y = 0;  
-					config.ovl_config.w = DISP_GetScreenWidth();  
-					config.ovl_config.h = DISP_GetScreenHeight();  
-					config.ovl_config.pitch = ALIGN_TO(DISP_GetScreenWidth(),32)*2; //pixel number
-					config.ovl_config.keyEn = 0;
-					config.ovl_config.key = 0xFF;	   // color key
-					config.ovl_config.aen = 0;			  // alpha enable
-					config.ovl_config.alpha = 0;	
-					
-					LCD_LayerSetAddress(FB_LAYER, fbPA);
-                    LCD_LayerSetFormat(FB_LAYER, LCD_LAYER_FORMAT_RGB565);
-                    LCD_LayerSetOffset(FB_LAYER, 0, 0);
-                    LCD_LayerSetSize(FB_LAYER,DISP_GetScreenWidth(),DISP_GetScreenHeight());
-                    LCD_LayerSetPitch(FB_LAYER, ALIGN_TO(DISP_GetScreenWidth(),32) * 2);
-                    LCD_LayerEnable(FB_LAYER, TRUE);                    
-				}
-			}
-			if(lcm_params->dsi.mode == CMD_MODE)
-				config.dstModule = DISP_MODULE_DSI_CMD;// DISP_MODULE_WDMA1
-			else
-				config.dstModule = DISP_MODULE_DSI_VDO;// DISP_MODULE_WDMA1
-				
-			if(config.dstModule == DISP_MODULE_DSI_CMD || config.dstModule == DISP_MODULE_DSI_VDO)
-				config.outFormat = RDMA_OUTPUT_FORMAT_ARGB; 
-			else
-				config.outFormat = WDMA_OUTPUT_FORMAT_ARGB; 		
-			if(lcm_params->dsi.mode != CMD_MODE)
-			disp_path_get_mutex();
+        if(lcm_params->dsi.mode != CMD_MODE)
+        {
+            config.ovl_config.layer = FB_LAYER;
+            config.ovl_config.layer_en = 0;
+            disp_path_get_mutex();
+            disp_path_config_layer(&config.ovl_config);
+            disp_path_release_mutex();
+            disp_path_wait_reg_update();
+        }
+        // Config FB_Layer port to be physical.
+        {
+            M4U_PORT_STRUCT portStruct;
+            portStruct.ePortID = M4U_PORT_OVL_CH3;		   //hardware port ID, defined in M4U_PORT_ID_ENUM
+            portStruct.Virtuality = 1;
+            portStruct.Security = 0;
+            portStruct.domain = 3;			  //domain : 0 1 2 3
+            portStruct.Distance = 1;
+            portStruct.Direction = 0;
+            m4u_config_port(&portStruct);
+        }
+        config.ovl_config.layer = FB_LAYER;
+        config.ovl_config.layer_en = 1; 
+        config.ovl_config.fmt = OVL_INPUT_FORMAT_RGB565;
+        config.ovl_config.addr = fbPA;	
+        config.ovl_config.source = OVL_LAYER_SOURCE_MEM; 
+        config.ovl_config.src_x = 0;
+        config.ovl_config.src_y = 0;
+        config.ovl_config.dst_x = 0;	   // ROI
+        config.ovl_config.dst_y = 0;
+        config.ovl_config.dst_w = DISP_GetScreenWidth();
+        config.ovl_config.dst_h = DISP_GetScreenHeight();
+        config.ovl_config.src_pitch = ALIGN_TO(DISP_GetScreenWidth(),32)*2; //pixel number
+        config.ovl_config.keyEn = 0;
+        config.ovl_config.key = 0xFF;	   // color key
+        config.ovl_config.aen = 0;			  // alpha enable
+        config.ovl_config.alpha = 0;	
 
-			disp_path_config(&config);
-	
-			if(lcm_params->dsi.mode != CMD_MODE)
-				disp_path_release_mutex();
+        LCD_LayerSetAddress(FB_LAYER, fbPA);
+        LCD_LayerSetFormat(FB_LAYER, LCD_LAYER_FORMAT_RGB565);
+        LCD_LayerSetOffset(FB_LAYER, 0, 0);
+        LCD_LayerSetSize(FB_LAYER,DISP_GetScreenWidth(),DISP_GetScreenHeight());
+        LCD_LayerSetPitch(FB_LAYER, ALIGN_TO(DISP_GetScreenWidth(),32) * 2);
+        LCD_LayerEnable(FB_LAYER, TRUE);                    
+        if(lcm_params->dsi.mode == CMD_MODE)
+            config.dstModule = DISP_MODULE_DSI_CMD;// DISP_MODULE_WDMA1
+        else
+            config.dstModule = DISP_MODULE_DSI_VDO;// DISP_MODULE_WDMA1
+        config.outFormat = RDMA_OUTPUT_FORMAT_ARGB; 
+        if(lcm_params->dsi.mode != CMD_MODE)
+            disp_path_get_mutex();
 
-			disp_bls_config();	
+        disp_path_config(&config);
+
+        if(lcm_params->dsi.mode != CMD_MODE)
+            disp_path_release_mutex();
+
+        // Disable LK UI layer (Layer2)
+        if(lcm_params->dsi.mode != CMD_MODE)
+        {
+            config.ovl_config.layer = FB_LAYER-1;
+            config.ovl_config.layer_en = 0;
+            disp_path_get_mutex();
+            disp_path_config_layer(&config.ovl_config);
+            disp_path_release_mutex();
+            disp_path_wait_reg_update();
+        }
+
+        // Config LK UI layer port to be physical.
+        {
+            M4U_PORT_STRUCT portStruct;
+            portStruct.ePortID = M4U_PORT_OVL_CH2;		   //hardware port ID, defined in M4U_PORT_ID_ENUM
+            portStruct.Virtuality = 1;
+            portStruct.Security = 0;
+            portStruct.domain = 3;			  //domain : 0 1 2 3
+            portStruct.Distance = 1;
+            portStruct.Direction = 0;
+            m4u_config_port(&portStruct);
+        }
 		}
 #endif
 
@@ -464,7 +502,15 @@ static DISP_STATUS dsi_enable_power(BOOL enable)
 				Wait_ULPS_Mode();
 			
 			DSI_PHY_clk_setting(lcm_params->dsi.pll_div1, lcm_params->dsi.pll_div2, lcm_params->dsi.LANE_NUM);
-#else
+#else	
+			if(lcm_params->dsi.pll_select == 1)
+			{
+				printk("[wwy] is_ipoh_bootup = %d\n",is_ipoh_bootup);	
+				if (!is_ipoh_bootup)
+             	{	
+					ASSERT(0 == enable_pll(LVDSPLL,"mtk_dsi"));
+				}
+  		  }
 			DSI_PHY_clk_setting(lcm_params);
 			DSI_CHECK_RET(DSI_PowerOn());
 			DSI_clk_ULP_mode(0);			
@@ -491,6 +537,8 @@ static DISP_STATUS dsi_enable_power(BOOL enable)
 			DSI_CHECK_RET(DSI_PowerOff());
 			// Switch bus to GPIO, then power level will be decided by GPIO setting.
 			DSI_CHECK_RET(DSI_enable_MIPI_txio(FALSE));
+			if(lcm_params->dsi.pll_select == 1)
+				ASSERT(0 == disable_pll(LVDSPLL,"mtk_dsi"));
 		}
 	} else {
 	    if (enable) {
@@ -516,6 +564,15 @@ static DISP_STATUS dsi_enable_power(BOOL enable)
 			DSI_PHY_clk_setting(lcm_params->dsi.pll_div1, lcm_params->dsi.pll_div2, lcm_params->dsi.LANE_NUM);
 #else
 			needStartDSI = true;
+			if(lcm_params->dsi.pll_select == 1)
+			{
+				printk("[wwy] is_ipoh_bootup = %d\n",is_ipoh_bootup);	
+				if (!is_ipoh_bootup)
+              	{	
+					ASSERT(0 == enable_pll(LVDSPLL,"mtk_dsi"));
+				}
+				
+			}
 			DSI_PHY_clk_setting(lcm_params);
 			DSI_CHECK_RET(DSI_PowerOn());
 			DSI_clk_ULP_mode(0);			
@@ -552,6 +609,8 @@ static DISP_STATUS dsi_enable_power(BOOL enable)
 			DSI_PHY_clk_switch(0);
 			// Switch bus to GPIO, then power level will be decided by GPIO setting.
 			DSI_CHECK_RET(DSI_enable_MIPI_txio(FALSE));
+			if(lcm_params->dsi.pll_select == 1)
+				ASSERT(0 == disable_pll(LVDSPLL,"mtk_dsi"));
 	    }
 	}
 
@@ -719,6 +778,7 @@ BOOL dsi_esd_check(void)
 			result = LCD_esd_check();
 #else
 		result = DSI_esd_check();
+		DSI_LP_Reset();
 		needStartDSI = true;
 		if(!result)
 			dsi_update_screen(false);

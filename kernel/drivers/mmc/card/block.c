@@ -617,7 +617,11 @@ static u32 mmc_sd_num_wr_blocks(struct mmc_card *card)
 
 	return result;
 }
-
+u32 __mmc_sd_num_wr_blocks(struct mmc_card *card)
+{
+	return mmc_sd_num_wr_blocks(card);
+}
+EXPORT_SYMBOL(__mmc_sd_num_wr_blocks);
 static int send_stop(struct mmc_card *card, u32 *status)
 {
 	struct mmc_command cmd = {0};
@@ -1568,9 +1572,9 @@ static int mmc_blk_issue_rw_rq(struct mmc_queue *mq, struct request *rqc)
     if ((1 == g_mtk_mmc_perf_dbg) && (2 == g_mtk_mmc_dbg_range)){
         if ((brq->mrq.cmd->arg >= g_dbg_range_start) && (brq->mrq.cmd->arg <= g_dbg_range_end) && (brq->mrq.data) && (brq->mrq.cmd->opcode == g_check_read_write)){ 
 			if(rqc)
-				g_mmcqd_buf[g_dbg_req_count-1][7] = sched_clock(); 
+				g_mmcqd_buf[g_dbg_req_count-1][9] = sched_clock(); 
 			else
-            	g_mmcqd_buf[g_dbg_req_count][7] = sched_clock(); 
+            	g_mmcqd_buf[g_dbg_req_count][9] = sched_clock(); 
 			//g_dbg_req_count ++;
 			//printk("g_dbg_req_count<%d>\n",g_dbg_req_count);
             g_i = 0;

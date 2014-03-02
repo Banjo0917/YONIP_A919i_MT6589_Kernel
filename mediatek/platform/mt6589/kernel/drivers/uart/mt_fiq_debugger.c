@@ -66,7 +66,12 @@ static int fiq_uart_getc(struct platform_device *pdev)
 
 static void fiq_uart_putc(struct platform_device *pdev, unsigned int c)
 {
-    while (! (REG_UART_STATUS & 0x20));
+    #define UART_RETRY (5000)
+    u32 cnt = 0;
+    while (! (REG_UART_STATUS & 0x20)){
+	if (cnt++ >= UART_RETRY)
+            return;
+    }
 
     REG_UART_BASE = c & 0xFF;
 }

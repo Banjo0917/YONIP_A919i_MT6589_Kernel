@@ -76,6 +76,8 @@ static struct hrtimer vibe_timer;
 static spinlock_t vibe_lock;
 static int vibe_state;
 static int ldo_state;
+static int shutdown_flag;
+
 
 extern S32 pwrap_read( U32  adr, U32 *rdata );
 extern S32 pwrap_write( U32  adr, U32  wdata );
@@ -127,7 +129,7 @@ static int vibr_Disable(void)
 		}
 		*/
 		dct_pmic_VIBR_enable(0);
-		printk("vibrator enable register = 0x%x\n", vibr_pmic_pwrap_read(0x0466));
+		printk("vibrator disable register = 0x%x\n", vibr_pmic_pwrap_read(0x0466));
 		printk("[vibrator]vibr_Disable After\n");
 		ldo_state=0;
 	}
@@ -171,13 +173,20 @@ static void vibrator_enable(struct timed_output_dev *dev, int value)
                       printk("[vibrator]vibrator_enable: try to cancel hrtimer \n");
                 }
 
-		if (value == 0)
+		if (value == 0 || shutdown_flag == 1) {
+			printk("[vibrator]vibrator_enable: shutdown_flag = %d\n", shutdown_flag);
 			vibe_state = 0;
+		}
 		else 
 		{
 #if 1
 			printk("[vibrator]vibrator_enable: vibrator cust timer: %d \n", hw->vib_timer);
+#ifdef CUST_VIBR_LIMIT
+			if(value > hw->vib_limit && value < hw->vib_timer)
+				
+#else
 			if(value >= 10 && value < hw->vib_timer)
+#endif
 				value = hw->vib_timer;
 #endif
 
@@ -188,7 +197,7 @@ static void vibrator_enable(struct timed_output_dev *dev, int value)
 							HRTIMER_MODE_REL);
 		}
 		spin_unlock_irqrestore(&vibe_lock, flags);
-                printk("[vibrator]vibrator_enable: vibrator start: %d \n", value); 
+        printk("[vibrator]vibrator_enable: vibrator start: %d \n", value); 
 		queue_work(vibrator_queue, &vibrator_work);
 }
 
@@ -219,13 +228,16 @@ static int vib_remove(struct platform_device *pdev)
 
 static void vib_shutdown(struct platform_device *pdev)
 {
-
-        printk("[vibrator]vib_shutdown: enter!\n");
+    unsigned long  flags;
+	printk("[vibrator]vib_shutdown: enter!\n");
+	spin_lock_irqsave(&vibe_lock, flags);
+	shutdown_flag = 1;
 	if(vibe_state) {
         	printk("[vibrator]vib_shutdown: vibrator will disable \n");
 		vibe_state = 0;
 		vibr_Disable();
 	}
+	spin_unlock_irqrestore(&vibe_lock, flags);
 }
 /******************************************************************************
 Device driver structure
@@ -302,6 +314,7 @@ static s32 __devinit vib_mod_init(void)
 	INIT_WORK(&vibrator_work, update_vibrator);
 
 	spin_lock_init(&vibe_lock);
+	shutdown_flag = 0;
 	vibe_state = 0;
 	hrtimer_init(&vibe_timer, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
 	vibe_timer.function = vibrator_timer_func;

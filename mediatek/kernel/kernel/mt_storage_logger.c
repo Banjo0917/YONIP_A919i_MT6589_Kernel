@@ -934,6 +934,17 @@ static int storage_logger_write_proc(struct file *file, const char *buffer, unsi
 	} 
 	return count;
 }
+
+void storage_logger_switch( bool enabled)
+{
+    enable_StorageLogger = enabled;
+    if(enable_StorageLogger) {
+        iswrapped = false;
+        writeIndex = 0;
+        readIndex = 0;
+        lastwriteIndex = 0;
+    }
+}
 #if defined(FEATURE_STORAGE_PERF_INDEX)
 
 static int mtk_io_osd_read_proc(char *page, char **start, off_t off, int count, int *eof, void *data)

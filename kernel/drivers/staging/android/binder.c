@@ -84,7 +84,6 @@ static pid_t system_server_pid;
 #define BINDER_MONITOR			"v0.2.1"
 
 #ifdef BINDER_MONITOR
-#define BAD_BUFFER_SIZE                 (128*1024)
 #define MAX_SERVICE_NAME_LEN		32
 /************************************************************************************************************************/
 /*	Payload layout of addService():											*/
@@ -868,14 +867,7 @@ static void binder_print_buf(struct binder_buffer *buffer)
 	struct rtc_time tm;
 	struct binder_transaction *t = buffer->transaction;
 
-	if (!t) {
-		printk(KERN_INFO "binder: %p %s size %d:%d auf %d",
-				 buffer->data,
-				 buffer->async_transaction ? "async" : "sync",
-				 buffer->data_size, buffer->offsets_size,
-				 buffer->allow_user_free);
-		return;
-	}
+	if (!t)	return;
 
 	rtc_time_to_tm(t->tv.tv_sec, &tm);
 	printk(KERN_INFO "binder: %d %s %s %d:%d to %d:%d (%s) dex %u "
@@ -918,7 +910,6 @@ static void binder_check_buf(struct binder_proc *target_proc,
 	struct rb_node *n;
 	struct binder_buffer *buffer;
 	int i;
-	char aee_word[100];
 
 	printk(KERN_INFO "binder: buffer allocation failed on %d:0 "
 			 "%s from %d:0 size %zd\n", target_proc->pid,
@@ -966,14 +957,12 @@ checkAsync:
 	binder_call_jbt(binder_check_buf_pid);
 
 doDump:
-	sprintf(aee_word, "binder: %d:0 failed to alloc %d bytes on %d:0",
-			  binder_check_buf_pid, size, target_proc->pid);
 	binder_check_buf_pid = -1;
 	binder_call_jbt(target_proc->pid);
 	binder_unlock(__func__);
 	msleep(500);
 	binder_lock(__func__);
-	aee_kernel_exception(&aee_word[0],
+	aee_kernel_warning_api(__FILE__, __LINE__, DB_OPT_VM_TRACES|DB_OPT_BINDER_INFO, "binder: buffer alloc failed",
 			     "detect for binder buffer analysis\n\n"
 			     "check kernel log for more details\n");
 }
@@ -1353,7 +1342,7 @@ static struct binder_buffer *binder_alloc_buf(struct binder_proc *proc,
 	struct rb_node *best_fit = NULL;
 	void *has_page_addr;
 	void *end_page_addr;
-	size_t size, proc_max_size;
+	size_t size;
 
 	if (proc->vma == NULL) {
 		printk(KERN_ERR "binder: %d: binder_alloc_buf, no vma\n",
@@ -1367,16 +1356,6 @@ static struct binder_buffer *binder_alloc_buf(struct binder_proc *proc,
 	if (size < data_size || size < offsets_size) {
 		binder_user_error("binder: %d: got transaction with invalid "
 			"size %zd-%zd\n", proc->pid, data_size, offsets_size);
-		return NULL;
-	}
-    
-	proc_max_size = (is_async ? (proc->buffer_size/2) : proc->buffer_size);
-
-	if(proc_max_size < size + sizeof(struct binder_buffer)){
-		binder_user_error("binder: %d: got transaction with too large size "
-				"%s alloc size %d-%d allowed size %d\n", proc->pid, 
-				is_async ? "async" : "sync", data_size, offsets_size,
-				(proc_max_size - sizeof(struct binder_buffer)));
 		return NULL;
 	}
 
@@ -1407,7 +1386,9 @@ static struct binder_buffer *binder_alloc_buf(struct binder_proc *proc,
 	if (best_fit == NULL) {
 		printk(KERN_ERR "binder: %d: binder_alloc_buf size %zd failed, "
 		       "no address space\n", proc->pid, size);
-		binder_check_buf(proc, size, 0);
+		/* if the size is obviously impossible, no need to debug further */
+		if (size < proc->buffer_size)
+			binder_check_buf(proc, size, 0);
 		return NULL;
 	}
 	if (n == NULL) {
@@ -2059,7 +2040,7 @@ static void binder_transaction(struct binder_proc *proc,
 # ifdef USER_BUILD_KERNEL
 	e = &log_entry;
 # else
-	if ((reply && (tr->data_size < BAD_BUFFER_SIZE)) || log_disable) 
+	if (reply || log_disable) 
 		e = &log_entry;
 	else
 		e = binder_transaction_log_add(&binder_transaction_log);
@@ -2839,7 +2820,7 @@ int binder_thread_write(struct binder_proc *proc, struct binder_thread *thread,
 
 			if (copy_from_user(&tr, ptr, sizeof(tr)))
 				return -EFAULT;
-		        ptr += sizeof(tr);
+			ptr += sizeof(tr);
 			binder_transaction(proc, thread, &tr, cmd == BC_REPLY);
 			break;
 		}
@@ -3470,14 +3451,41 @@ static void binder_release_work(struct list_head *list)
 			struct binder_transaction *t;
 
 			t = container_of(w, struct binder_transaction, work);
-			if (t->buffer->target_node && !(t->flags & TF_ONE_WAY))
+			if (t->buffer->target_node &&
+					!(t->flags & TF_ONE_WAY)) {
 				binder_send_failed_reply(t, BR_DEAD_REPLY);
+			} else {
+				binder_debug(BINDER_DEBUG_DEAD_TRANSACTION,
+						"binder: undelivered transaction %d\n",
+						t->debug_id);
+				t->buffer->transaction = NULL;
+#ifdef BINDER_MONITOR
+				binder_cancel_bwdog(t);
+#endif
+				kfree(t);
+				binder_stats_deleted(BINDER_STAT_TRANSACTION);
+			}
 		} break;
 		case BINDER_WORK_TRANSACTION_COMPLETE: {
+			binder_debug(BINDER_DEBUG_DEAD_TRANSACTION,
+				"binder: undelivered TRANSACTION_COMPLETE\n");
 			kfree(w);
 			binder_stats_deleted(BINDER_STAT_TRANSACTION_COMPLETE);
 		} break;
+		case BINDER_WORK_DEAD_BINDER_AND_CLEAR:
+ 		case BINDER_WORK_CLEAR_DEATH_NOTIFICATION: {
+			struct binder_ref_death *death;
+
+			death = container_of(w, struct binder_ref_death, work);
+			binder_debug(BINDER_DEBUG_DEAD_TRANSACTION,
+				"binder: undelivered death notification, %p\n",
+				death->cookie);
+			kfree(death);
+			binder_stats_deleted(BINDER_STAT_DEATH);
+		} break;
 		default:
+			printk(KERN_ERR "binder: unexpected work type, %d, not freed\n",
+				w->type);
 			break;
 		}
 	}
@@ -3978,6 +3986,7 @@ static void binder_deferred_release(struct binder_proc *proc)
 		nodes++;
 		rb_erase(&node->rb_node, &proc->nodes);
 		list_del_init(&node->work.entry);
+		binder_release_work(&node->async_todo);
 		if (hlist_empty(&node->refs)) {
 			kfree(node);
 			binder_stats_deleted(BINDER_STAT_NODE);
@@ -4027,6 +4036,7 @@ static void binder_deferred_release(struct binder_proc *proc)
 		binder_delete_ref(ref);
 	}
 	binder_release_work(&proc->todo);
+	binder_release_work(&proc->delivered_death);
 	buffers = 0;
 
 	while ((n = rb_first(&proc->allocated_buffers))) {
@@ -4761,7 +4771,7 @@ static int binder_timeout_log_show(struct seq_file *m, void *unused)
 					  *(tmp + 4), *(tmp + 5), *(tmp + 6),
 					  *(tmp + 7));
 		}
-		aee_kernel_exception("binder: timeout log index error",
+		aee_kernel_warning_api(__FILE__, __LINE__, DB_OPT_VM_TRACES|DB_OPT_BINDER_INFO, "binder: timeout log index error",
 				     "detect for memory corruption\n\n"
 				     "check kernel log for more details\n");
 		goto timeout_log_show_unlock;

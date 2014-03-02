@@ -963,15 +963,15 @@ static int __init PVRCore_Init(void)
 #endif
 	LinuxInitMutex(&gPVRSRVLock);
 
-#if defined(MTK_DEBUG)
-	MTKDebugInit();
-#endif
-
 	if (CreateProcEntries ())
 	{
 		error = -ENOMEM;
 		return error;
 	}
+
+#if defined(MTK_DEBUG)
+		MTKDebugInit();
+#endif
 
 	if (PVROSFuncInit() != PVRSRV_OK)
 	{
@@ -1225,11 +1225,11 @@ static void __exit PVRCore_Cleanup(void)
 
 	PVROSFuncDeInit();
 
-	RemoveProcEntries();
-
 #if defined(MTK_DEBUG)
 	MTKDebugDeinit();
 #endif
+
+	RemoveProcEntries();
 
 	PVR_TRACE(("PVRCore_Cleanup: unloading"));
 }

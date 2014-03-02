@@ -494,7 +494,8 @@ typedef struct
 	unsigned char		CLK_HS_POST;
 	unsigned char       DA_HS_EXIT;
 	unsigned char       CLK_HS_EXIT;
-	
+
+	unsigned int		pll_select;	
 	unsigned int		pll_div1;
 	unsigned int		pll_div2;	
 	unsigned int        fbk_div;
@@ -529,6 +530,8 @@ typedef struct
     LCM_DBI_PARAMS dbi;
     LCM_DPI_PARAMS dpi;
     LCM_DSI_PARAMS dsi;
+    unsigned int active_width;
+    unsigned int active_height;
 } LCM_PARAMS;
 
 
@@ -601,6 +604,7 @@ typedef struct
     unsigned int  (*esd_recover)(void);
 	unsigned int (*check_status)(void);
 /////////////////////////////////////////////////
+	void (*m_debug)(char * buf);
 
 } LCM_DRIVER;
 

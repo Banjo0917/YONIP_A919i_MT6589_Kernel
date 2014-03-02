@@ -21,9 +21,11 @@
  * that would just muddy the log. So we report the first one and
  * shut up after that.
  */
+#ifdef CONFIG_PROVE_LOCKING
 int debug_locks = 1;
-char lockoff_caller[30];
-unsigned long long lockoff_time;
+#else
+int debug_locks = 1;
+#endif
 EXPORT_SYMBOL_GPL(debug_locks);
 
 /*

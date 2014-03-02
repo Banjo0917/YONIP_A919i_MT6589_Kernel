@@ -27,6 +27,9 @@
 #include "mach/sync_write.h"
 #include "mach/mt_reg_base.h"
 #include "mach/mt_clkmgr.h"
+#ifdef CONFIG_MTK_HIBERNATION
+#include "mach/mtk_hibernate_dpm.h"
+#endif
 
 #include "videocodec_kernel_driver.h"
 
@@ -798,7 +801,7 @@ static long vcodec_unlocked_ioctl(struct file *file, unsigned int cmd, unsigned 
                         eValRet = eVideoWaitEvent(&DecHWLockEvent, sizeof(VAL_EVENT_T));
                     }
                     mutex_lock(&DecHWLockEventTimeoutLock);
-                    if (DecHWLockEvent.u4TimeoutMs == 1)
+                    if (DecHWLockEvent.u4TimeoutMs != 1000)
                     {
                         DecHWLockEvent.u4TimeoutMs = 1000;
                         FirstUseDecHW = 1;
@@ -1927,6 +1930,22 @@ static int vcodec_probe(struct platform_device *dev)
     return 0;
 }
 
+#ifdef CONFIG_MTK_HIBERNATION
+extern void mt_irq_set_sens(unsigned int irq, unsigned int sens);
+extern void mt_irq_set_polarity(unsigned int irq, unsigned int polarity);
+static int vcodec_pm_restore_noirq(struct device *device)
+{
+    // vdec : IRQF_TRIGGER_RISING
+    mt_irq_set_sens(MT_VDEC_IRQ_ID, MT65xx_LEVEL_SENSITIVE);
+    mt_irq_set_polarity(MT_VDEC_IRQ_ID, MT65xx_POLARITY_HIGH);
+    // venc: IRQF_TRIGGER_LOW
+    mt_irq_set_sens(MT_VENC_IRQ_ID, MT65xx_LEVEL_SENSITIVE);
+    mt_irq_set_polarity(MT_VENC_IRQ_ID, MT65xx_POLARITY_LOW);
+
+    return 0;
+}
+#endif
+
 static int __init vcodec_driver_init(void)
 {
     int i, j;
@@ -2083,6 +2102,10 @@ static int __init vcodec_driver_init(void)
     register_early_suspend(&vcodec_early_suspend_handler);
 #endif
 
+#ifdef CONFIG_MTK_HIBERNATION
+    register_swsusp_restore_noirq_func(ID_M_VCODEC, vcodec_pm_restore_noirq, NULL);
+#endif
+
     return 0;
 }
 
@@ -2154,6 +2177,10 @@ static void __exit vcodec_driver_exit(void)
 
 #ifdef CONFIG_HAS_EARLYSUSPEND
     unregister_early_suspend(&vcodec_early_suspend_handler);
+#endif
+
+#ifdef CONFIG_MTK_HIBERNATION
+    unregister_swsusp_restore_noirq_func(ID_M_VCODEC);
 #endif
 }
 

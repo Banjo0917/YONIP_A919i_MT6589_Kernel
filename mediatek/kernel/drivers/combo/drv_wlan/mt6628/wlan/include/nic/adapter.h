@@ -735,6 +735,9 @@ typedef struct _CONNECTION_SETTINGS_T {
     /* b0~3: trigger-en AC0~3. b4~7: delivery-en AC0~3 */
     UINT_8                          bmfgApsdEnAc;
 
+    /* for RSN info store, when upper layer set rsn info */
+    RSN_INFO_T                      rRsnInfo;
+
 } CONNECTION_SETTINGS_T, *P_CONNECTION_SETTINGS_T;
 
 struct _BSS_INFO_T {

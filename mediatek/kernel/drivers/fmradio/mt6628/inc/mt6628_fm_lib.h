@@ -61,13 +61,13 @@ enum {
     MT6628_I2S_44K,
     MT6628_I2S_48K
 };
-
+/*
 struct mt6628_fm_i2s_info {
     fm_s32 status;
     fm_s32 mode;
     fm_s32 rate;
 };
-
+*/
 struct mt6628_fm_cqi {
     fm_u16 ch;
     fm_u16 rssi;

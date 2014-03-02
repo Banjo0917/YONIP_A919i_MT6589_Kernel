@@ -380,8 +380,8 @@ void write_A5141MIPI_gain(kal_uint16 gain)
 	A5141MIPI_write_cmos_sensor_8(0x0104, 0x01);		//parameter_hold
 	if(gain >= BASEGAIN && gain <= 32*BASEGAIN)
 	{
-		//if (gain < 122)
-		//	gain = 122;
+		if (gain < 122)
+			gain = 122;
 		
 		reg_gain = 8 * gain/BASEGAIN;        //change mtk gain base to aptina gain base
 	    A5141MIPI_write_cmos_sensor(0x0204,reg_gain);
@@ -1039,7 +1039,6 @@ UINT32 A5141MIPIOpen(void)
 
 	spin_lock(&a5141mipiraw_drv_lock);
     A5141MIPI_sensor_gain_base = read_A5141MIPI_gain();
-    g_iA5141MIPI_Mode = A5141MIPI_MODE_PREVIEW;
 	spin_unlock(&a5141mipiraw_drv_lock);
 	
     return ERROR_NONE;
@@ -1381,6 +1380,10 @@ static void A5141MIPI_SetDummy(kal_bool mode,const kal_uint16 iDummyPixels, cons
 	{
 		Line_length_pclk   = A5141MIPI_PV_PERIOD_PIXEL_NUMS + iDummyPixels;
 		Frame_length_lines = A5141MIPI_PV_PERIOD_LINE_NUMS  + iDummyLines;
+
+		spin_lock(&a5141mipiraw_drv_lock);
+		A5141_Frame_Length_preview = Frame_length_lines;
+		spin_unlock(&a5141mipiraw_drv_lock);
 	}
 	else   //capture
 	{
@@ -1388,9 +1391,6 @@ static void A5141MIPI_SetDummy(kal_bool mode,const kal_uint16 iDummyPixels, cons
 		Frame_length_lines = A5141MIPI_FULL_PERIOD_LINE_NUMS  + iDummyLines;
 	}
 	
-		spin_lock(&a5141mipiraw_drv_lock);
-		A5141_Frame_Length_preview = Frame_length_lines;
-		spin_unlock(&a5141mipiraw_drv_lock);
     SENSORDB("Enter A5141MIPI_SetDummy Frame_length_lines=%d, Line_length_pclk=%d\n",Frame_length_lines,Line_length_pclk);
 
 	A5141MIPI_write_cmos_sensor_8(0x0104, 0x01);// GROUPED_PARAMETER_HOLD
@@ -1716,9 +1716,8 @@ UINT32 A5141MIPISetVideoMode(UINT16 u2FrameRate)
 	if(u2FrameRate >30 || u2FrameRate <5)
 	    SENSORDB("Error frame rate seting");
 
-    if (A5141MIPI_MODE_PREVIEW == g_iA5141MIPI_Mode)
-    {
 	MAX_Frame_length = A5141MIPI_sensor.preview_vt_clk*100000/(A5141MIPI_PV_PERIOD_PIXEL_NUMS+A5141MIPI_PV_dummy_pixels)/u2FrameRate;
+	//if(A5141MIPI_PV_dummy_lines <(MAX_Frame_length - A5141MIPI_PV_PERIOD_LINE_NUMS))  //original dummy length < current needed dummy length 
 	if(MAX_Frame_length < A5141MIPI_PV_PERIOD_LINE_NUMS )
 		MAX_Frame_length = A5141MIPI_PV_PERIOD_LINE_NUMS;
 
@@ -1727,20 +1726,7 @@ UINT32 A5141MIPISetVideoMode(UINT16 u2FrameRate)
 	spin_unlock(&a5141mipiraw_drv_lock);
 
 	A5141MIPI_SetDummy(KAL_TRUE, A5141MIPI_PV_dummy_pixels, A5141MIPI_PV_dummy_lines);
-    }
-    else if (A5141MIPI_MODE_CAPTURE == g_iA5141MIPI_Mode)
-    {
-	    MAX_Frame_length = A5141MIPI_sensor.capture_vt_clk*100000/(A5141MIPI_FULL_PERIOD_PIXEL_NUMS + A5141MIPI_dummy_pixels)/u2FrameRate;
-	    if(MAX_Frame_length < A5141MIPI_FULL_PERIOD_LINE_NUMS )
-		    MAX_Frame_length = A5141MIPI_FULL_PERIOD_LINE_NUMS;
 
-	    spin_lock(&a5141mipiraw_drv_lock);
-	    A5141MIPI_dummy_lines = MAX_Frame_length - A5141MIPI_FULL_PERIOD_LINE_NUMS  ;
-	    spin_unlock(&a5141mipiraw_drv_lock);
-
-	    A5141MIPI_SetDummy(KAL_FALSE, A5141MIPI_dummy_pixels, A5141MIPI_dummy_lines);
-    }
-    
     return KAL_TRUE;
 }
 

@@ -11,6 +11,7 @@
 // --------------------------------------------------------------------------
 #define MTK_CONFIG_MM_MAU       MTK_IOW(10, unsigned long)
 
+
 typedef struct
 {
     int larb;		    //0~4: the larb you want to monitor
@@ -32,9 +33,9 @@ int mau_dump_status(int larb);
 typedef enum
 {
     SMI_BWC_SCEN_NORMAL,
-    SMI_BWC_SCEN_VP1066,
-    SMI_BWC_SCEN_VR1066
-   
+    SMI_BWC_SCEN_VRCAMERA1066,
+    SMI_BWC_SCEN_VR1066,
+    SMI_BWC_SCEN_VP1066
 } MTK_SMI_BWC_SCEN;
 
 
@@ -42,6 +43,7 @@ typedef struct
 {
     MTK_SMI_BWC_SCEN    scenario;
     int                 b_reduce_command_buffer;
+    int                 b_gpu_od;                   /*GPU overdrive enable or not*/
 
 } MTK_SMI_BWC_CONFIG;
 

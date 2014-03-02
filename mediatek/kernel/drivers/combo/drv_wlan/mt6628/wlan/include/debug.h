@@ -458,9 +458,36 @@ typedef enum _ENUM_DBG_MODULE_T {
                 }
         #endif /* WINDOWS_CE */
     #endif /* LINUX */
+#elif CFG_SUPPORT_XLOG
+    #define ASSERT(_exp) \
+        { \
+            if (!(_exp) && !fgIsBusAccessFailed) { \
+                XLOG_FUNC(ANDROID_LOG_DEBUG, "Warning at %s:%d (%s)\n", __FUNCTION__, __LINE__, #_exp); \
+            } \
+        }
+
+    #define ASSERT_REPORT(_exp, _fmt) \
+        { \
+            if (!(_exp) && !fgIsBusAccessFailed) { \
+                XLOG_FUNC(ANDROID_LOG_DEBUG, "Warning at %s:%d (%s)\n", __FUNCTION__, __LINE__, #_exp); \
+                XLOG_FUNC(ANDROID_LOG_DEBUG, _fmt); \
+            } \
+        }
 #else
-    #define ASSERT(_exp)
-    #define ASSERT_REPORT(_exp, _fmt)
+    #define ASSERT(_exp) \
+        { \
+            if (!(_exp) && !fgIsBusAccessFailed) { \
+                LOG_FUNC("Warning at %s:%d (%s)\n", __FUNCTION__, __LINE__, #_exp); \
+            } \
+        }
+
+    #define ASSERT_REPORT(_exp, _fmt) \
+        { \
+            if (!(_exp) && !fgIsBusAccessFailed) { \
+                LOG_FUNC("Warning at %s:%d (%s)\n", __FUNCTION__, __LINE__, #_exp); \
+                LOG_FUNC _fmt; \
+            } \
+        }
 #endif /* BUILD_QA_DBG */
 
     #define DISP_STRING(_str)       ""

@@ -1430,11 +1430,17 @@ void musb_host_rx(struct musb *musb, u8 epnum)
 
 	/* faults abort the transfer */
 	if (status) {
+		//ALPS00445134, add more debug message for CR debugging
+		printk("%s, line %d: status = %d, urb->actual_length= %d, xfer_len = %d\n", __func__, __LINE__, status, urb->actual_length, xfer_len);
+		//ALPS00445134, add more debug message for CR debugging
 		/* clean up dma and collect transfer count */
 		if (dma_channel_status(dma) == MUSB_DMA_STATUS_BUSY) {
 			dma->status = MUSB_DMA_STATUS_CORE_ABORT;
 			(void) musb->dma_controller->channel_abort(dma);
 			xfer_len = dma->actual_len;
+			//ALPS00445134, add more debug message for CR debugging
+			printk("%s, line %d: MUSB_DMA_STATUS_CORE_ABORT: urb->actual_length= %d, xfer_len = %d\n", __func__, __LINE__, urb->actual_length, xfer_len);
+			//ALPS00445134, add more debug message for CR debugging
 		}
 		//musb_h_flush_rxfifo(hw_ep, MUSB_RXCSR_CLRDATATOG);
         musb_h_flush_rxfifo(hw_ep, 0);
@@ -2016,6 +2022,10 @@ musb_h_disable(struct usb_hcd *hcd, struct usb_host_endpoint *hep)
 	struct urb		*urb;
 
 	spin_lock_irqsave(&musb->lock, flags);
+
+	//ALPS00445134, add more debug message for CR debugging
+	DBG(0, "%s, line %d: \n", __func__, __LINE__);
+	//ALPS00445134, add more debug message for CR debugging
 
 	qh = hep->hcpriv;
 	if (qh == NULL)

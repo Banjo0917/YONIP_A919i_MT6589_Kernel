@@ -10,8 +10,9 @@
 #define MT_LBPROF_FAILURE_STATE				0x4
 #define MT_LBPROF_ONE_TASK_STATE			0x5
 #define MT_LBPROF_HOTPLUG_STATE				0x6
-#define MT_LBPROF_BALANCE_FAIL_STATE		0x7
-#define MT_LBPROF_ALLPINNED					0x8
+#define MT_LBPROF_BALANCE_FAIL_STATE		        0x7
+#define MT_LBPROF_ALLPINNED				0x8
+#define MT_LBPROF_ALLOW_UNBLANCE_STATE                  0x9
 
 /* to prevent print too much log, print the log info*/
 #define MT_LBPROF_NR_BALANCED_FAILED_UPPER_BOUND	0x3

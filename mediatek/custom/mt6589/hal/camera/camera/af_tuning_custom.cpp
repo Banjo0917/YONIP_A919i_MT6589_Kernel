@@ -1,27 +1,9 @@
-/*
-**
-** Copyright 2008, The Android Open Source Project
-**
-** Licensed under the Apache License, Version 2.0 (the "License");
-** you may not use this file except in compliance with the License.
-** You may obtain a copy of the License at
-**
-**     http://www.apache.org/licenses/LICENSE-2.0
-**
-** Unless required by applicable law or agreed to in writing, software
-** distributed under the License is distributed on an "AS IS" BASIS,
-** WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-** See the License for the specific language governing permissions and
-** limitations under the License.
-*/
+
 
 #include "camera_custom_types.h"
 #include "af_param.h"
 #include "af_tuning_custom.h"
 
-/*******************************************************************************
-*
-********************************************************************************/
 AF_PARAM_T const&
 getAFParam()
 {
@@ -33,7 +15,16 @@ getAFParam()
         1,   // i4AFS_MODE  0 : singleAF, 1:smoothAF
         1,   // i4AFC_MODE  0 : singleAF, 1:smoothAF
         1,   // i4VAFC_MODE  0 : singleAF, 1:smoothAF        
-        1    // i4ReadOTP 0 : disable, 1:enable 
+        1,   // i4ReadOTP 0 : disable, 1:enable 
+        5,   // i4FD_DETECT_CNT
+        5,   // i4FD_NONE_CNT
+        
+        50,  // i4FV_SHOCK_THRES
+        30000,  // i4FV_SHOCK_OFFSET        
+        5,   // i4FV_VALID_CNT 2
+        20, // i4FV_SHOCK_FRM_CNT 100
+        5    // i4FV_SHOCK_CNT 2
+        
     };
 
     return g_AFparam;
@@ -44,7 +35,7 @@ getAFConfig()
 {
     static AF_CONFIG_T g_AFconfig;
 
-    g_AFconfig.i4SGG_GAIN = 64;
+    g_AFconfig.i4SGG_GAIN = 16;
     g_AFconfig.i4SGG_GMR1 = 31;
     g_AFconfig.i4SGG_GMR2 = 63;
     g_AFconfig.i4SGG_GMR3 = 127;    

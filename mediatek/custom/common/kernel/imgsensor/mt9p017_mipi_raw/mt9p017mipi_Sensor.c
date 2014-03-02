@@ -123,7 +123,6 @@ struct MT9P017MIPI_SENSOR_STRUCT MT9P017MIPI_sensor=
 
 kal_bool MT9P017MIPI_Auto_Flicker_mode = KAL_FALSE;
 kal_bool MT9P017MIPI_MPEG4_encode_mode = KAL_FALSE;
-kal_bool MT9P017MIPI_ZSD_Preview_mode = KAL_FALSE;
 kal_uint16 MT9P017_Frame_Length_preview = 0;
 
 
@@ -633,7 +632,7 @@ static void MT9P017MIPI_Init_setting(void)
 			SENSORDB("MT9P017MIPI status = %x \n",status);
 		}while(status != 0x12C8)   ;
 		
-		MT9P017MIPI_write_cmos_sensor(0x3064, 0x9840);	// SMIA_TEST
+		MT9P017MIPI_write_cmos_sensor(0x3064, 0x5840);	// SMIA_TEST
 		MT9P017MIPI_write_cmos_sensor(0x31AE, 0x0101);	// SERIAL_FORMAT
 	#endif
 
@@ -1108,8 +1107,6 @@ UINT32 MT9P017MIPIOpen(void)
 	temp_data= read_MT9P017MIPI_gain();
     spin_lock(&MT9P017MIPI_drv_lock);
     MT9P017MIPI_sensor_gain_base = temp_data;
-		MT9P017MIPI_ZSD_Preview_mode=KAL_FALSE;
-    g_iMT9P017MIPI_Mode = MT9P017MIPI_MODE_PREVIEW;
     spin_unlock(&MT9P017MIPI_drv_lock);
     return ERROR_NONE;
 }
@@ -1252,6 +1249,7 @@ UINT32 MT9P017MIPIClose(void)
 {
     kal_uint16 pos = 0;
 	pos = MT9P017MIPI_read_cmos_sensor(0x30F2);
+    printk("MT9P017MIPIClose 3333 zhijie\n");
 
 	if(pos > 0x60)
 	{
@@ -1523,15 +1521,16 @@ static void MT9P017MIPI_SetDummy(kal_bool mode,const kal_uint16 iDummyPixels, co
 	{
 		Line_length_pclk   = MT9P017MIPI_PV_PERIOD_PIXEL_NUMS + iDummyPixels;
 		Frame_length_lines = MT9P017MIPI_PV_PERIOD_LINE_NUMS  + iDummyLines;
+		
+		spin_lock(&MT9P017MIPI_drv_lock);
+		MT9P017_Frame_Length_preview = Frame_length_lines;
+		spin_unlock(&MT9P017MIPI_drv_lock);
 	}
 	else   //capture
 	{
 		Line_length_pclk   = MT9P017MIPI_FULL_PERIOD_PIXEL_NUMS + iDummyPixels;
 		Frame_length_lines = MT9P017MIPI_FULL_PERIOD_LINE_NUMS  + iDummyLines;
 	}
-	spin_lock(&MT9P017MIPI_drv_lock);
-	MT9P017_Frame_Length_preview = Frame_length_lines;
-	spin_unlock(&MT9P017MIPI_drv_lock);	
 	
     SENSORDB("Enter MT9P017MIPI_SetDummy Frame_length_lines=%d, Line_length_pclk=%d\n",Frame_length_lines,Line_length_pclk);
 	MT9P017MIPI_write_cmos_sensor(0x0340, Frame_length_lines);
@@ -1560,6 +1559,7 @@ static void MT9P017MIPI_SetDummy(kal_bool mode,const kal_uint16 iDummyPixels, co
 UINT32 MT9P017MIPIPreview(MSDK_SENSOR_EXPOSURE_WINDOW_STRUCT *image_window,
                                                 MSDK_SENSOR_CONFIG_STRUCT *sensor_config_data)
 {
+    SENSORDB("Enter MT9P017MIPIPreview 222222 \n ");
     spin_lock(&MT9P017MIPI_drv_lock);
     MT9P017MIPI_PV_dummy_pixels = 0;
 	MT9P017MIPI_PV_dummy_lines  = 0;  
@@ -1831,16 +1831,11 @@ UINT32 MT9P017MIPIControl(MSDK_SCENARIO_ID_ENUM ScenarioId, MSDK_SENSOR_EXPOSURE
         case MSDK_SCENARIO_ID_CAMERA_PREVIEW:
         case MSDK_SCENARIO_ID_VIDEO_PREVIEW:
         case MSDK_SCENARIO_ID_VIDEO_CAPTURE_MPEG4:
-			MT9P017MIPI_ZSD_Preview_mode=KAL_FALSE;
             MT9P017MIPIPreview(pImageWindow, pSensorConfigData);
             break;
-		case MSDK_SCENARIO_ID_CAMERA_ZSD:
-			MT9P017MIPI_ZSD_Preview_mode=KAL_TRUE;
-            MT9P017MIPICapture(pImageWindow, pSensorConfigData);
-		break;
         case MSDK_SCENARIO_ID_CAMERA_CAPTURE_JPEG:
         case MSDK_SCENARIO_ID_CAMERA_CAPTURE_MEM:
-			MT9P017MIPI_ZSD_Preview_mode=KAL_FALSE;
+		case MSDK_SCENARIO_ID_CAMERA_ZSD:
             MT9P017MIPICapture(pImageWindow, pSensorConfigData);
             break;
         default:
@@ -1863,44 +1858,16 @@ UINT32 MT9P017MIPISetVideoMode(UINT16 u2FrameRate)
 	if(u2FrameRate >30 || u2FrameRate <5)
 	    SENSORDB("Error frame rate seting");
 
-	if(KAL_TRUE==MT9P017MIPI_ZSD_Preview_mode)
-	{
-		MAX_Frame_length = MT9P017MIPI_sensor.capture_vt_clk*100000/(MT9P017MIPI_FULL_PERIOD_PIXEL_NUMS+MT9P017MIPI_dummy_pixels)/u2FrameRate; 
-		if(MAX_Frame_length <= (MT9P017MIPI_FULL_PERIOD_LINE_NUMS+2) )//to make video frame rate a little bigger for CMSS standard
-		{
-			spin_lock(&MT9P017MIPI_drv_lock);
-		    MT9P017MIPI_dummy_lines = 0;  
-			spin_unlock(&MT9P017MIPI_drv_lock);
-			MAX_Frame_length = MT9P017MIPI_FULL_PERIOD_LINE_NUMS;
-		}
-		else
-		{
-			spin_lock(&MT9P017MIPI_drv_lock);
-		    MT9P017MIPI_dummy_lines = MAX_Frame_length - MT9P017MIPI_FULL_PERIOD_LINE_NUMS-2;//to make video frame rate a little bigger for CMSS standard
-			spin_unlock(&MT9P017MIPI_drv_lock);
-		}
-		MT9P017MIPI_SetDummy(KAL_FALSE,MT9P017MIPI_dummy_pixels,MT9P017MIPI_dummy_lines);
-		SENSORDB("MT9P017MIPI_dummy_pixels=%d\n",MT9P017MIPI_dummy_pixels);
-	}
-	else
-	{
-		MAX_Frame_length = MT9P017MIPI_sensor.preview_vt_clk*100000/(MT9P017MIPI_PV_PERIOD_PIXEL_NUMS+MT9P017MIPI_PV_dummy_pixels)/u2FrameRate;
-		if(MAX_Frame_length <= (MT9P017MIPI_PV_PERIOD_LINE_NUMS+2) )//to make video frame rate a little bigger for CMSS standard
-		{
-			spin_lock(&MT9P017MIPI_drv_lock);
-		    MT9P017MIPI_PV_dummy_pixels = 0;  
-			spin_unlock(&MT9P017MIPI_drv_lock);
-			MAX_Frame_length = MT9P017MIPI_PV_PERIOD_LINE_NUMS;
-		}
-		else
-		{
-			spin_lock(&MT9P017MIPI_drv_lock);
-		    MT9P017MIPI_PV_dummy_pixels = MAX_Frame_length - MT9P017MIPI_PV_PERIOD_LINE_NUMS-2;//to make video frame rate a little bigger for CMSS standard
-			spin_unlock(&MT9P017MIPI_drv_lock);
-		}
-		MT9P017MIPI_SetDummy(KAL_TRUE,MT9P017MIPI_PV_dummy_pixels,MT9P017MIPI_PV_dummy_lines);
-		SENSORDB("MT9P017MIPI_PV_dummy_pixels=%d\n",MT9P017MIPI_PV_dummy_pixels);
-	}
+	MAX_Frame_length = MT9P017MIPI_sensor.preview_vt_clk*100000/(MT9P017MIPI_PV_PERIOD_PIXEL_NUMS+MT9P017MIPI_PV_dummy_pixels)/u2FrameRate;
+	//if(MT9P017MIPI_PV_dummy_lines <(MAX_Frame_length - MT9P017MIPI_PV_PERIOD_LINE_NUMS))  //original dummy length < current needed dummy length 
+	if(MAX_Frame_length < MT9P017MIPI_PV_PERIOD_LINE_NUMS )
+		MAX_Frame_length = MT9P017MIPI_PV_PERIOD_LINE_NUMS;
+	spin_lock(&MT9P017MIPI_drv_lock);
+	    MT9P017MIPI_PV_dummy_lines = MAX_Frame_length - MT9P017MIPI_PV_PERIOD_LINE_NUMS ;  
+	
+	spin_unlock(&MT9P017MIPI_drv_lock);
+	MT9P017MIPI_SetDummy(KAL_TRUE,MT9P017MIPI_PV_dummy_pixels,MT9P017MIPI_PV_dummy_lines);
+	
     return KAL_TRUE;
 }
 
@@ -1918,7 +1885,7 @@ UINT32 MT9P017MIPISetAutoFlickerMode(kal_bool bEnable, UINT16 u2FrameRate)
 		{   
 			// in the video mode, reset the frame rate
 			MT9P017MIPI_write_cmos_sensor_8(0x0104, 1);        
-			MT9P017MIPI_write_cmos_sensor(0x0340, MT9P017_Frame_Length_preview-AUTO_FLICKER_NO);
+			MT9P017MIPI_write_cmos_sensor(0x0340, MT9P017_Frame_Length_preview +AUTO_FLICKER_NO);
             MT9P017MIPI_write_cmos_sensor_8(0x0104, 0);        	
         }
     } else 

@@ -28,6 +28,7 @@ enum
 typedef struct {
     unsigned long histogram[LUMA_HIST_BIN];
     unsigned long BLSHist[BLS_HIST_BIN];
+    unsigned long ChromHist;
 } DISP_AAL_STATISTICS;
 
 typedef struct {
@@ -37,7 +38,7 @@ typedef struct {
     // for BLS
     unsigned long setting;
     unsigned long maxClrLimit;
-    unsigned long maxClrDistThd;
+    unsigned long maxClrDistThd;    
     unsigned long preDistThd;
     unsigned long scDiffThd;
     unsigned long scBinThd;    

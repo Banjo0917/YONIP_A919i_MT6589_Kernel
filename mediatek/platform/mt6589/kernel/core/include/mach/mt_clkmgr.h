@@ -400,26 +400,40 @@ struct larb_monitor {
 extern void register_larb_monitor(struct larb_monitor *handler);
 extern void unregister_larb_monitor(struct larb_monitor *handler);
 
-extern int disable_clock(int id, char *mod_name);
+/* clock API */
 extern int enable_clock(int id, char *mod_name);
-extern int enable_pll(int id, char *mod_name);
-extern int disable_pll(int id, char *mod_name);
-extern int enable_subsys(int id, char *mod_name);
-extern int disable_subsys(int id, char *mod_name);
+extern int disable_clock(int id, char *mod_name);
+
+extern int enable_clock_ext_locked(int id, char *mod_name);
+extern int disable_clock_ext_locked(int id, char *mod_name);
+
+extern int clock_is_on(int id);
+
+extern int clkmux_sel(int id, unsigned int clksrc, char *name);
 
 extern void clk_set_force_on(int id);
 extern void clk_clr_force_on(int id);
 extern int clk_is_force_on(int id);
 
-extern int clkmux_sel(int id, unsigned int clksrc, char *name);
+/* pll API */
+extern int enable_pll(int id, char *mod_name);
+extern int disable_pll(int id, char *mod_name);
+
+extern int pll_hp_switch_on(int id, int hp_on);
+extern int pll_hp_switch_off(int id, int hp_off);
 
 extern int pll_fsel(int id, unsigned int value);
 extern int pll_is_on(int id);
+
+/* subsys API */
+extern int enable_subsys(int id, char *mod_name);
+extern int disable_subsys(int id, char *mod_name);
 
 extern int subsys_is_on(int id);
 extern int md_power_on(int id);
 extern int md_power_off(int id, unsigned int timeout);
 
+/* other API */
 extern void enable_clksq2(void);
 extern void disable_clksq2(void);
 
@@ -429,8 +443,13 @@ extern void clksq2_hw2sw(void);
 extern void pmicspi_mempll2clksq(void);
 extern void pmicspi_clksq2mempll(void);
 
+extern int get_gpu_power_src(void);
+
 const char* grp_get_name(int id);
 
+extern int clkmgr_is_locked(void);
+
+/* init */
 extern void mt_clkmgr_init(void);
 
 

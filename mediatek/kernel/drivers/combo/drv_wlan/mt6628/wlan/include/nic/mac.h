@@ -147,6 +147,7 @@
 #define IP_PROTOCOL_TCP                         6
 #define IP_PROTOCOL_UDP                         17
 
+#define IPV4_HDR_IP_IDENTIFICATION_OFFSET       4
 #define IPV4_HDR_IP_PROTOCOL_OFFSET             9
 #define IPV4_HDR_IP_CSUM_OFFSET                 10
 

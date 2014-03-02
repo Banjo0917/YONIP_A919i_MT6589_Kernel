@@ -8,12 +8,12 @@ INT32         gPsmDbgLevel = STP_PSM_LOG_INFO;
 MTKSTP_PSM_T  stp_psm_i;
 MTKSTP_PSM_T  *stp_psm = &stp_psm_i; 
 
-#define STP_PSM_LOUD_FUNC(fmt, arg...)   if(gPsmDbgLevel >= STP_PSM_LOG_LOUD){ printk(PFX_PSM "%s: "  fmt, __FUNCTION__ ,##arg);}
-#define STP_PSM_DBG_FUNC(fmt, arg...)    if(gPsmDbgLevel >= STP_PSM_LOG_DBG){  printk(PFX_PSM "%s: "  fmt, __FUNCTION__ ,##arg);}
+#define STP_PSM_LOUD_FUNC(fmt, arg...)   if(gPsmDbgLevel >= STP_PSM_LOG_LOUD){ printk(KERN_DEBUG PFX_PSM "%s: "  fmt, __FUNCTION__ ,##arg);}
+#define STP_PSM_DBG_FUNC(fmt, arg...)    if(gPsmDbgLevel >= STP_PSM_LOG_DBG){  printk(KERN_DEBUG PFX_PSM "%s: "  fmt, __FUNCTION__ ,##arg);}
 #define STP_PSM_INFO_FUNC(fmt, arg...)   if(gPsmDbgLevel >= STP_PSM_LOG_INFO){ printk(PFX_PSM "[I]%s: "  fmt, __FUNCTION__ ,##arg);}
 #define STP_PSM_WARN_FUNC(fmt, arg...)   if(gPsmDbgLevel >= STP_PSM_LOG_WARN){ printk(PFX_PSM "[W]%s: "  fmt, __FUNCTION__ ,##arg);}
 #define STP_PSM_ERR_FUNC(fmt, arg...)    if(gPsmDbgLevel >= STP_PSM_LOG_ERR){  printk(PFX_PSM "[E]%s(%d):ERROR! "   fmt, __FUNCTION__ , __LINE__, ##arg);}
-#define STP_PSM_TRC_FUNC(f)              if(gPsmDbgLevel >= STP_PSM_LOG_DBG){  printk(PFX_PSM "<%s> <%d>\n", __FUNCTION__, __LINE__);}
+#define STP_PSM_TRC_FUNC(f)              if(gPsmDbgLevel >= STP_PSM_LOG_DBG){  printk(KERN_DEBUG PFX_PSM "<%s> <%d>\n", __FUNCTION__, __LINE__);}
 
 static inline INT32 _stp_psm_notify_wmt(MTKSTP_PSM_T *stp_psm, const MTKSTP_PSM_ACTION_T action);
 static INT32  _stp_psm_thread_lock_aquire(MTKSTP_PSM_T *stp_psm);
@@ -53,6 +53,7 @@ static int _stp_psm_is_redundant_active_op(
 static int _stp_psm_clean_up_redundant_active_op(
         P_OSAL_OP_Q pOpQ
     );
+static MTK_WCN_BOOL _stp_psm_is_quick_ps_support (VOID);
 
 MTK_WCN_BOOL mtk_wcn_stp_psm_dbg_level(UINT32 dbglevel)
 {
@@ -78,7 +79,12 @@ static INT32 _stp_psm_handler(MTKSTP_PSM_T *stp_psm, P_STP_OP pStpOp)
     //{
     //    return -1;
     //}
-    _stp_psm_thread_lock_aquire(stp_psm);
+    ret = _stp_psm_thread_lock_aquire(stp_psm);
+    if (ret) {
+        STP_PSM_ERR_FUNC("--->lock psm_thread_lock failed ret=%d\n", ret);
+        return ret;
+    }
+    
     switch(pStpOp->opId) 
     {
         case STP_OPID_PSM_EXIT:
@@ -87,7 +93,11 @@ static INT32 _stp_psm_handler(MTKSTP_PSM_T *stp_psm, P_STP_OP pStpOp)
             break;
 
         case STP_OPID_PSM_SLEEP:
+            if (stp_psm_check_sleep_enable(stp_psm) > 0) {
             ret =_stp_psm_notify_wmt(stp_psm, SLEEP);
+            } else {
+                STP_PSM_INFO_FUNC("cancel sleep request\n");
+            }
             break;
 
         case STP_OPID_PSM_WAKEUP:
@@ -123,13 +133,19 @@ static P_OSAL_OP _stp_psm_get_op (
     osal_lock_unsleepable_lock(&(stp_psm->wq_spinlock));    
     /* acquire lock success */
     RB_GET(pOpQ, pOp);
-	if((pOpQ == &stp_psm->rActiveOpQ) && (NULL != pOp))
+
+    if((pOpQ == &stp_psm->rActiveOpQ) && (NULL != pOp))
     {
+        //stp_psm->current_active_op = pOp;//*(pOp);
         stp_psm->last_active_opId = pOp->op.opId;
-        STP_PSM_INFO_FUNC("last_active_opId(%d)\n", stp_psm->last_active_opId);
-    } 
+    }
     osal_unlock_unsleepable_lock(&(stp_psm->wq_spinlock));
-    
+	
+    if((pOpQ == &stp_psm->rActiveOpQ) && (NULL != pOp))
+    {
+        STP_PSM_DBG_FUNC("last_active_opId(%d)\n", stp_psm->last_active_opId);
+    }
+	
     if (!pOp) 
     {
         STP_PSM_WARN_FUNC("RB_GET fail\n");
@@ -169,7 +185,7 @@ static INT32 _stp_psm_dump_active_q(
     }
     else
     {
-        STP_PSM_ERR_FUNC("%s: not active queue, dont dump\n", __func__);
+        STP_PSM_DBG_FUNC("%s: not active queue, dont dump\n", __func__);
     }
 
     return 0;
@@ -185,6 +201,7 @@ static int _stp_psm_is_redundant_active_op(
     
     //if((pOpQ == &stp_psm->rActiveOpQ) && (NULL != stp_psm->current_active_op))
     if((pOpQ == &stp_psm->rActiveOpQ) && (STP_OPID_PSM_INALID != stp_psm->last_active_opId))
+    
     {    
         opId =  pOp->op.opId;
         
@@ -202,7 +219,7 @@ static int _stp_psm_is_redundant_active_op(
 
             if(prev_opId == STP_OPID_PSM_SLEEP)
             {
-                STP_PSM_INFO_FUNC("redundant sleep opId found\n");
+                STP_PSM_DBG_FUNC("redundant sleep opId found\n");
                 return 1;
             }
             else
@@ -228,7 +245,7 @@ static int _stp_psm_is_redundant_active_op(
                                 ((opId == STP_OPID_PSM_WAKEUP) && ( prev_opId == STP_OPID_PSM_HOST_AWAKE))
                     )
             {
-                STP_PSM_INFO_FUNC("redundant opId found, opId(%d), preOpid(%d)\n", opId, prev_opId);
+                STP_PSM_DBG_FUNC("redundant opId found, opId(%d), preOpid(%d)\n", opId, prev_opId);
                 return 1;
             }
             else
@@ -266,7 +283,7 @@ static int _stp_psm_clean_up_redundant_active_op(
         {
             prev_opId = pOpQ->queue[(pOpQ->write - 1) & RB_MASK(pOpQ)]->op.opId;
             prev_prev_opId = pOpQ->queue[(pOpQ->write - 2) & RB_MASK(pOpQ)]->op.opId;
-           
+			
             if((prev_opId == STP_OPID_PSM_SLEEP && prev_prev_opId == STP_OPID_PSM_WAKEUP)||
                 (prev_opId == STP_OPID_PSM_SLEEP && prev_prev_opId == STP_OPID_PSM_HOST_AWAKE) ||
                 (prev_opId == STP_OPID_PSM_WAKEUP&& prev_prev_opId == STP_OPID_PSM_SLEEP) ||
@@ -281,7 +298,7 @@ static int _stp_psm_clean_up_redundant_active_op(
 			else if (prev_opId == prev_prev_opId)
 			{
 			    RB_GET(pOpQ, pOp);
-				STP_PSM_WARN_FUNC("redundant opId(%d) found, remove it\n", pOp->op.opId);
+				STP_PSM_DBG_FUNC("redundant opId(%d) found, remove it\n", pOp->op.opId);
                 RB_PUT(pFreeOpQ, pOp);
 			}
         }
@@ -296,7 +313,7 @@ static INT32 _stp_psm_put_op (
     P_OSAL_OP pOp
     )
 {
-    INT32 ret;
+   INT32 ret;
 
    // if (!pOpQ || !pOp) 
    // {
@@ -306,7 +323,6 @@ static INT32 _stp_psm_put_op (
     ret = 0;
     
     osal_lock_unsleepable_lock(&(stp_psm->wq_spinlock));
-    
     /* acquire lock success */
     if(pOpQ == &stp_psm->rActiveOpQ)
     {   
@@ -316,7 +332,7 @@ static INT32 _stp_psm_put_op (
             if (!RB_FULL(pOpQ)) 
             {
                 RB_PUT(pOpQ, pOp);
-				STP_PSM_INFO_FUNC("opId(%d) enqueue\n", pOp->op.opId);
+                STP_PSM_DBG_FUNC("opId(%d) enqueue\n", pOp->op.opId);
             }
             else 
             {
@@ -328,9 +344,9 @@ static INT32 _stp_psm_put_op (
         }
         else
         {   
-            /*redundant opId, mark ret as success and put pOp to free queue back*/
+            /*redundant opId, mark ret as success*/
             P_OSAL_OP_Q pFreeOpQ = &stp_psm->rFreeOpQ;
-			if (!RB_FULL(pFreeOpQ)) 
+            if (!RB_FULL(pFreeOpQ)) 
             {
                 RB_PUT(pFreeOpQ, pOp);
             }
@@ -352,7 +368,7 @@ static INT32 _stp_psm_put_op (
             ret = -1;
         }
     }
-
+    
     if(pOpQ == &stp_psm->rActiveOpQ)
     {
         _stp_psm_dump_active_q(&stp_psm->rActiveOpQ);
@@ -857,7 +873,7 @@ static inline INT32 _stp_psm_notify_wmt_sleep_wq(MTKSTP_PSM_T *stp_psm)
         {
             return 0;
         }
-        
+    
         pOp = _stp_psm_get_free_op(stp_psm);
         if (!pOp) {
             STP_PSM_WARN_FUNC("get_free_lxop fail \n");
@@ -885,6 +901,7 @@ static inline INT32 _stp_psm_reset(MTKSTP_PSM_T *stp_psm)
     INT32 i = 0;
     P_OSAL_OP_Q pOpQ;
     P_OSAL_OP pOp;
+    INT32 ret = 0;
 
     STP_PSM_DBG_FUNC("PSM MODE RESET=============================>\n\r");
         
@@ -894,7 +911,11 @@ static inline INT32 _stp_psm_reset(MTKSTP_PSM_T *stp_psm)
     STP_PSM_INFO_FUNC("reset-wake_lock(%d)\n", osal_wake_lock_count(&stp_psm->wake_lock));
 
     //--> serialized the request from wmt <--//
-    osal_lock_sleepable_lock(&stp_psm->user_lock);
+    ret = osal_lock_sleepable_lock(&stp_psm->user_lock);
+    if (ret) {
+        STP_PSM_ERR_FUNC("--->lock stp_psm->user_lock failed, ret=%d\n", ret);
+        return ret;
+    }
 
     //--> disable psm <--//
     stp_psm->flag = STP_PSM_WMT_EVENT_DISABLE_MONITOR;
@@ -975,11 +996,11 @@ static inline INT32 _stp_psm_wait_wmt_event_wq(MTKSTP_PSM_T *stp_psm){
             //STP send data here: STP sends data directly without PSM. 
             _stp_psm_set_state(stp_psm, ACT);
 //            osal_unlock_unsleepable_lock(&stp_psm->flagSpinlock);
-#if  defined(MT6628) && defined(MTK_COMBO_QUICK_SLEEP_SUPPORT) && defined(MTK_COMBO_QUICK_SLEEP_SUPPORT_OPEN) 
-            stp_psm_notify_wmt_sleep(stp_psm);
-#else
-            _stp_psm_start_monitor(stp_psm);
-#endif
+
+            if (stp_psm_is_quick_ps_support())
+                stp_psm_notify_wmt_sleep(stp_psm);
+			else
+			    _stp_psm_start_monitor(stp_psm);
         }
         else if ( stp_psm->flag & STP_PSM_WMT_EVENT_SLEEP_EN) 
         {
@@ -1189,7 +1210,12 @@ static inline INT32 _stp_psm_notify_wmt(MTKSTP_PSM_T *stp_psm, const MTKSTP_PSM_
             
             if(action == SLEEP)
             {
-                //_stp_psm_set_state(stp_psm, ACT_INACT);
+                if (stp_psm->flag & STP_PSM_WMT_EVENT_DISABLE_MONITOR) {
+                    STP_PSM_ERR_FUNC("psm monitor disabled, can't do sleep op\n");
+                    return STP_PSM_OPERATION_FAIL;
+                }
+                
+                _stp_psm_set_state(stp_psm, ACT_INACT);
 
                 _stp_psm_release_data(stp_psm);
 
@@ -1297,10 +1323,8 @@ static inline void _stp_psm_stp_is_idle(ULONG data)
 {
      MTKSTP_PSM_T *stp_psm = (MTKSTP_PSM_T *)data;
 
-#if  defined(MT6628) && defined(MTK_COMBO_QUICK_SLEEP_SUPPORT) && defined(MTK_COMBO_QUICK_SLEEP_SUPPORT_OPEN)
      stp_psm->flag &= ~STP_PSM_WMT_EVENT_DISABLE_MONITOR_RX_HIGH_DENSITY;
      stp_psm->flag &= ~STP_PSM_WMT_EVENT_DISABLE_MONITOR_TX_HIGH_DENSITY;
-#endif
 
      if((stp_psm->flag & STP_PSM_WMT_EVENT_DISABLE_MONITOR)!= 0)
      {
@@ -1415,8 +1439,7 @@ static inline INT32  _stp_psm_do_wakeup(MTKSTP_PSM_T *stp_psm)
     //<1>If timer is active, we will stop it.
     _stp_psm_stop_monitor(stp_psm);
 
-    //<2>If OpQ has other ops , we will cleanup these ops.
-    osal_lock_unsleepable_lock(&(stp_psm->wq_spinlock));        
+    osal_lock_unsleepable_lock(&(stp_psm->wq_spinlock)); 
 
     pOpQ = &stp_psm->rFreeOpQ;
 
@@ -1434,7 +1457,6 @@ static inline INT32  _stp_psm_do_wakeup(MTKSTP_PSM_T *stp_psm)
         }
     }
     osal_unlock_unsleepable_lock(&(stp_psm->wq_spinlock));
-
     //<5>We issue wakeup request into op queue. and wait for active.
     do{
         ret = _stp_psm_notify_wmt_wakeup_wq(stp_psm);        
@@ -1479,28 +1501,39 @@ static inline INT32 _stp_psm_disable(MTKSTP_PSM_T *stp_psm)
     INT32 ret = STP_PSM_OPERATION_FAIL;
 
     STP_PSM_DBG_FUNC("PSM Disable start\n\r");
-    osal_lock_sleepable_lock(&stp_psm->user_lock);
+    
+    ret = osal_lock_sleepable_lock(&stp_psm->user_lock);
+    if (ret) {
+        STP_PSM_ERR_FUNC("--->lock stp_psm->user_lock failed, ret=%d\n", ret);
+        return ret;
+    }
+    
     stp_psm->flag |= STP_PSM_WMT_EVENT_DISABLE_MONITOR;   
     ret = _stp_psm_do_wakeup(stp_psm);
-	osal_unlock_sleepable_lock(&stp_psm->user_lock); 
-	if (ret == STP_PSM_OPERATION_SUCCESS)
-	{
-	    STP_PSM_DBG_FUNC("PSM Disable Success\n");
-	}
-	else
-	{
-	    STP_PSM_ERR_FUNC("***PSM Disable Fail***\n");
-	}
-	
-	return ret;
+    osal_unlock_sleepable_lock(&stp_psm->user_lock); 
+    if (ret == STP_PSM_OPERATION_SUCCESS)
+    {
+        STP_PSM_DBG_FUNC("PSM Disable Success\n");
+    }
+    else
+    {
+        STP_PSM_ERR_FUNC("***PSM Disable Fail***\n");
+    }
+    
+    return ret;
 }
 
 static inline INT32 _stp_psm_enable(MTKSTP_PSM_T *stp_psm, INT32 idle_time_to_sleep)
 {
     INT32 ret = STP_PSM_OPERATION_FAIL;
     STP_PSM_LOUD_FUNC("PSM Enable start\n\r");
-	
-    osal_lock_sleepable_lock(&stp_psm->user_lock);
+    
+    ret = osal_lock_sleepable_lock(&stp_psm->user_lock);
+    if (ret) {
+        STP_PSM_ERR_FUNC("--->lock stp_psm->user_lock failed, ret=%d\n", ret);
+        return ret;
+    }
+    
     stp_psm->flag |= STP_PSM_WMT_EVENT_DISABLE_MONITOR;
     
     ret = _stp_psm_do_wakeup(stp_psm);
@@ -1524,15 +1557,14 @@ static inline INT32 _stp_psm_enable(MTKSTP_PSM_T *stp_psm, INT32 idle_time_to_sl
     {
         STP_PSM_ERR_FUNC("***PSM Enable Fail***\n");
     }
-	osal_unlock_sleepable_lock(&stp_psm->user_lock);
-	
-	return ret;
+    osal_unlock_sleepable_lock(&stp_psm->user_lock);
+    
+    return ret;
 }
 
 INT32  _stp_psm_thread_lock_aquire(MTKSTP_PSM_T *stp_psm)
 {
-    osal_lock_sleepable_lock(&stp_psm->stp_psm_lock);
-    return 0;
+    return osal_lock_sleepable_lock(&stp_psm->stp_psm_lock);
 }
 
 INT32  _stp_psm_thread_lock_release(MTKSTP_PSM_T *stp_psm)
@@ -1541,8 +1573,22 @@ INT32  _stp_psm_thread_lock_release(MTKSTP_PSM_T *stp_psm)
     return 0;
 }
 
+MTK_WCN_BOOL _stp_psm_is_quick_ps_support (VOID)
+{
+    if (stp_psm->is_wmt_quick_ps_support)
+    {
+        return (*(stp_psm->is_wmt_quick_ps_support))();
+    }
+	STP_PSM_DBG_FUNC("stp_psm->is_wmt_quick_ps_support is NULL, return false\n\r");
+	return MTK_WCN_BOOL_FALSE;
+}
 
-#if  defined(MT6628) && defined(MTK_COMBO_QUICK_SLEEP_SUPPORT) && defined(MTK_COMBO_QUICK_SLEEP_SUPPORT_OPEN)
+
+MTK_WCN_BOOL stp_psm_is_quick_ps_support (VOID)
+{
+    return _stp_psm_is_quick_ps_support();
+}
+
 int stp_psm_disable_by_tx_rx_density(MTKSTP_PSM_T *stp_psm, int dir){
 
     //easy the variable maintain beween stp tx, rx thread.
@@ -1611,10 +1657,8 @@ int stp_psm_disable_by_tx_rx_density(MTKSTP_PSM_T *stp_psm, int dir){
 
     return 0;
 }
-#endif
 
 /*external function for WMT module to do sleep/wakeup*/
-
 INT32 stp_psm_set_state(MTKSTP_PSM_T *stp_psm, MTKSTP_PSM_STATE_T state)
 {
     return _stp_psm_set_state(stp_psm, state);
@@ -1703,6 +1747,8 @@ INT32 stp_psm_enable(MTKSTP_PSM_T *stp_psm, INT32 idle_time_to_sleep)
 
 INT32 stp_psm_reset(MTKSTP_PSM_T *stp_psm)
 {
+    stp_psm_set_sleep_enable(stp_psm);
+    
     return _stp_psm_reset(stp_psm);
 }
 
@@ -1710,6 +1756,63 @@ INT32 stp_psm_sleep_for_thermal(MTKSTP_PSM_T *stp_psm)
 {
     return _stp_psm_notify_wmt_sleep_wq(stp_psm);
 }
+
+
+INT32 stp_psm_set_sleep_enable(MTKSTP_PSM_T *stp_psm)
+{
+    INT32 ret = 0;
+    
+    if (stp_psm) {
+        stp_psm->sleep_en = 1;
+        STP_PSM_DBG_FUNC("\n");
+        ret = 0;
+    } else {
+        STP_PSM_INFO_FUNC("Null pointer\n");
+        ret = -1;
+    }
+
+    return ret;
+}
+
+
+INT32 stp_psm_set_sleep_disable(MTKSTP_PSM_T *stp_psm)
+{
+    INT32 ret = 0;
+    
+    if (stp_psm) {
+        stp_psm->sleep_en = 0;
+        STP_PSM_DBG_FUNC("\n");
+        ret = 0;
+    } else {
+        STP_PSM_INFO_FUNC("Null pointer\n");
+        ret = -1;
+    }
+
+    return ret;
+}
+
+
+/* stp_psm_check_sleep_enable  - to check if sleep cmd is enabled or not
+ * @ stp_psm - pointer of psm 
+ * 
+ * return 1 if sleep is enabled; else return 0 if disabled; else error code
+ */
+INT32 stp_psm_check_sleep_enable(MTKSTP_PSM_T *stp_psm)
+{
+    INT32 ret = 0;
+    
+    if (stp_psm) {
+        ret = stp_psm->sleep_en;
+        STP_PSM_DBG_FUNC("%s \n", ret? "enabled" : "disabled");
+    } else {
+        STP_PSM_INFO_FUNC("Null pointer\n");
+        ret = -1;
+    }
+
+    return ret;
+}
+
+
 MTKSTP_PSM_T *stp_psm_init(void)
 {
     INT32 err = 0;
@@ -1720,9 +1823,11 @@ MTKSTP_PSM_T *stp_psm_init(void)
 
     stp_psm->work_state = ACT;
     stp_psm->wmt_notify = wmt_lib_ps_stp_cb;
+	stp_psm->is_wmt_quick_ps_support = wmt_lib_is_quick_ps_support;
     stp_psm->idle_time_to_sleep = STP_PSM_IDLE_TIME_SLEEP;
     stp_psm->flag = 0;
     stp_psm->stp_tx_cb = NULL;
+    stp_psm_set_sleep_enable(stp_psm);
 
     ret = osal_fifo_init(&stp_psm->hold_fifo, NULL, STP_PSM_FIFO_SIZE);
     if(ret < 0)
@@ -1736,9 +1841,10 @@ MTKSTP_PSM_T *stp_psm_init(void)
     osal_unsleepable_lock_init(&stp_psm->hold_fifo_spinlock_global);
     osal_unsleepable_lock_init(&stp_psm->wq_spinlock);
     osal_sleepable_lock_init(&stp_psm->stp_psm_lock);
+	
 //    osal_unsleepable_lock_init(&stp_psm->flagSpinlock);
 
-    osal_memcpy(stp_psm->wake_lock.name, "MT6620", 6);
+    osal_memcpy(stp_psm->wake_lock.name, "MT662x", 6);
     osal_wake_lock_init(&stp_psm->wake_lock);
 
     osal_event_init(&stp_psm->STPd_event);
@@ -1837,8 +1943,5 @@ INT32 stp_psm_deinit(MTKSTP_PSM_T *stp_psm)
     return STP_PSM_OPERATION_SUCCESS;
 }
 
-#if !defined(MT6628)
 EXPORT_SYMBOL(mtk_wcn_stp_psm_dbg_level);
-#endif
-
 

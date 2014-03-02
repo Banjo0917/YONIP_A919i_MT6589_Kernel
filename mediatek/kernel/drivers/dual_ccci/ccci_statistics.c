@@ -22,7 +22,8 @@
 typedef struct _ccci_log
 {
 	struct timeval	tv;
-	ccci_msg_t		msg;
+	ccci_msg_t	msg;
+	int		droped;
 } ccci_log_t;
 
 typedef struct _logic_ch_record 
@@ -30,13 +31,13 @@ typedef struct _logic_ch_record
 	ccci_log_t		log[CCCI_LOG_MAX_LEN];
 	unsigned long	msg_num;
 	unsigned long	drop_num;
-	int				log_idx;
-	int				dir;
+	int		log_idx;
+	int		dir;
 }logic_ch_record_t;
 
 typedef struct _ch_history{
 	logic_ch_record_t	all_ch[CCCI_MAX_CH_NUM];
-	int					md_id;
+	int			md_id;
 }ch_history_t;
 
 static ch_history_t		*history_ctlb[MAX_MD_NUM];
@@ -45,8 +46,8 @@ static ch_history_t		*history_ctlb[MAX_MD_NUM];
 void add_logic_layer_record(int md_id, ccci_msg_t *data, int drop)
 {
 	logic_ch_record_t	*ctlb;
-	int					ch = data->channel;
-	ccci_log_t			*record;
+	int			ch = data->channel;
+	ccci_log_t		*record;
 
 	if (ch >= CCCI_MAX_CH_NUM)
 		return;
@@ -60,6 +61,7 @@ void add_logic_layer_record(int md_id, ccci_msg_t *data, int drop)
 	ctlb->log_idx &= (CCCI_LOG_MAX_LEN-1);
 	do_gettimeofday(&(record->tv));
 	record->msg = *data;
+	record->droped = drop;
 	if(drop)
 		ctlb->drop_num++;
 	else
@@ -146,7 +148,7 @@ static int s_to_date(	long seconds, long usec, int *us, int *sec, int *min, int 
 
 static int ccci_record_dump(ccci_log_t *log)
 {
-	int		ms, sec, min, hour, day, month, year;
+	int	ms, sec, min, hour, day, month, year;
 	long	tv_sec, tv_usec;
 
 	tv_sec = (long)log->tv.tv_sec;
@@ -157,9 +159,15 @@ static int ccci_record_dump(ccci_log_t *log)
 
 	s_to_date(tv_sec, tv_usec, &ms, &sec, &min, &hour, &day, &month, &year);
 
-	CCCI_DBG_COM_MSG("%08X %08X %02d %08X   %d-%02d-%02d %02d:%02d:%02d.%06d\n",
-		log->msg.data0,log->msg.data1,log->msg.channel,log->msg.reserved,
-		year, month, day, hour, min, sec, ms);
+	if(!log->droped) {
+		CCCI_DBG_COM_MSG("%08X %08X %02d %08X   %d-%02d-%02d %02d:%02d:%02d.%06d\n",
+			log->msg.data0,log->msg.data1,log->msg.channel,log->msg.reserved,
+			year, month, day, hour, min, sec, ms);
+	} else {
+		CCCI_DBG_COM_MSG("%08X %08X %02d %08X   %d-%02d-%02d %02d:%02d:%02d.%06d -\n",
+			log->msg.data0,log->msg.data1,log->msg.channel,log->msg.reserved,
+			year, month, day, hour, min, sec, ms);
+	}
 	return 0;
 }
 
@@ -173,9 +181,9 @@ void logic_layer_ch_record_dump(int md_id, int ch)
 		record = &(ctlb->all_ch[ch]);
 		CCCI_DBG_COM_MSG("\n");
 		if(record->dir == CCCI_LOG_TX) {
-			CCCI_DBG_COM_MSG("ch%02d rx_get :%ld\t rx_drop:%ld\t\n", ch, record->msg_num, record->drop_num);
+			CCCI_DBG_COM_MSG("ch%02d tx_get :%ld\t tx_drop:%ld\t\n", ch, record->msg_num, record->drop_num);
 		} else {
-			CCCI_DBG_COM_MSG("ch%02d tx_send:%ld\t tx_drop:%ld\t\n", ch, record->msg_num, record->drop_num);
+			CCCI_DBG_COM_MSG("ch%02d rx_send:%ld\t rx_drop:%ld\t\n", ch, record->msg_num, record->drop_num);
 		}
 
 		// dump last ten message

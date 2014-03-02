@@ -8,6 +8,7 @@ TARGET_PROVIDES_INIT_RC := true
 
 PRODUCT_COPY_FILES += $(LOCAL_PATH)/mtk-kpd.kl:system/usr/keylayout/mtk-kpd.kl \
                       $(LOCAL_PATH)/init.rc:root/init.rc \
+                      $(LOCAL_PATH)/init.modem.rc:root/init.modem.rc \
                       $(LOCAL_PATH)/init.usb.rc:root/init.usb.rc \
                       $(LOCAL_PATH)/init.xlog.rc:root/init.xlog.rc \
                       $(LOCAL_PATH)/vold.fstab:system/etc/vold.fstab \
@@ -17,6 +18,7 @@ PRODUCT_COPY_FILES += $(LOCAL_PATH)/mtk-kpd.kl:system/usr/keylayout/mtk-kpd.kl \
                       $(LOCAL_PATH)/mtk_omx_core.cfg:system/etc/mtk_omx_core.cfg \
                       $(LOCAL_PATH)/advanced_meta_init.rc:root/advanced_meta_init.rc \
                       $(LOCAL_PATH)/meta_init.rc:root/meta_init.rc \
+                      $(LOCAL_PATH)/meta_init.modem.rc:root/meta_init.modem.rc \
                       $(LOCAL_PATH)/factory_init.rc:root/factory_init.rc \
                       $(LOCAL_PATH)/audio_policy.conf:system/etc/audio_policy.conf \
                       $(LOCAL_PATH)/init.protect.rc:root/init.protect.rc \
@@ -67,12 +69,17 @@ ifeq ($(strip $(HAVE_SRSAUDIOEFFECT_FEATURE)),yes)
 endif
 
 ifeq ($(MTK_SHARED_SDCARD),yes)
-  PRODUCT_COPY_FILES += $(LOCAL_PATH)/init.sdcard.rc:root/init.sdcard.rc
+ifeq ($(MTK_2SDCARD_SWAP),yes)
+  PRODUCT_COPY_FILES += $(LOCAL_PATH)/init.ssd_nomuser.rc:root/init.ssd_nomuser.rc
+else
+  PRODUCT_COPY_FILES += $(LOCAL_PATH)/init.ssd.rc:root/init.ssd.rc
+endif
+else
+  PRODUCT_COPY_FILES += $(LOCAL_PATH)/init.no_ssd.rc:root/init.no_ssd.rc
 endif
 
 include $(CLEAR_VARS)
 LOCAL_SRC_FILES := mtk-kpd.kcm
-LOCAL_MODULE_TAGS := user
 include $(BUILD_KEY_CHAR_MAP)
 
 ##################################
@@ -82,7 +89,6 @@ $(call config-custom-folder,modem:modem)
 ifeq ($(strip $(MTK_ENABLE_MD1)),yes)
 include $(CLEAR_VARS)
 LOCAL_MODULE := modem.img
-LOCAL_MODULE_TAGS := user
 LOCAL_MODULE_CLASS := ETC
 LOCAL_MODULE_PATH := $(TARGET_OUT_ETC)/firmware
 LOCAL_SRC_FILES := modem/$(LOCAL_MODULE)
@@ -91,7 +97,6 @@ include $(BUILD_PREBUILT)
 ifeq ($(MTK_MDLOGGER_SUPPORT),yes)
 include $(CLEAR_VARS)
 LOCAL_MODULE := catcher_filter.bin
-LOCAL_MODULE_TAGS := user
 LOCAL_MODULE_CLASS := ETC 
 LOCAL_MODULE_PATH := $(TARGET_OUT_ETC)/firmware
 LOCAL_SRC_FILES := modem/catcher_filter.bin
@@ -113,15 +118,10 @@ ifeq ($(strip $(MTK_INCLUDE_MODEM_DB_IN_IMAGE)), yes)
     ifneq ($(words $(MD_DATABASE_FILE)),1)
       $(error More than one modem database file: $(MD_DATABASE_FILE)!!)
     endif
-    include $(CLEAR_VARS)
     MD_DATABASE_FILENAME := $(notdir $(MD_DATABASE_FILE))
-    GRANDFATHERED_USER_MODULES +=$(MD_DATABASE_FILENAME)
-    LOCAL_MODULE := $(MD_DATABASE_FILENAME)
-    LOCAL_MODULE_TAGS := user
-    LOCAL_MODULE_CLASS :=ETC
-    LOCAL_SRC_FILES := modem/$(MD_DATABASE_FILENAME)
-    LOCAL_MODULE_PATH := $(TARGET_OUT_ETC)/mddb
-    include $(BUILD_PREBUILT)
+#    PRODUCT_COPY_FILES += $(LOCAL_PATH)/modem/$(MD_DATABASE_FILENAME):system/etc/mddb/$(MD_DATABASE_FILENAME)
+$(TARGET_OUT_ETC)/firmware/modem.img:$(PRODUCT_OUT)/system/etc/mddb/$(MD_DATABASE_FILENAME)
+$(eval $(call copy-one-file,$(LOCAL_PATH)/modem/$(MD_DATABASE_FILENAME),$(PRODUCT_OUT)/system/etc/mddb/$(MD_DATABASE_FILENAME)))
   endif
 endif
 
@@ -131,7 +131,6 @@ endif
 ifeq ($(strip $(MTK_ENABLE_MD2)),yes)
 include $(CLEAR_VARS)
 LOCAL_MODULE := modem_sys2.img
-LOCAL_MODULE_TAGS := user
 LOCAL_MODULE_CLASS := ETC
 LOCAL_MODULE_PATH := $(TARGET_OUT_ETC)/firmware
 LOCAL_SRC_FILES := modem/$(LOCAL_MODULE)
@@ -140,8 +139,6 @@ include $(BUILD_PREBUILT)
 ifeq ($(MTK_MDLOGGER_SUPPORT),yes)
 include $(CLEAR_VARS)
 LOCAL_MODULE := catcher_filter_sys2.bin
-GRANDFATHERED_USER_MODULES += catcher_filter_sys2.bin
-LOCAL_MODULE_TAGS := user
 LOCAL_MODULE_CLASS := ETC
 LOCAL_MODULE_PATH := $(TARGET_OUT_ETC)/firmware
 LOCAL_SRC_FILES := modem/catcher_filter_sys2.bin
@@ -159,15 +156,10 @@ ifeq ($(strip $(MTK_INCLUDE_MODEM_DB_IN_IMAGE)), yes)
     ifneq ($(words $(MD_DATABASE_FILE)),1)
       $(error More than one modem database file: $(MD_DATABASE_FILE)!!)
     endif
-    include $(CLEAR_VARS)
     MD_DATABASE_FILENAME := $(notdir $(MD_DATABASE_FILE))
-    GRANDFATHERED_USER_MODULES +=$(MD_DATABASE_FILENAME)
-    LOCAL_MODULE := $(MD_DATABASE_FILENAME)
-    LOCAL_MODULE_TAGS := user
-    LOCAL_MODULE_CLASS :=ETC
-    LOCAL_SRC_FILES := modem/$(MD_DATABASE_FILENAME)
-    LOCAL_MODULE_PATH := $(TARGET_OUT_ETC)/mddb
-    include $(BUILD_PREBUILT)
+#    PRODUCT_COPY_FILES += $(LOCAL_PATH)/modem/$(MD_DATABASE_FILENAME):system/etc/mddb/$(MD_DATABASE_FILENAME)
+$(TARGET_OUT_ETC)/firmware/modem_sys2.img:$(PRODUCT_OUT)/system/etc/mddb/$(MD_DATABASE_FILENAME)
+$(eval $(call copy-one-file,$(LOCAL_PATH)/modem/$(MD_DATABASE_FILENAME),$(PRODUCT_OUT)/system/etc/mddb/$(MD_DATABASE_FILENAME)))
   endif
 endif
 #############################################
@@ -200,8 +192,6 @@ PRODUCT_COPY_FILES += $(_thermal_off_conf):system/etc/.tp/thermal.off.conf
 endif
 
 ##################################
-
-
 
 ##### INSTALL throttle.sh ##########
 

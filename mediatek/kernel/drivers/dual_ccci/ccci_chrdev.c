@@ -1,4 +1,5 @@
 #include <linux/module.h>
+#include <linux/wakelock.h>
 #include <linux/poll.h>
 #include <linux/uaccess.h>
 #include <asm/io.h>
@@ -12,13 +13,11 @@ extern unsigned long long lg_ch_rx_debug_enable[];
 //extern unsigned int md_ex_type;
 //unsigned int push_data_fail = 0;
 
-
-
 //==============================================================
 // CCCI Standard charactor device function
 //==============================================================
 static chr_ctl_block_t *chr_ctlb[MAX_MD_NUM];
-
+static struct wake_lock	chrdev_wake_lock[MAX_MD_NUM];
 static void ccci_client_init(struct ccci_dev_client *client,int ch,pid_t pid)
 {
 	WARN_ON(client==NULL);
@@ -59,7 +58,7 @@ static void ccci_chrdev_callback(void *private)
 
 	client->wakeup_waitq = 1;
 	wake_up_interruptible(&client->wait_q);
-	//wake_up_interruptible_poll(&client->wait_q,POLL_IN);
+	wake_lock_timeout(&chrdev_wake_lock[client->md_id], HZ/2);
 
 	kill_fasync(&client->fasync, SIGIO, POLL_IN);
 	return ;
@@ -443,6 +442,7 @@ int ccci_chrdev_init(int md_id)
 	int  ret=0;
 	int  major,minor;
 	char name[16];
+  char wakelockname[30];
 	chr_ctl_block_t *ctlb;
 
 	ctlb = (chr_ctl_block_t *)kmalloc(sizeof(chr_ctl_block_t), GFP_KERNEL);
@@ -479,8 +479,10 @@ int ccci_chrdev_init(int md_id)
 		CCCI_MSG_INF(md_id, "chr", "cdev_add fail\n");
 		goto out_err0;
 	}
-
-	ctlb->major = major;
+  sprintf(wakelockname,"ccci chrdev%d",md_id);
+	wake_lock_init(&chrdev_wake_lock[md_id], WAKE_LOCK_SUSPEND, wakelockname);      
+  
+  ctlb->major = major;
 	ctlb->minor = minor;
 	chr_ctlb[md_id] = ctlb;
 	
@@ -505,6 +507,7 @@ void ccci_chrdev_exit(int md_id)
 		kfree(chr_ctlb[md_id]);
 		chr_ctlb[md_id] = NULL;
 	}
+  wake_lock_destroy(&chrdev_wake_lock[md_id]);
 }
 
 

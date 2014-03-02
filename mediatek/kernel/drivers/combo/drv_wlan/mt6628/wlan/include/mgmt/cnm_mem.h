@@ -793,6 +793,12 @@ struct _STA_RECORD_T {
     //UINT_8                  aucFreeQuotaPerQueue[NUM_OF_PER_STA_TX_QUEUES]; /* used in future */
     UINT_8                  ucFreeQuotaForDelivery;
     UINT_8                  ucFreeQuotaForNonDelivery;
+#if CFG_ENABLE_PKT_LIFETIME_PROFILE && CFG_ENABLE_PER_STA_STATISTICS
+    UINT_32                 u4TotalTxPktsNumber;
+    UINT_32                 u4TotalTxPktsTime;
+	UINT_32                 u4MaxTxPktsTime;
+    UINT_32                 u4ThresholdCounter;
+#endif
 
 #if 1
     /*------------------------------------------------------------------------------------------*/

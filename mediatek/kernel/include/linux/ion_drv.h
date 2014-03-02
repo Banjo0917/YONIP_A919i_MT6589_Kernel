@@ -1,7 +1,7 @@
 #ifndef __ION_DRV_H__
 #define __ION_DRV_H__
 #include <linux/ion.h>
-
+#include "ion_debugger.h"
 // Structure definitions
 typedef enum
 {
@@ -25,7 +25,8 @@ typedef enum
 {
     ION_SYS_CACHE_SYNC,
     ION_SYS_GET_PHYS,
-    ION_SYS_GET_CLIENT
+    ION_SYS_GET_CLIENT,
+    ION_SYS_RECORD //define for ion
 } ION_SYS_CMDS;
 
 typedef enum
@@ -69,6 +70,7 @@ typedef struct ion_sys_data
         ion_sys_cache_sync_param_t cache_sync_param;
         ion_sys_get_phys_param_t   get_phys_param;
         ion_sys_get_client_param_t get_client_param;
+	ion_sys_record_t record_param;
     };
 } ion_sys_data_t;
 

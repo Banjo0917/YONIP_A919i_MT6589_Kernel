@@ -11,29 +11,23 @@
 #include <linux/io.h>
 #include <linux/delay.h>
 #include <mach/fiq_smp_call.h>
+#include <mach/irqs.h>
 
 #include "aee-common.h"
 
-#undef WDT_DEBUG_VERBOSE
+//#undef WDT_DEBUG_VERBOSE
+#define WDT_DEBUG_VERBOSE
 
-#ifdef CONFIG_ARCH_MT6577
-#include <mach/mt_reg_base.h>
-#define GIC_ICDISER0 (GIC_DIST_BASE + 0x100)
-#define GIC_ICDISER1 (GIC_DIST_BASE + 0x104)
-#define GIC_ICDISER2 (GIC_DIST_BASE + 0x108)
-#define GIC_ICDISER3 (GIC_DIST_BASE + 0x10C)
-#define GIC_ICDISER4 (GIC_DIST_BASE + 0x110)
-#endif
-
-#ifdef CONFIG_HAVE_ARM_TWD
-extern int dump_localtimer_register(char* buffer, int size);
+#ifdef WDT_DEBUG_VERBOSE
+extern int dump_localtimer_info(char* buffer, int size);
+extern int dump_idle_info(char *buffer, int size);
 #endif
 
 #define THREAD_INFO(sp) ((struct thread_info *) \
 				((unsigned long)(sp) & ~(THREAD_SIZE - 1)))
 
 #ifdef CONFIG_SCHED_DEBUG
-extern int sysrq_sched_debug_show(void);
+extern int sysrq_sched_debug_show_at_KE(void);
 #endif
 
 enum wk_wdt_type {
@@ -92,7 +86,7 @@ void aee_wdt_dump_info(void)
 		printk(KERN_ERR "\n No log for WDT \n");
 		mt_dump_sched_traces();
 		#ifdef CONFIG_SCHED_DEBUG
-		sysrq_sched_debug_show();
+		sysrq_sched_debug_show_at_KE();
 		#endif
 		return;
 	}
@@ -116,14 +110,7 @@ void aee_wdt_dump_info(void)
 
 	#ifdef CONFIG_SCHED_DEBUG
 	aee_rr_rec_fiq_step(AEE_FIQ_STEP_KE_SCHED_DEBUG);
-	sysrq_sched_debug_show();
-	#endif
-
-	#ifdef WDT_DEBUG_VERBOSE
-	#ifdef CONFIG_SMP
-	aee_rr_rec_fiq_step(AEE_FIQ_STEP_KE_IDLE);
-	dump_log_idle();
-	#endif
+	sysrq_sched_debug_show_at_KE();
 	#endif
 
 	for_each_process(task)
@@ -134,21 +121,9 @@ void aee_wdt_dump_info(void)
 			show_stack(task, NULL);
 			printk(KERN_ERR "\n");
 		}
-		#ifdef WDT_DEBUG_VERBOSE
-		if (strncmp(task->comm, "wdtk", 4)==0)
-		{
-			printk(KERN_ERR "PID: %d, name: %s\n", task->pid, task->comm);
-			show_stack(task, NULL);
-			printk(KERN_ERR "\n");
-		}
-		#endif
 	}
 
 	aee_rr_rec_fiq_step(AEE_FIQ_STEP_KE_WDT_DONE);
-	#ifdef WDT_DEBUG_VERBOSE
-	printk(KERN_ERR "Backtrace of current task:\n");
-	show_stack(NULL, NULL);
-	#endif
 }
 
 void aee_wdt_percpu_printf(int cpu, const char *fmt, ...)
@@ -400,16 +375,15 @@ void aee_wdt_irq_info(void)
 	aee_wdt_printf("\nQwdt at [%5lu.%06lu] ", (unsigned long) t, nanosec_rem / 1000);
 	aee_wdt_printf(", preempt_count=0x%08lx \n", preempt_count());
 
-	#ifdef CONFIG_ARCH_MT6577
-	aee_wdt_printf("GIC_ICDISER0=%08lx, GIC_ICDISER1=%08lx, GIC_ICDISER2=%08lx \n", 
-					(*(volatile u32 *)(GIC_ICDISER0)), (*(volatile u32 *)(GIC_ICDISER1)), (*(volatile u32 *)(GIC_ICDISER2)));
-	aee_wdt_printf("GIC_ICDISER3=%08lx, GIC_ICDISER4=%08lx \n", 
-					(*(volatile u32 *)(GIC_ICDISER3)), (*(volatile u32 *)(GIC_ICDISER4)));
-	#endif
-
-	#ifdef CONFIG_HAVE_ARM_TWD
+	#ifdef WDT_DEBUG_VERBOSE
+	aee_rr_rec_fiq_step(AEE_FIQ_STEP_WDT_IRQ_GIC);
+	mt_irq_dump();
+	
 	aee_rr_rec_fiq_step(AEE_FIQ_STEP_WDT_IRQ_LOCALTIMER);
-	wdt_log_length += dump_localtimer_register((wdt_log_buf+wdt_log_length), (sizeof(wdt_log_buf) - wdt_log_length));
+	wdt_log_length += dump_localtimer_info((wdt_log_buf+wdt_log_length), (sizeof(wdt_log_buf) - wdt_log_length));
+
+	aee_rr_rec_fiq_step(AEE_FIQ_STEP_WDT_IRQ_IDLE);
+	wdt_log_length += dump_idle_info((wdt_log_buf+wdt_log_length), (sizeof(wdt_log_buf) - wdt_log_length));
 	#endif
 
 	#ifdef CONFIG_MT_SCHED_MONITOR

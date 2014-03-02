@@ -68,10 +68,13 @@
 //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 //
 //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
 int cust_isNeedAFLamp(int flashMode, int afLampMode, int isBvHigherTriger)
 {
 	if(flashMode==FLASHLIGHT_FORCE_OFF)
 		return 0;
+	if(flashMode==FLASHLIGHT_FORCE_ON)
+		return 1;
 	//if(afLampMode==AF_LAMP_OFF)
 	//	return 0;
 	//if(afLampMode==AF_LAMP_ON)
@@ -93,6 +96,8 @@ int cust_isNeedAFLamp(int flashMode, int afLampMode, int isBvHigherTriger)
     // AF_LAMP_AUTO,
     // AF_LAMP_FLASH,
 }
+
+
 void copyTuningPara(FLASH_TUNING_PARA* p, NVRAM_FLASH_TUNING_PARA* nv_p)
 {
 	XLOGD("copyTuningPara ytar =%d %d", p->yTar ,nv_p->yTar);
@@ -117,6 +122,7 @@ FLASH_PROJECT_PARA& cust_getFlashProjectPara(int aeMode, NVRAM_CAMERA_STROBE_STR
 	para.dutyNum = 25;
 	para.stepNum = 1;
 	//tuning
+
 
 
 	if(nvrame!=0)
@@ -177,7 +183,7 @@ FLASH_PROJECT_PARA& cust_getFlashProjectPara(int aeMode, NVRAM_CAMERA_STROBE_STR
 
 	//burst setting
 	para.engLevel.IChangeByBurstEn=1;
-	para.engLevel.pfDutyB = 4;
+	para.engLevel.pfDutyB =4;
 	para.engLevel.mfDutyMaxB = 5;
 	para.engLevel.mfDutyMinB = 0;
 	para.engLevel.pmfStepB = 0;
@@ -188,23 +194,14 @@ FLASH_PROJECT_PARA& cust_getFlashProjectPara(int aeMode, NVRAM_CAMERA_STROBE_STR
 	para.coolTimeOutPara.tabNum = 6;
 	para.coolTimeOutPara.tabId[0]=0;
 	para.coolTimeOutPara.tabId[1]=5;
-	para.coolTimeOutPara.tabId[2]=8;
-	para.coolTimeOutPara.tabId[3]=16;
-	para.coolTimeOutPara.tabId[4]=21;
-	para.coolTimeOutPara.tabId[5]=25;
+
 	para.coolTimeOutPara.coolingTM[0]=0;
 	para.coolTimeOutPara.coolingTM[1]=0;
-	para.coolTimeOutPara.coolingTM[2]=3;
-	para.coolTimeOutPara.coolingTM[3]=5;
-	para.coolTimeOutPara.coolingTM[4]=7;
-	para.coolTimeOutPara.coolingTM[5]=8;
 
 	para.coolTimeOutPara.timOutMs[0]=ENUM_FLASH_TIME_NO_TIME_OUT;
 	para.coolTimeOutPara.timOutMs[1]=ENUM_FLASH_TIME_NO_TIME_OUT;
-	para.coolTimeOutPara.timOutMs[2]=1000;
-	para.coolTimeOutPara.timOutMs[3]=500;
-	para.coolTimeOutPara.timOutMs[4]=500;
-	para.coolTimeOutPara.timOutMs[5]=500;
+
+	para.maxCapExpTimeUs = 100000;
 
 	/*
 	//---------------
@@ -251,7 +248,6 @@ FLASH_PROJECT_PARA& cust_getFlashProjectPara(int aeMode, NVRAM_CAMERA_STROBE_STR
 	para.engLevel.toleranceI = 200;
 	para.engLevel.toleranceV = 200;
 	*/
-
 	if(nvrame!=0)
 	{
 		if(nvrame->isTorchEngUpdate)

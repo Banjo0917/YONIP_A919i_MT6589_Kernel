@@ -397,6 +397,11 @@ static void en_io_logger(int i)
 
 }
 
+void mt_disable_io_logger(void)
+{
+	en_io_logger(0);
+}
+
 static int io_logger_help(char *page, char **start, off_t off, int count, int *eof, void *data)
 {
 	char *p = page;

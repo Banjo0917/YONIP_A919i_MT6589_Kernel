@@ -15,6 +15,12 @@ static int in_panic = 0;
 extern int msdc_init_panic(int dev);
 extern int card_dump_func_write(unsigned char* buf, unsigned int len, unsigned long long offset, int dev);
 extern int card_dump_func_read(unsigned char* buf, unsigned int len, unsigned long long offset, int dev);
+
+#ifdef MTK_MMPROFILE_SUPPORT
+extern unsigned int MMProfileGetDumpSize(void);
+extern void MMProfileGetDumpBuffer(unsigned int Start, unsigned int *pAddr, unsigned int *pSize);
+#endif
+
 char *emmc_allocate_and_read(int offset, int length)
 {
 	int size;
@@ -130,8 +136,18 @@ static struct aee_oops *emmc_ipanic_oops_copy(void)
 		if (oops->android_system == NULL) {
 			xlog_printk(ANDROID_LOG_ERROR, IPANIC_LOG_TAG, "%s: read android_system failed\n", __FUNCTION__);
 			goto error_return;
-		}		    
-		
+		}
+
+		if (hdr->mmprofile_length == 0) {
+		  oops->mmprofile = NULL;
+		  oops->mmprofile_len = 0;
+		} else {
+		  oops->mmprofile = emmc_allocate_and_read(hdr->mmprofile_offset, hdr->mmprofile_length);
+		  oops->mmprofile_len = hdr->mmprofile_length;
+		}
+		if (oops->mmprofile == NULL) {
+		  xlog_printk(ANDROID_LOG_ERROR, IPANIC_LOG_TAG, "%s: read mmprofile failed, offset - 0x%x, length - 0x%x\n", __FUNCTION__, oops->mmprofile, oops->mmprofile_len);
+		}
 		xlog_printk(ANDROID_LOG_DEBUG, IPANIC_LOG_TAG, "ipanic_oops_copy return OK\n");
 		kfree(hdr);
 		return oops;
@@ -306,6 +322,50 @@ static int ipanic_write_userspace(unsigned int off)
 	return copy_count;
 }
 
+
+static void ipanic_write_mmprofile(int offset, struct ipanic_header *hdr)
+{
+  int rc = 0;
+  unsigned int index = 0;
+  unsigned int pbuf = 0;
+  unsigned int bufsize = 0;
+
+  offset = ALIGN(offset, EMMC_BLOCK_SIZE);
+  hdr->mmprofile_offset = offset;
+
+#ifdef MTK_MMPROFILE_SUPPORT
+  
+  unsigned int mmprofile_dump_size = MMProfileGetDumpSize();
+  if (mmprofile_dump_size == 0 || mmprofile_dump_size > IPANIC_OOPS_MMPROFILE_LENGTH_LIMIT) {
+    xlog_printk(ANDROID_LOG_ERROR, IPANIC_LOG_TAG, "%s: ignore INVALID MMProfile dump size 0x%x", mmprofile_dump_size);
+    return;
+  }
+
+  do {
+    MMProfileGetDumpBuffer(index, &pbuf, &bufsize);
+    if (bufsize == 0){
+      hdr->mmprofile_length = index;
+      break;
+    }
+
+    index += bufsize;
+
+    rc = emmc_ipanic_write(pbuf, offset, bufsize);
+    if (rc < 0) {
+      xlog_printk(ANDROID_LOG_ERROR, IPANIC_LOG_TAG, "%s: Error writing MMProfile to emmc! (%d)\n", __func__, rc);
+      hdr->mmprofile_length = 0;
+    }
+    else {
+      offset += rc;
+    }
+  } while(rc <= IPANIC_OOPS_MMPROFILE_LENGTH_LIMIT);
+
+#else
+  //MTK_MMPROFILE_SUPPORT disabled, no mmprofile dumped.
+  hdr->mmprofile_length = 0;
+#endif
+}
+
 /*XXX Note: 2012/11/19 mtk_wdt_restart prototype is 
 * different on 77 and 89 platform. the owner promise to modify it
 */
@@ -409,7 +469,12 @@ static int emmc_ipanic(struct notifier_block *this, unsigned long event,
 	aee_rr_rec_fiq_step(AEE_FIQ_STEP_KE_IPANIC_ANDROID);
 	ipanic_write_all_android_buf(iheader.userspace_info_offset + iheader.userspace_info_length, &iheader);
 
-    ipanic_kick_wdt();
+	ipanic_kick_wdt();
+
+	aee_rr_rec_fiq_step(AEE_FIQ_STEP_KE_IPANIC_MMPROFILE);
+	ipanic_write_mmprofile(iheader.android_system_offset + iheader.android_system_length, &iheader);
+
+	ipanic_kick_wdt();
 	/*
 	 * Finally write the ipanic header
 	 */
@@ -432,7 +497,8 @@ static int emmc_ipanic(struct notifier_block *this, unsigned long event,
 		    iheader.android_event_offset, iheader.android_event_length, 
 		    iheader.android_radio_offset, iheader.android_radio_length, 
 		    iheader.android_system_offset, iheader.android_system_length);
-
+	xlog_printk(ANDROID_LOG_ERROR, IPANIC_LOG_TAG, "mmprofile: offset:0x%x, len:0x%x\n", iheader.mmprofile_offset, iheader.mmprofile_length);
+	
 out:
 
 #ifdef CONFIG_PREEMPT

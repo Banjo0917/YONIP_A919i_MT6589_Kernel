@@ -77,6 +77,8 @@ static INT32  wmt_ctrl_others(P_WMT_CTRL_DATA);
 static INT32  wmt_ctrl_tx(P_WMT_CTRL_DATA);
 static INT32  wmt_ctrl_rx(P_WMT_CTRL_DATA);
 static INT32  wmt_ctrl_patch_search(P_WMT_CTRL_DATA);
+static INT32  wmt_ctrl_crystal_triming_put(P_WMT_CTRL_DATA pWmtCtrlData);
+static INT32  wmt_ctrl_crystal_triming_get(P_WMT_CTRL_DATA pWmtCtrlData);
 INT32  wmt_ctrl_hw_state_show(P_WMT_CTRL_DATA pWmtCtrlData);
 static INT32 wmt_ctrl_get_patch_num(P_WMT_CTRL_DATA);
 static INT32 wmt_ctrl_get_patch_info(P_WMT_CTRL_DATA);
@@ -142,6 +144,8 @@ const static WMT_CTRL_FUNC wmt_ctrl_func[] =
     [WMT_CTRL_GPS_SYNC_SET] = wmt_ctrl_gps_sync_set,
     [WMT_CTRL_GPS_LNA_SET] = wmt_ctrl_gps_lna_set,
     [WMT_CTRL_PATCH_SEARCH] = wmt_ctrl_patch_search,
+    [WMT_CTRL_CRYSTAL_TRIMING_GET] = wmt_ctrl_crystal_triming_get,
+    [WMT_CTRL_CRYSTAL_TRIMING_PUT] = wmt_ctrl_crystal_triming_put,
     [WMT_CTRL_HW_STATE_DUMP] = wmt_ctrl_hw_state_show,
     [WMT_CTRL_GET_PATCH_NUM] = wmt_ctrl_get_patch_num,
     [WMT_CTRL_GET_PATCH_INFO] = wmt_ctrl_get_patch_info,
@@ -432,7 +436,6 @@ INT32  wmt_ctrl_hw_state_show(P_WMT_CTRL_DATA pWmtCtrlData)
     return 0;
 }
 
-
 INT32  wmt_ctrl_stp_close(P_WMT_CTRL_DATA pWmtCtrlData)
 {
     P_DEV_WMT pDev = &gDevWmt; /* single instance */
@@ -500,14 +503,18 @@ INT32  wmt_ctrl_patch_search(P_WMT_CTRL_DATA pWmtCtrlData)
         WMT_WARN_FUNC("wmt_ctrl_ul_cmd fail(%d)\n", iRet);
         return -1;
     }
-	return 0;
+    return 0;
 }
+
+
 INT32 wmt_ctrl_get_patch_num(P_WMT_CTRL_DATA pWmtCtrlData)
 {
 	P_DEV_WMT pDev = &gDevWmt; /* single instance */
 	pWmtCtrlData->au4CtrlData[0] = pDev->patchNum;
 	return 0;
 }
+
+
 INT32 wmt_ctrl_get_patch_info(P_WMT_CTRL_DATA pWmtCtrlData)
 {
 	P_DEV_WMT pDev = &gDevWmt; /* single instance */
@@ -535,6 +542,8 @@ INT32 wmt_ctrl_get_patch_info(P_WMT_CTRL_DATA pWmtCtrlData)
 
 	return 0;
 }
+
+
 INT32  wmt_ctrl_stp_conf_ex (WMT_STP_CONF_TYPE type, UINT32 value)
 {
     INT32 iRet = -1;
@@ -591,6 +600,7 @@ INT32  wmt_ctrl_stp_conf(P_WMT_CTRL_DATA pWmtCtrlData)
     return iRet;
 }
 
+
 INT32  wmt_ctrl_free_patch(P_WMT_CTRL_DATA pWmtCtrlData)
 {
 	UINT32 patchSeq = pWmtCtrlData->au4CtrlData[0];
@@ -615,6 +625,49 @@ INT32  wmt_ctrl_get_patch_name(P_WMT_CTRL_DATA pWmtCtrlData)
     PUCHAR pBuf = (PUCHAR)pWmtCtrlData->au4CtrlData[0];
     osal_memcpy(pBuf, gDevWmt.cPatchName, osal_sizeof(gDevWmt.cPatchName));
     return 0;
+}
+
+
+
+
+
+INT32  wmt_ctrl_crystal_triming_put(P_WMT_CTRL_DATA pWmtCtrlData)
+{
+    WMT_DBG_FUNC("BF free patch, gDevWmt.pPatch(0x%08x)\n", gDevWmt.pPatch);
+    if (NULL != gDevWmt.pNvram)
+    {
+        wmt_dev_patch_put((osal_firmware **)&(gDevWmt.pNvram));
+    }
+    WMT_DBG_FUNC("AF free patch, gDevWmt.pNvram(0x%08x)\n", gDevWmt.pNvram);
+    return 0;
+}
+
+
+INT32  wmt_ctrl_crystal_triming_get(P_WMT_CTRL_DATA pWmtCtrlData)
+{
+    INT32 iRet = 0x0;
+     UCHAR *pFileName = (UCHAR *)pWmtCtrlData->au4CtrlData[0];
+	 PUINT8 *ppBuf = (PUINT8 *)pWmtCtrlData->au4CtrlData[1];
+	 PUINT32 pSize = (PUINT32)pWmtCtrlData->au4CtrlData[2];
+
+	 osal_firmware *pNvram = NULL;
+
+	 if ((NULL == pFileName) || (NULL == pSize))
+	 {
+	     WMT_ERR_FUNC("parameter error, pFileName(0x%08x), pSize(0x%08x)\n", pFileName, pSize);
+		 iRet = -1;
+		 return iRet;
+	 }
+	 if (0 == wmt_dev_patch_get(pFileName, &pNvram, 0))
+	 {
+	     *ppBuf = (PUINT8)(pNvram)->data;
+         *pSize = (pNvram)->size;
+		 gDevWmt.pNvram = pNvram;
+		 return 0;
+	 }
+	 return -1;
+
+	 
 }
 
 

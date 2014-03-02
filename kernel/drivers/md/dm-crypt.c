@@ -1228,32 +1228,27 @@ static void kcryptd_async_done(struct crypto_async_request *async_req,
 		kcryptd_crypt_write_io_submit(io, 1);
 }
 
+
 static void kcryptd_crypt(struct work_struct *work)
 {
 	struct dm_crypt_io *io = container_of(work, struct dm_crypt_io, work);
-	int flag = 0;//MTK
 	
 	if (bio_data_dir(io->base_bio) == READ)
 		kcryptd_crypt_read_convert(io);
-	else{
-	    flag = 1;
+	else
 		kcryptd_crypt_write_convert(io);
-	}
-	//MTK
-	if (flag)
-	    put_online_cpus();
 }
 
 static void kcryptd_queue_crypt(struct dm_crypt_io *io)
 {
-	//struct crypt_config *cc = io->target->private;
-	struct crypt_config *cc;
-    //MTK
-    if (bio_data_dir(io->base_bio) == WRITE)
-   	    get_online_cpus();
-    cc = io->target->private;
+	struct crypt_config *cc = io->target->private;
+
 	INIT_WORK(&io->work, kcryptd_crypt);
-	queue_work(cc->crypt_queue, &io->work);
+	
+	//MTK, ALPS00412047. In this kernel version, if there is a work using percpu variable, hotplug caue process migration, percpu variable
+	//can not be protected well during process migration. Since cpu0 can not be unplug, so encrption work bind with cpu0
+	//queue_work(cc->crypt_queue, &io->work);
+	queue_work_on(0, cc->crypt_queue, &io->work);
 }
 
 /*

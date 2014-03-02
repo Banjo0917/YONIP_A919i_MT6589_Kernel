@@ -117,7 +117,6 @@ struct MT9P017_SENSOR_STRUCT MT9P017_sensor=
 
 kal_bool MT9P017_Auto_Flicker_mode = KAL_FALSE;
 kal_bool MT9P017_MPEG4_encode_mode = KAL_FALSE;
-kal_bool MT9P017_ZSD_Preview_mode = KAL_FALSE;
 kal_uint16 MT9P017_Frame_Length_preview = 0;
 kal_uint16 MT9P017_dummy_pixels=0, MT9P017_dummy_lines=0;
 kal_uint16 MT9P017_PV_dummy_pixels=0,MT9P017_PV_dummy_lines=0;
@@ -611,7 +610,7 @@ static void MT9P017_Init_setting(void)
 			SENSORDB("MT9P017 status = %x \n",status);
 		}while(status != 0x12C8)   ;
 		
-		MT9P017_write_cmos_sensor(0x3064, 0x9840);	// SMIA_TEST
+		MT9P017_write_cmos_sensor(0x3064, 0x5840);	// SMIA_TEST
 		MT9P017_write_cmos_sensor(0x31AE, 0x0101);	// SERIAL_FORMAT
 	#if 1
 	//[REV4_recommended_settings]
@@ -1066,8 +1065,6 @@ UINT32 MT9P017Open(void)
 	temp_data= read_MT9P017_gain();
     spin_lock(&MT9P017_drv_lock);
     MT9P017_sensor_gain_base = temp_data;
-	MT9P017_ZSD_Preview_mode=KAL_FALSE;
-    g_iMT9P017_Mode = MT9P017_MODE_PREVIEW;
     spin_unlock(&MT9P017_drv_lock);
     return ERROR_NONE;
 }
@@ -1411,15 +1408,15 @@ static void MT9P017_SetDummy(kal_bool mode,const kal_uint16 iDummyPixels, const 
 	{
 		Line_length_pclk   = MT9P017_PV_PERIOD_PIXEL_NUMS + iDummyPixels;
 		Frame_length_lines = MT9P017_PV_PERIOD_LINE_NUMS  + iDummyLines;
+		spin_lock(&MT9P017_drv_lock);
+		MT9P017_Frame_Length_preview = Frame_length_lines;
+		spin_unlock(&MT9P017_drv_lock);
 	}
 	else   //capture
 	{
 		Line_length_pclk   = MT9P017_FULL_PERIOD_PIXEL_NUMS + iDummyPixels;
 		Frame_length_lines = MT9P017_FULL_PERIOD_LINE_NUMS  + iDummyLines;
 	}
-	spin_lock(&MT9P017_drv_lock);
-	MT9P017_Frame_Length_preview = Frame_length_lines;
-	spin_unlock(&MT9P017_drv_lock);
 	
     SENSORDB("Enter MT9P017_SetDummy Frame_length_lines=%d, Line_length_pclk=%d\n",Frame_length_lines,Line_length_pclk);
 	MT9P017_write_cmos_sensor(0x0340, Frame_length_lines);
@@ -1537,8 +1534,6 @@ UINT32 MT9P017Capture(MSDK_SENSOR_EXPOSURE_WINDOW_STRUCT *image_window,
 		#else
 		    MT9P017_capture_setting();
         #endif  
-        sensor_config_data->SensorImageMirror = IMAGE_NORMAL;
-        MT9P017_Set_Mirror_Flip(sensor_config_data->SensorImageMirror);
 		
 		MT9P017_SetDummy(KAL_FALSE,MT9P017_dummy_pixels,MT9P017_dummy_lines);
 		SENSORDB("preview shutter =%d \n",shutter);
@@ -1698,16 +1693,11 @@ UINT32 MT9P017Control(MSDK_SCENARIO_ID_ENUM ScenarioId, MSDK_SENSOR_EXPOSURE_WIN
         case MSDK_SCENARIO_ID_CAMERA_PREVIEW:
         case MSDK_SCENARIO_ID_VIDEO_PREVIEW:
         case MSDK_SCENARIO_ID_VIDEO_CAPTURE_MPEG4:
-			MT9P017_ZSD_Preview_mode=KAL_FALSE;
             MT9P017Preview(pImageWindow, pSensorConfigData);
             break;
-		case MSDK_SCENARIO_ID_CAMERA_ZSD:
-			MT9P017_ZSD_Preview_mode=KAL_TRUE;
-            MT9P017Capture(pImageWindow, pSensorConfigData);
-		break;
         case MSDK_SCENARIO_ID_CAMERA_CAPTURE_JPEG:
         case MSDK_SCENARIO_ID_CAMERA_CAPTURE_MEM:
-			MT9P017_ZSD_Preview_mode=KAL_FALSE;
+		case MSDK_SCENARIO_ID_CAMERA_ZSD:
             MT9P017Capture(pImageWindow, pSensorConfigData);
             break;
         default:
@@ -1727,47 +1717,18 @@ UINT32 MT9P017SetVideoMode(UINT16 u2FrameRate)
 	spin_unlock(&MT9P017_drv_lock);
 
 	if(u2FrameRate >30 || u2FrameRate <5)
-	{
-	    SENSORDB("Error frame rate seting\n");
-	}
-	if(KAL_TRUE==MT9P017_ZSD_Preview_mode)
-	{
-		MAX_Frame_length = MT9P017_sensor.capture_vt_clk*100000/(MT9P017_FULL_PERIOD_PIXEL_NUMS+MT9P017_dummy_pixels)/u2FrameRate; 
-		if(MAX_Frame_length <= (MT9P017_FULL_PERIOD_LINE_NUMS+2) )//to make video frame rate a little bigger for CMSS standard
-		{
-			spin_lock(&MT9P017_drv_lock);
-		    MT9P017_dummy_lines = 0;  
-			spin_unlock(&MT9P017_drv_lock);
-			MAX_Frame_length = MT9P017_FULL_PERIOD_LINE_NUMS;
-		}
-		else
-		{
-			spin_lock(&MT9P017_drv_lock);
-		    MT9P017_dummy_lines = MAX_Frame_length - MT9P017_FULL_PERIOD_LINE_NUMS-2;//to make video frame rate a little bigger for CMSS standard
-			spin_unlock(&MT9P017_drv_lock);
-		}
-		MT9P017_SetDummy(KAL_FALSE,MT9P017_dummy_pixels,MT9P017_dummy_lines);
-		SENSORDB("MT9P017_dummy_pixels=%d\n",MT9P017_dummy_pixels);
-	}
-	else
-	{	
-		MAX_Frame_length = MT9P017_sensor.preview_vt_clk*100000/(MT9P017_PV_PERIOD_PIXEL_NUMS+MT9P017_PV_dummy_pixels)/u2FrameRate;
-		if(MAX_Frame_length <= (MT9P017_PV_PERIOD_LINE_NUMS+2) )//to make video frame rate a little bigger for CMSS standard
-		{
-			spin_lock(&MT9P017_drv_lock);
-		    MT9P017_PV_dummy_lines = 0;  
-			spin_unlock(&MT9P017_drv_lock);
-			MAX_Frame_length = MT9P017_PV_PERIOD_LINE_NUMS;
-		}
-		else
-		{
-			spin_lock(&MT9P017_drv_lock);
-		    MT9P017_PV_dummy_lines = MAX_Frame_length - MT9P017_PV_PERIOD_LINE_NUMS-2;//to make video frame rate a little bigger for CMSS standard
-			spin_unlock(&MT9P017_drv_lock);
-		}
-		MT9P017_SetDummy(KAL_TRUE,MT9P017_PV_dummy_pixels,MT9P017_PV_dummy_lines);
-		SENSORDB("MT9P017_PV_dummy_lines=%d\n",MT9P017_PV_dummy_lines);
-	}
+	    SENSORDB("Error frame rate seting");
+
+	MAX_Frame_length = MT9P017_sensor.preview_vt_clk*100000/(MT9P017_PV_PERIOD_PIXEL_NUMS+MT9P017_PV_dummy_pixels)/u2FrameRate;
+	//if(MT9P017_PV_dummy_lines <(MAX_Frame_length - MT9P017_PV_PERIOD_LINE_NUMS))  //original dummy length < current needed dummy length 
+	if(MAX_Frame_length < MT9P017_PV_PERIOD_LINE_NUMS )
+		MAX_Frame_length = MT9P017_PV_PERIOD_LINE_NUMS;
+	spin_lock(&MT9P017_drv_lock);
+	    MT9P017_PV_dummy_lines = MAX_Frame_length - MT9P017_PV_PERIOD_LINE_NUMS ;  
+	
+	spin_unlock(&MT9P017_drv_lock);
+	MT9P017_SetDummy(KAL_TRUE,MT9P017_PV_dummy_pixels,MT9P017_PV_dummy_lines);
+	
     return KAL_TRUE;
 }
 
@@ -1785,7 +1746,7 @@ UINT32 MT9P017SetAutoFlickerMode(kal_bool bEnable, UINT16 u2FrameRate)
 		{   
 			// in the video mode, reset the frame rate
 			MT9P017_write_cmos_sensor_8(0x0104, 1);        
-			MT9P017_write_cmos_sensor(0x0340, MT9P017_Frame_Length_preview-AUTO_FLICKER_NO);//from 30fps to 30.2 fps
+			MT9P017_write_cmos_sensor(0x0340, MT9P017_Frame_Length_preview +AUTO_FLICKER_NO);
             MT9P017_write_cmos_sensor_8(0x0104, 0);        	
         }
     } else 

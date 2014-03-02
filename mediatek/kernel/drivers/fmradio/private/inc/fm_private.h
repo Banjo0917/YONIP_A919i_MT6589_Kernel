@@ -33,6 +33,25 @@ typedef enum fm_gps_desense {
     FM_GPS_DESE_DISABLE
 } fm_gps_desense_t;
 
+//6620
+typedef struct MT6620fm_priv_cb {
+	//Basic functions.
+	int (*hl_side)(uint16_t freq, int *hl);
+	int (*adpll_freq_avoid)(uint16_t freq, int *freqavoid);
+	int (*mcu_freq_avoid)(uint16_t freq, int *freqavoid);
+    int (*tx_pwr_ctrl)(uint16_t freq, int *ctr);
+    int (*rtc_drift_ctrl)(uint16_t freq, int *ctr);
+    int (*tx_desense_wifi)(uint16_t freq, int *ctr);
+    int (*is_dese_chan)(fm_u16 freq);             // check if this is a de-sense channel
+}MT6620fm_priv_cb_t;
+
+typedef struct MT6620fm_priv{
+    int state;
+    void *data;
+    MT6620fm_priv_cb_t priv_tbl;
+}MT6620fm_priv_t;
+
+//6628
 typedef struct fm_priv_cb {
     //De-sense functions.
     fm_s32(*is_dese_chan)(fm_u16 freq);             // check if this is a de-sense channel
@@ -45,10 +64,9 @@ typedef struct fm_priv_cb {
 
 typedef struct fm_priv {
     fm_s32 state;
-    struct fm_priv_cb priv_tbl;
+    fm_priv_cb_t priv_tbl;
     void *data;
 } fm_priv_t;
-
 
 typedef struct fm_pub_cb {
     //Basic functions.
@@ -68,7 +86,8 @@ typedef struct fm_pub {
 } fm_pub_t;
 
 
+#if 0//(!defined(MT6620_FM)&&!defined(MT6628_FM))
 extern fm_s32 fm_priv_register(struct fm_priv *pri, struct fm_pub *pub);
 extern fm_s32 fm_priv_unregister(struct fm_priv *pri, struct fm_pub *pub);
-
+#endif
 #endif //__FM_PRIVATE_H__

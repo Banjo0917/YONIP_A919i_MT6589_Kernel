@@ -2001,4 +2001,6 @@ extern void upmu_set_rg_divcks_on(U32 val);
 extern void upmu_set_rg_divcks_prg(U32 val);
 extern void upmu_set_rg_pwd_ncp(U32 val);
 
+extern kal_uint32 upmu_get_reg_value(kal_uint32 reg);
+
 #endif // _MT6320_PMIC_COMMON_H_

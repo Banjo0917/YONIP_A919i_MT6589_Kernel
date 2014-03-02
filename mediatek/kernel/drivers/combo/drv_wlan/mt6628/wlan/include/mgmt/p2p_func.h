@@ -265,6 +265,21 @@ p2pFuncGenerateP2p_IEForAssocRsp(
 
 
 UINT_32
+p2pFuncCalculateWSC_IELenForAssocRsp(
+    IN P_ADAPTER_T prAdapter,
+    IN ENUM_NETWORK_TYPE_INDEX_T eNetTypeIndex,
+    IN P_STA_RECORD_T prStaRec
+    );
+
+VOID
+p2pFuncGenerateWSC_IEForAssocRsp(
+    IN P_ADAPTER_T prAdapter,
+    IN P_MSDU_INFO_T prMsduInfo
+    );
+
+
+
+UINT_32
 p2pFuncCalculateP2P_IELen(
     IN P_ADAPTER_T prAdapter,
     IN ENUM_NETWORK_TYPE_INDEX_T eNetTypeIndex,
@@ -332,4 +347,8 @@ p2pFuncGetSpecAttri(
     IN UINT_16 u2AttriID
     );
 
+WLAN_STATUS wfdChangeMediaState(
+    IN P_ADAPTER_T prAdapter,
+    IN ENUM_NETWORK_TYPE_INDEX_T eNetworkTypeIdx,
+    IN ENUM_PARAM_MEDIA_STATE_T  eConnectionState);
 #endif

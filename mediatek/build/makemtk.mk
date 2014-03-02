@@ -1,3 +1,38 @@
+# Copyright Statement:
+#
+# This software/firmware and related documentation ("MediaTek Software") are
+# protected under relevant copyright laws. The information contained herein
+# is confidential and proprietary to MediaTek Inc. and/or its licensors.
+# Without the prior written permission of MediaTek inc. and/or its licensors,
+# any reproduction, modification, use or disclosure of MediaTek Software,
+# and information contained herein, in whole or in part, shall be strictly prohibited.
+#
+# MediaTek Inc. (C) 2010. All rights reserved.
+#
+# BY OPENING THIS FILE, RECEIVER HEREBY UNEQUIVOCALLY ACKNOWLEDGES AND AGREES
+# THAT THE SOFTWARE/FIRMWARE AND ITS DOCUMENTATIONS ("MEDIATEK SOFTWARE")
+# RECEIVED FROM MEDIATEK AND/OR ITS REPRESENTATIVES ARE PROVIDED TO RECEIVER ON
+# AN "AS-IS" BASIS ONLY. MEDIATEK EXPRESSLY DISCLAIMS ANY AND ALL WARRANTIES,
+# EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE IMPLIED WARRANTIES OF
+# MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE OR NONINFRINGEMENT.
+# NEITHER DOES MEDIATEK PROVIDE ANY WARRANTY WHATSOEVER WITH RESPECT TO THE
+# SOFTWARE OF ANY THIRD PARTY WHICH MAY BE USED BY, INCORPORATED IN, OR
+# SUPPLIED WITH THE MEDIATEK SOFTWARE, AND RECEIVER AGREES TO LOOK ONLY TO SUCH
+# THIRD PARTY FOR ANY WARRANTY CLAIM RELATING THERETO. RECEIVER EXPRESSLY ACKNOWLEDGES
+# THAT IT IS RECEIVER'S SOLE RESPONSIBILITY TO OBTAIN FROM ANY THIRD PARTY ALL PROPER LICENSES
+# CONTAINED IN MEDIATEK SOFTWARE. MEDIATEK SHALL ALSO NOT BE RESPONSIBLE FOR ANY MEDIATEK
+# SOFTWARE RELEASES MADE TO RECEIVER'S SPECIFICATION OR TO CONFORM TO A PARTICULAR
+# STANDARD OR OPEN FORUM. RECEIVER'S SOLE AND EXCLUSIVE REMEDY AND MEDIATEK'S ENTIRE AND
+# CUMULATIVE LIABILITY WITH RESPECT TO THE MEDIATEK SOFTWARE RELEASED HEREUNDER WILL BE,
+# AT MEDIATEK'S OPTION, TO REVISE OR REPLACE THE MEDIATEK SOFTWARE AT ISSUE,
+# OR REFUND ANY SOFTWARE LICENSE FEES OR SERVICE CHARGE PAID BY RECEIVER TO
+# MEDIATEK FOR SUCH MEDIATEK SOFTWARE AT ISSUE.
+#
+# The following software/firmware and/or related documentation ("MediaTek Software")
+# have been modified by MediaTek Inc. All revisions are subject to any receiver's
+# applicable license agreements with MediaTek Inc.
+
+
 # *************************************************************************
 # Set shell align with Android build system
 # *************************************************************************
@@ -511,7 +546,7 @@ check-modem: ;
 endif
 
 emigen:
-ifeq (,$(filter MT8320 MT6575 MT6577 MT6589,$(MTK_PLATFORM)))
+ifneq (,$(filter MT8320 MT6575 MT6577 MT6589,$(MTK_PLATFORM)))
 ifneq ($(PROJECT), generic)
 	$(hide) echo $(SHOWTIME) $@ing ...
 	$(hide) echo -e \\t\\t\\t\\b\\b\\b\\bLOG: $(S_LOG)$@.log
@@ -572,6 +607,7 @@ ifneq ($(PROJECT), generic)
                      MTK_LDVT_SUPPORT=$(MTK_LDVT_SUPPORT) \
                      TARGET_BUILD_VARIANT=$(TARGET_BUILD_VARIANT) \
                      MTK_EMMC_OTP_SUPPORT=$(MTK_EMMC_SUPPORT_OTP) \
+                     MTK_EMMC_16G_SUPPORT=$(MTK_EMMC_SUPPORT_16G) \
                      $(DEAL_STDOUT_PTGEN) && \
                      $(SHOWRSLT) $${PIPESTATUS[0]} $(LOG)$@.log || \
                      $(SHOWRSLT) $${PIPESTATUS[0]} $(LOG)$@.log
@@ -639,6 +675,7 @@ endif
                      MTK_LDVT_SUPPORT=$(MTK_LDVT_SUPPORT) \
                      TARGET_BUILD_VARIANT=$(TARGET_BUILD_VARIANT) \
                      MTK_EMMC_OTP_SUPPORT=$(MTK_EMMC_SUPPORT_OTP) \
+                     MTK_EMMC_16G_SUPPORT=$(MTK_EMMC_SUPPORT_16G) \
                      $(DEAL_STDOUT_PTGEN)
 
 	$(hide) perl $(OTA_SCATTER_GENERATOR) $(SCATTER_FILE) $(OTA_SCATTER_FILE)
@@ -658,6 +695,7 @@ lk:
 ifeq ($(BUILD_LK),yes)
 	$(hide) echo $(SHOWTIME) $(SHOWBUILD)ing $@...
 	$(hide) echo -e \\t\\t\\t\\b\\b\\b\\bLOG: $(S_MODULE_LOG)
+	$(hide) cp $(LK_WD)/project/tinno89_we_jb2.mk $(LK_WD)/project/$(PROJECT).mk
 ifneq ($(ACTION), )
 	$(hide) cd $(LK_WD) && \
 	  (PROJECT=$(PROJECT) make clean $(DEAL_STDOUT) && \
@@ -688,6 +726,7 @@ endif
                      MTK_LDVT_SUPPORT=$(MTK_LDVT_SUPPORT) \
                      TARGET_BUILD_VARIANT=$(TARGET_BUILD_VARIANT) \
                     MTK_EMMC_OTP_SUPPORT=$(MTK_EMMC_SUPPORT_OTP) \
+                    MTK_EMMC_16G_SUPPORT=$(MTK_EMMC_SUPPORT_16G) \
                      $(DEAL_STDOUT_PTGEN)
 
 # disable ota scatter generation
@@ -742,6 +781,7 @@ endif
                      MTK_LDVT_SUPPORT=$(MTK_LDVT_SUPPORT) \
                      TARGET_BUILD_VARIANT=$(TARGET_BUILD_VARIANT) \
                      MTK_EMMC_OTP_SUPPORT=$(MTK_EMMC_SUPPORT_OTP) \
+                     MTK_EMMC_16G_SUPPORT=$(MTK_EMMC_SUPPORT_16G) \
                      $(DEAL_STDOUT_PTGEN)
 
 	$(hide) perl $(OTA_SCATTER_GENERATOR) $(SCATTER_FILE) $(OTA_SCATTER_FILE)
@@ -773,6 +813,7 @@ ifeq ($(BUILD_KERNEL),yes)
                      MTK_LDVT_SUPPORT=$(MTK_LDVT_SUPPORT) \
                      TARGET_BUILD_VARIANT=$(TARGET_BUILD_VARIANT) \
                      MTK_EMMC_OTP_SUPPORT=$(MTK_EMMC_SUPPORT_OTP) \
+                     MTK_EMMC_16G_SUPPORT=$(MTK_EMMC_SUPPORT_16G) \
                      $(DEAL_STDOUT_PTGEN)
 	$(hide) perl $(OTA_SCATTER_GENERATOR) $(SCATTER_FILE) $(OTA_SCATTER_FILE)
   endif

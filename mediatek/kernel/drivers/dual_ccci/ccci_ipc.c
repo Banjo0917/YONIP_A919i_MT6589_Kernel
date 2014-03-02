@@ -104,8 +104,8 @@ static void ipc_call_back_func(MD_CALL_BACK_QUEUE *queue,unsigned long data)
 					release_recv_item(item);
 				}
 				spin_unlock_irqrestore(&tsk->lock, flags);
-				__wake_up(&tsk->write_wait_queue, TASK_NORMAL, 0, (void*)POLLERR);
-				__wake_up(&tsk->read_wait_queue, TASK_NORMAL, 0, (void*)POLLERR);
+				//__wake_up(&tsk->write_wait_queue, TASK_NORMAL, 0, (void*)POLLERR);
+				//__wake_up(&tsk->read_wait_queue, TASK_NORMAL, 0, (void*)POLLERR);
 			}
 			spin_lock_irqsave(&ctl_b->ccci_ipc_wr_lock, flags);
 			ctl_b->ipc_mem->buffer.buff_wr.tx_offset=0;
@@ -752,8 +752,10 @@ static long ccci_ipc_ioctl( struct file *file, unsigned int cmd, unsigned long a
 			if (ctl_b->md_is_ready == 0)
 			{
 				interruptible_sleep_on(&ctl_b->poll_md_queue_head);
-				if (signal_pending(current)) 
+				if (signal_pending(current)) {
+					CCCI_DBG_MSG(ctl_b->m_md_id, "ipc", "Got signal @ WAIT_MD_READY\n");
 					ret = -EINTR;
+				}
 			}
 			break;
 			
@@ -803,7 +805,7 @@ static uint32 ccci_ipc_poll(struct file *file, poll_table *wait)
 	spin_lock_irq(&task->lock);
 	
 	if (ctl_b->md_is_ready==0) { 
-		ret |= POLLERR; 
+		//ret |= POLLERR; 
 		goto out;
 	}
 	

@@ -504,12 +504,8 @@ VOID swCtrlCmdCategory0(P_ADAPTER_T prAdapter, UINT_8 ucCate, UINT_8 ucAction, U
                         g_u4mDNSRXFilter |= (RX_MDNS_FILTER_START);
 
                         u4rxfilter = prAdapter->u4OsPacketFilter;						
-                        if ((g_u4mDNSRXFilter & RX_MDNS_FILTER_IPV4) &&
+                        if ((g_u4mDNSRXFilter & RX_MDNS_FILTER_IPV4) ||
                             (g_u4mDNSRXFilter & RX_MDNS_FILTER_IPV6)) {						    
-                            u4rxfilter &= ~(PARAM_PACKET_FILTER_ALL_MULTICAST|
-                                            PARAM_PACKET_FILTER_MULTICAST);
-                        }
-                        else {
                             u4rxfilter |= PARAM_PACKET_FILTER_ALL_MULTICAST;
                         }
                         fgUpdate = TRUE;

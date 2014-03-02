@@ -1,3 +1,4 @@
+
 #include <utils/Log.h>
 #include <fcntl.h>
 #include <math.h>
@@ -265,7 +266,7 @@ const NVRAM_LENS_PARA_STRUCT BU6429AF_LENS_PARA_DEFAULT_VALUE =
           400,  //i4BackJumpPos
 
           80, // i4FDWinPercent;
-          100, // i4FDSizeDiff;
+          40, // i4FDSizeDiff;
 
           3,   //i4StatGain          
 

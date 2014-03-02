@@ -11,19 +11,21 @@
 
 #define POLLING_TIME_OUT 1000
 
-#define PWM_LOW_LIMIT 2  //PWM output lower bound = 16
+#define PWM_LOW_LIMIT 1  //PWM output lower bound = 8
 
 #if !defined(MTK_AAL_SUPPORT)
 static int gBLSMutexID = 3;
+static int gBLSPowerOn = 0;
 #endif
+static int gMaxLevel = 255;
 
 static DEFINE_MUTEX(backlight_mutex);
-static int g_previous_level = 0;
 
 #if defined(ONE_WIRE_PULSE_COUNTING) 
 #define MAX_PWM_WAVENUM 16
 #define PWM_TIME_OUT 1000*100
 static int g_previous_wavenum = 0;
+static int g_previous_level = 0;
 #endif
 
 static DISPLAY_PWM_T g_pwm_lut;
@@ -101,9 +103,10 @@ DISPLAY_PWM_T * get_pwm_lut(void)
     return &g_pwm_lut;
 }
 
-
+extern unsigned char aal_debug_flag;
 void disp_onConfig_bls(DISP_AAL_PARAM *param)
 {
+    unsigned long prevSetting = DISP_REG_GET(DISP_REG_BLS_BLS_SETTING);
     unsigned long regVal = 0;
     
     DISP_DBG("disp_onConfig_bls!\n");
@@ -111,6 +114,8 @@ void disp_onConfig_bls(DISP_AAL_PARAM *param)
     DISP_DBG("pwm duty = %lu\n", param->pwmDuty);
     if (param->pwmDuty == 0)
         DISP_REG_SET(DISP_REG_BLS_PWM_DUTY, 0);
+    else if (param->pwmDuty > gMaxLevel)
+        DISP_REG_SET(DISP_REG_BLS_PWM_DUTY, (PWM_LOW_LIMIT << 19) | gMaxLevel);
     else
         DISP_REG_SET(DISP_REG_BLS_PWM_DUTY, (PWM_LOW_LIMIT << 19) | param->pwmDuty);
 
@@ -121,10 +126,9 @@ void disp_onConfig_bls(DISP_AAL_PARAM *param)
         regVal &= ~0x7;
     
     if (param->setting & ENUM_FUNC_BLS)
-        regVal |= 0x11F00;
+        regVal |= 0x11D00;
     else
-        regVal &= ~0x11F00;
-
+        regVal &= ~0x11D00;
     DISP_REG_SET(DISP_REG_BLS_BLS_SETTING, regVal);
     
     if (param->setting & ENUM_FUNC_BLS)
@@ -147,6 +151,35 @@ void disp_onConfig_bls(DISP_AAL_PARAM *param)
         DISP_REG_SET(DISPSYS_BLS_BASE + 0x007C, 0x00003D60);
     }
 
+    if (prevSetting & 0x11D00) 
+    {
+        unsigned char autoMaxClr, autoMaxClrFlt, autoDp, autoDpFlt;
+        regVal = DISP_REG_GET(DISPSYS_BLS_BASE + 0x0204);
+        autoMaxClr = regVal & 0xFF;
+        autoMaxClrFlt = (regVal >> 8) & 0xFF;
+        autoDp = (regVal >> 16) & 0xFF;
+        autoDpFlt = (regVal >> 24) & 0xFF;
+
+        DISP_DBG("MaxClr=%u, MaxClrFlt=%u, Dp=%u, DpFlt=%u\n", autoMaxClr, autoMaxClrFlt, autoDp, autoDpFlt);
+
+        if (autoMaxClr != autoMaxClrFlt || autoDp != autoDpFlt) 
+        {
+            disp_set_aal_alarm(1);
+        }
+        else 
+        {
+            disp_set_aal_alarm(0);
+        }
+    }
+    else if (param->setting & ENUM_FUNC_BLS)
+    {
+        disp_set_aal_alarm(1);
+    }
+
+    if (aal_debug_flag == 0)
+        DISP_REG_SET(DISP_REG_BLS_EN, 0x80010001);
+    else
+        DISP_REG_SET(DISP_REG_BLS_EN, 0x80000000);
 }
 
 
@@ -165,14 +198,14 @@ static unsigned int brightness_mapping(unsigned int level)
 #else
     mapped_level = level;
 
-    if (mapped_level > 0x100)
-        mapped_level = 0x100;
+    if (mapped_level > gMaxLevel)
+        mapped_level = gMaxLevel;
 #endif    
 	return mapped_level;
 }
 
-
-int disp_poll_for_reg(unsigned int addr, unsigned int value, unsigned int mask, unsigned int timeout)
+#if !defined(MTK_AAL_SUPPORT)
+static int disp_poll_for_reg(unsigned int addr, unsigned int value, unsigned int mask, unsigned int timeout)
 {
     unsigned int cnt = 0;
     
@@ -191,7 +224,6 @@ int disp_poll_for_reg(unsigned int addr, unsigned int value, unsigned int mask, 
 
 static int disp_bls_get_mutex(void)
 {
-#if !defined(MTK_AAL_SUPPORT)    
     if (gBLSMutexID < 0)
         return -1;
 
@@ -202,13 +234,11 @@ static int disp_bls_get_mutex(void)
         disp_dump_reg(DISP_MODULE_CONFIG);
         return -1;
     }
-#endif    
     return 0;
 }
 
 static int disp_bls_release_mutex(void)
-{
-#if !defined(MTK_AAL_SUPPORT)    
+{ 
     if (gBLSMutexID < 0)
         return -1;
     
@@ -219,9 +249,9 @@ static int disp_bls_release_mutex(void)
         disp_dump_reg(DISP_MODULE_CONFIG);
         return -1;
     }
-#endif    
     return 0;
 }
+#endif
 
 void disp_bls_update_gamma_lut(void)
 {
@@ -252,7 +282,11 @@ void disp_bls_update_gamma_lut(void)
     
     // program SRAM
     regValue = DISP_REG_GET(DISP_REG_BLS_EN);
-    DISP_REG_SET(DISP_REG_BLS_EN, (regValue & 0x80000000));
+    if (regValue & 0x1) {
+        DISP_ERR("update GAMMA LUT while BLS func enabled!\n");
+        disp_dump_reg(DISP_MODULE_BLS);
+    }
+    //DISP_REG_SET(DISP_REG_BLS_EN, (regValue & 0x80000000));
     DISP_REG_SET(DISP_REG_BLS_LUT_UPDATE, 0x1);
         
     for (i = 0; i < 256 ; i++)
@@ -271,7 +305,7 @@ void disp_bls_update_gamma_lut(void)
     DISP_REG_SET(DISP_REG_BLS_GAMMA_BOUNDARY, LastVal);
         
     DISP_REG_SET(DISP_REG_BLS_LUT_UPDATE, 0);
-    DISP_REG_SET(DISP_REG_BLS_EN, regValue);
+    //DISP_REG_SET(DISP_REG_BLS_EN, regValue);
 }
 
 void disp_bls_update_pwm_lut(void)
@@ -283,7 +317,11 @@ void disp_bls_update_pwm_lut(void)
     
     // program SRAM
     regValue = DISP_REG_GET(DISP_REG_BLS_EN);
-    DISP_REG_SET(DISP_REG_BLS_EN, (regValue & 0x80000000));
+    if (regValue & 0x1) {
+        DISP_ERR("update PWM LUT while BLS func enabled!\n");
+        disp_dump_reg(DISP_MODULE_BLS);
+    }
+    //DISP_REG_SET(DISP_REG_BLS_EN, (regValue & 0x80000000));
     DISP_REG_SET(DISP_REG_BLS_LUT_UPDATE, 0x4);
 
     for (i = 0; i < PWM_LUT_ENTRY; i++)
@@ -298,7 +336,7 @@ void disp_bls_update_pwm_lut(void)
     }
         
     DISP_REG_SET(DISP_REG_BLS_LUT_UPDATE, 0);
-    DISP_REG_SET(DISP_REG_BLS_EN, regValue);
+    //DISP_REG_SET(DISP_REG_BLS_EN, regValue);
 }
 
 void disp_bls_init(unsigned int srcWidth, unsigned int srcHeight)
@@ -324,8 +362,8 @@ void disp_bls_init(unsigned int srcWidth, unsigned int srcHeight)
     DISP_REG_SET(DISP_REG_BLS_DITHER(16), 0x22222222);
     DISP_REG_SET(DISP_REG_BLS_DITHER(17), 0x00000000);
 
-    DISP_REG_SET(DISP_REG_BLS_EN, 0x80010001);
-    DISP_REG_SET(DISPSYS_BLS_BASE + 0x000C, 0x00000001);
+    DISP_REG_SET(DISP_REG_BLS_EN, 0x80000000); 			// only enable PWM
+    DISP_REG_SET(DISPSYS_BLS_BASE + 0x000C, 0x00000003);	// w/o inverse gamma
 
     disp_dump_reg(DISP_MODULE_BLS);
 }
@@ -333,6 +371,14 @@ void disp_bls_init(unsigned int srcWidth, unsigned int srcHeight)
 int disp_bls_config(void)
 {
 #if !defined(MTK_AAL_SUPPORT)
+    if (!clock_is_on(MT_CG_DISP0_BLS) || !gBLSPowerOn)
+    {
+        DISP_MSG("disp_bls_config: enable clock\n");
+        enable_clock(MT_CG_DISP0_LARB2_SMI   , "DDP");
+        enable_clock(MT_CG_DISP0_BLS         , "DDP");
+        gBLSPowerOn = 1;
+    }
+    
     DISP_MSG("disp_bls_config : gBLSMutexID = %d\n", gBLSMutexID);
     DISP_REG_SET(DISP_REG_CONFIG_MUTEX_RST(gBLSMutexID), 1);
     DISP_REG_SET(DISP_REG_CONFIG_MUTEX_RST(gBLSMutexID), 0);
@@ -362,7 +408,16 @@ int disp_bls_config(void)
     return 0;
 }
 
+int disp_bls_set_max_backlight(unsigned int level)
+{
+    mutex_lock(&backlight_mutex);
+    DISP_MSG("disp_bls_set_max_backlight: level = %d, current level = %d\n", level, gMaxLevel);
+    gMaxLevel = level;
+    mutex_unlock(&backlight_mutex);
+    return 0;
+}
 
+#if !defined(MTK_AAL_SUPPORT)
 #if defined(ONE_WIRE_PULSE_COUNTING) 
 int disp_bls_set_backlight(unsigned int level)
 {
@@ -370,6 +425,9 @@ int disp_bls_set_backlight(unsigned int level)
     unsigned int wavenum = 0;
     unsigned int required_wavenum = 0;
 
+    if (!level && !clock_is_on(MT_CG_DISP0_BLS))
+        return 0;
+    
     mutex_lock(&backlight_mutex);
     disp_bls_config();
 
@@ -380,6 +438,12 @@ int disp_bls_set_backlight(unsigned int level)
     DISP_MSG("disp_bls_set_backlight: level = %d (%d), previous level = %d (%d)\n",
         level, wavenum, g_previous_level, g_previous_wavenum);
 
+
+    if (level && (!clock_is_on(MT_CG_DISP0_BLS) || !gBLSPowerOn)) 
+    {   
+        disp_bls_config();
+    }
+    
     // [Case 1] y => 0
     //          disable PWM, idle value set to low
     // [Case 2] 0 => max
@@ -391,14 +455,6 @@ int disp_bls_set_backlight(unsigned int level)
 
     if (g_previous_level != level)
     {
-        if (g_previous_level == 0)
-        {
-            DISP_MSG("disp_bls_set_backlight: enable clock\n");
-            enable_clock(MT_CG_DISP0_LARB2_SMI   , "DDP");
-            enable_clock(MT_CG_DISP0_BLS         , "DDP");
-            disp_bls_config();
-        }
-
         DISP_REG_SET(DISP_REG_PWM_WAVE_NUM, 0x0);
         disp_bls_get_mutex();
         if (level == 0)
@@ -449,14 +505,16 @@ int disp_bls_set_backlight(unsigned int level)
         
         g_previous_level = level;
         g_previous_wavenum = wavenum;
-
-        if (level == 0)
-        {
-            DISP_MSG("disp_bls_set_backlight: disable clock\n");
-            disable_clock(MT_CG_DISP0_BLS         , "DDP");
-            disable_clock(MT_CG_DISP0_LARB2_SMI   , "DDP");
-        }
     }
+
+    if (!level && (clock_is_on(MT_CG_DISP0_BLS) && gBLSPowerOn)) 
+    {
+        DISP_MSG("disp_bls_set_backlight: disable clock\n");
+        disable_clock(MT_CG_DISP0_BLS         , "DDP");
+        disable_clock(MT_CG_DISP0_LARB2_SMI   , "DDP");
+        gBLSPowerOn = 0;
+    }
+
 Exit:
     mutex_unlock(&backlight_mutex);
     return ret;    
@@ -464,43 +522,47 @@ Exit:
 #else
 int disp_bls_set_backlight(unsigned int level)
 {
-    DISP_MSG("disp_bls_set_backlight: %d\n", level);
+    DISP_MSG("disp_bls_set_backlight: %d, gBLSPowerOn = %d\n", level, gBLSPowerOn);
 
-#if defined(MTK_AAL_SUPPORT)
-    if (disp_is_aal_config()) 
-    {
-        DISP_MSG("disp_bls_set_backlight: backlight is controlled by aal\n");
+    if (!level && !clock_is_on(MT_CG_DISP0_BLS))
         return 0;
-    }
-#endif
-    
+
     mutex_lock(&backlight_mutex);
-    if (g_previous_level != level)
-    {
-#if !defined(MTK_AAL_SUPPORT)
-        if (g_previous_level == 0)
-        {
-            DISP_MSG("disp_bls_set_backlight: enable clock\n");
-            enable_clock(MT_CG_DISP0_LARB2_SMI   , "DDP");
-            enable_clock(MT_CG_DISP0_BLS         , "DDP");
-            disp_bls_config();
-        }
-#endif
-        disp_bls_get_mutex();
-        DISP_REG_SET(DISP_REG_BLS_PWM_DUTY, brightness_mapping(level));
-        g_previous_level = level; 
-        disp_bls_release_mutex();
-#if !defined(MTK_AAL_SUPPORT)
-        if (level == 0)
-        {
-            DISP_MSG("disp_bls_set_backlight: disable clock\n");
-            disable_clock(MT_CG_DISP0_BLS         , "DDP");
-            disable_clock(MT_CG_DISP0_LARB2_SMI   , "DDP");
-        }
-#endif
+
+    if (level && (!clock_is_on(MT_CG_DISP0_BLS) || !gBLSPowerOn)) 
+    {   
+        disp_bls_config();
     }
+
+    disp_bls_get_mutex();
+    DISP_REG_SET(DISP_REG_BLS_PWM_DUTY, brightness_mapping(level));
+    disp_bls_release_mutex();
+
+    if (!level && (clock_is_on(MT_CG_DISP0_BLS) && gBLSPowerOn)) 
+    {
+        DISP_MSG("disp_bls_set_backlight: disable clock\n");
+        disable_clock(MT_CG_DISP0_BLS         , "DDP");
+        disable_clock(MT_CG_DISP0_LARB2_SMI   , "DDP");
+        gBLSPowerOn = 0;
+    }
+
     mutex_unlock(&backlight_mutex);
     return 0;    
+}
+#endif
+#else
+int disp_bls_set_backlight(unsigned int level)
+{
+    DISP_AAL_PARAM *param;
+    DISP_MSG("disp_bls_set_backlight: %d\n", level);
+
+    mutex_lock(&backlight_mutex);
+    disp_aal_lock();
+    param = get_aal_config();
+    param->pwmDuty = brightness_mapping(level);
+    disp_aal_unlock();
+    mutex_unlock(&backlight_mutex);
+    return 0;
 }
 #endif
 

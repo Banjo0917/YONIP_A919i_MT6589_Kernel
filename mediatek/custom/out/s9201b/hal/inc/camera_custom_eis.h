@@ -6,7 +6,8 @@ typedef unsigned int MUINT32;
 typedef enum
 {
     CUSTOMER_EIS_SENSI_LEVEL_HIGH = 0,
-    CUSTOMER_EIS_SENSI_LEVEL_NORMAL = 1
+    CUSTOMER_EIS_SENSI_LEVEL_NORMAL = 1,
+    CUSTOMER_EIS_SENSI_LEVEL_ADVTUNE = 2
 }Customize_EIS_SENSI;
 
 typedef enum

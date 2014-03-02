@@ -9,6 +9,7 @@
 #include "mach/mt_reg_base.h"
 #include "mach/emi_bwl.h"
 #include "mach/sync_write.h"
+#include "mach/mt_boot.h"
 
 DEFINE_SEMAPHORE(emi_bwl_sem);
 
@@ -623,8 +624,10 @@ DRIVER_ATTR(dramc_high, 0644, dramc_high_show, dramc_high_store);
 static int __init emi_bwl_mod_init(void)
 {
   int ret;    
+  //unsigned int emi_conm = 0;
+  CHIP_SW_VER ver = mt_get_chip_sw_ver();
   
-#if 1  //Hong-Rong: TBD
+#if 1
   if(get_ddr_type() == LPDDR2) //LPDDR2
   {
     /* apply co-sim result for LPDDR2. */
@@ -634,26 +637,56 @@ static int __init emi_bwl_mod_init(void)
     mt65xx_reg_sync_writel(0x0f131314, EMI_CONE);
     mt65xx_reg_sync_writel(0x0f131428, EMI_CONG);
     mt65xx_reg_sync_writel(0x0f131428, EMI_CONH);
-    /* testing for MD2 timing fail */
+        
     mt65xx_reg_sync_writel(0x0c8f0ccd, EMI_SLCT);
-    //mt65xx_reg_sync_writel(0x088b08cd, EMI_SLCT);
     mt65xx_reg_sync_writel(0x00720038, EMI_ARBK);
     mt65xx_reg_sync_writel(0x00720038, EMI_ARBK_2ND);
     mt65xx_reg_sync_writel(0x84462f2f, EMI_ARBJ);
     mt65xx_reg_sync_writel(0x84462f2f, EMI_ARBJ_2ND);
     mt65xx_reg_sync_writel(0x10202488, EMI_ARBI);
     mt65xx_reg_sync_writel(0x10202488, EMI_ARBI_2ND);
+
+    if(CHIP_SW_VER_02 <= ver)    
+    {
+      /* E2 favor MD2 setting */
+      //emi_conm = readl(EMI_CONM);
+      //mt65xx_reg_sync_writel(emi_conm|0xF0000, EMI_CONM);
+      //mt65xx_reg_sync_writel(0x0c0f0c4d, EMI_SLCT);        
+      /* Fix exclusive monitor */
+      mt65xx_reg_sync_writel(0x00170714, EMI_TESTB);
+    }
+    else if(CHIP_SW_VER_01 <= ver)
+    {      
+      //mt65xx_reg_sync_writel(0x0c8f0ccd, EMI_SLCT);
     mt65xx_reg_sync_writel(0x00070714, EMI_TESTB);
-    //mt65xx_reg_sync_writel(0x00070754, EMI_TESTB);
-    //mt65xx_reg_sync_writel(0x10000000, EMI_TESTD);    
+    }      
   }
   else if(get_ddr_type() == DDR3_16) //DDR3-16bit
   {
     //write overhead value
-    mt65xx_reg_sync_writel(0x0B0B0E17, EMI_CONB);	//read  overhead for 4~1
-    mt65xx_reg_sync_writel(0x0B0B0B0B, EMI_CONC);	//read  overhead for 8~5
-    mt65xx_reg_sync_writel(0x1012161E, EMI_COND);	//write overhead for 4~1
-    mt65xx_reg_sync_writel(0x0B0B0D0E, EMI_CONE);   //write overhead for 8~5
+    mt65xx_reg_sync_writel(0x14212836, EMI_CONB);
+    mt65xx_reg_sync_writel(0x0f131314, EMI_CONC);
+    mt65xx_reg_sync_writel(0x14212836, EMI_COND);
+    mt65xx_reg_sync_writel(0x0f131314, EMI_CONE);
+    mt65xx_reg_sync_writel(0x0f131428, EMI_CONG);
+    mt65xx_reg_sync_writel(0x0f131428, EMI_CONH);
+    /* testing for MD2 timing fail */
+    mt65xx_reg_sync_writel(0x088b08cd, EMI_SLCT);
+    mt65xx_reg_sync_writel(0x00720038, EMI_ARBK);
+    mt65xx_reg_sync_writel(0x00720038, EMI_ARBK_2ND);
+    mt65xx_reg_sync_writel(0x84462f2f, EMI_ARBJ);
+    mt65xx_reg_sync_writel(0x84462f2f, EMI_ARBJ_2ND);
+    mt65xx_reg_sync_writel(0x10202488, EMI_ARBI);
+    mt65xx_reg_sync_writel(0x10202488, EMI_ARBI_2ND);
+    if(CHIP_SW_VER_02 <= ver)    
+    {      
+      /* Fix exclusive monitor */
+      mt65xx_reg_sync_writel(0x00170734, EMI_TESTB);
+    }
+    else if(CHIP_SW_VER_01 <= ver)
+    {           
+      mt65xx_reg_sync_writel(0x00070734, EMI_TESTB);
+    }          
   }
   else if(get_ddr_type() == DDR3_32)
   {
@@ -672,21 +705,16 @@ static int __init emi_bwl_mod_init(void)
     mt65xx_reg_sync_writel(0x84462f2f, EMI_ARBJ_2ND);
     mt65xx_reg_sync_writel(0x10202488, EMI_ARBI);
     mt65xx_reg_sync_writel(0x10202488, EMI_ARBI_2ND);
-    mt65xx_reg_sync_writel(0x00070714, EMI_TESTB);
-    //mt65xx_reg_sync_writel(0x00070754, EMI_TESTB);
-    //mt65xx_reg_sync_writel(0x10000000, EMI_TESTD);  
-  }  
-  else if(get_ddr_type() == LPDDR3)
-  {
-    //TBD
-  }  
-  else //mDDR
-  {
-    mt65xx_reg_sync_writel(0x2B2C2C2E, EMI_CONB);	//read  overhead for 4~1
-    mt65xx_reg_sync_writel(0x2627292B, EMI_CONC);	//read  overhead for 8~5
-    mt65xx_reg_sync_writel(0x2B2C2C2E, EMI_COND);	//write overhead for 4~1
-    mt65xx_reg_sync_writel(0x2627292B, EMI_CONE);       //write overhead for 8~5
-  }
+    if(CHIP_SW_VER_02 <= ver)    
+    {      
+      /* Fix exclusive monitor */
+      mt65xx_reg_sync_writel(0x00170734, EMI_TESTB);
+    }
+    else if(CHIP_SW_VER_01 <= ver)
+    {           
+      mt65xx_reg_sync_writel(0x00070734, EMI_TESTB);
+    }          
+  }    
 #endif  
     
   //write Filter Priority Encode

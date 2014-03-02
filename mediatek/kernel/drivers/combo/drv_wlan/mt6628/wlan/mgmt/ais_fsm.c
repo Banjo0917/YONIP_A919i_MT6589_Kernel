@@ -945,6 +945,8 @@
 */
 #define AIS_ROAMING_CONNECTION_TRIAL_LIMIT  2
 
+#define CTIA_MAGIC_SSID                     "ctia_test_only_*#*#3646633#*#*"
+#define CTIA_MAGIC_SSID_LEN                 30
 /*******************************************************************************
 *                             D A T A   T Y P E S
 ********************************************************************************
@@ -1011,6 +1013,7 @@ aisInitializeConnectionSettings (
     P_CONNECTION_SETTINGS_T prConnSettings;
     UINT_8 aucAnyBSSID[] = BC_BSSID;
     UINT_8 aucZeroMacAddr[] = NULL_MAC_ADDR;
+    int i = 0;
 
     prConnSettings = &(prAdapter->rWifiVar.rConnSettings);
 
@@ -1073,6 +1076,18 @@ aisInitializeConnectionSettings (
     /* Set default bandwidth modes */
     prConnSettings->uc2G4BandwidthMode = CONFIG_BW_20M;
     prConnSettings->uc5GBandwidthMode = CONFIG_BW_20_40M;
+
+    prConnSettings->rRsnInfo.ucElemId = 0x30;
+    prConnSettings->rRsnInfo.u2Version = 0x0001;
+    prConnSettings->rRsnInfo.u4GroupKeyCipherSuite = 0;
+    prConnSettings->rRsnInfo.u4PairwiseKeyCipherSuiteCount = 0;
+    for (i = 0; i < MAX_NUM_SUPPORTED_CIPHER_SUITES; i++)
+        prConnSettings->rRsnInfo.au4PairwiseKeyCipherSuite[i] = 0;
+    prConnSettings->rRsnInfo.u4AuthKeyMgtSuiteCount = 0;
+    for (i = 0; i < MAX_NUM_SUPPORTED_AKM_SUITES; i++)
+        prConnSettings->rRsnInfo.au4AuthKeyMgtSuite[i] = 0;
+    prConnSettings->rRsnInfo.u2RsnCap = 0;
+    prConnSettings->rRsnInfo.fgRsnCapPresent = FALSE;
 
     return;
 } /* end of aisFsmInitializeConnectionSettings() */
@@ -1612,6 +1627,11 @@ aisFsmStateAbort_JOIN (
         ASSERT(0); // Can't abort SAA FSM
         return;
     }
+
+    kalIndicateStatusAndComplete(prAdapter->prGlueInfo,
+             WLAN_STATUS_CONNECT_INDICATION,
+             NULL,
+             0);
 
     prJoinAbortMsg->rMsgHdr.eMsgId = MID_AIS_SAA_FSM_ABORT;
     prJoinAbortMsg->ucSeqNum = prAisFsmInfo->ucSeqNumOfReqMsg;
@@ -2657,6 +2677,15 @@ aisFsmRunEventJoinComplete (
                     //4 <1.6> Indicate Connected Event to Host immediately.
                     /* Require BSSID, Association ID, Beacon Interval.. from AIS_BSS_INFO_T */
                     aisIndicationOfMediaStateToHost(prAdapter, PARAM_MEDIA_STATE_CONNECTED, FALSE);
+					
+                    //add for ctia mode
+                    {
+                        UINT_8 aucP2pSsid[] = CTIA_MAGIC_SSID;
+
+                        if (EQUAL_SSID(aucP2pSsid, CTIA_MAGIC_SSID_LEN, prAisBssInfo->aucSSID, prAisBssInfo->ucSSIDLen)) {
+                            nicEnterCtiaMode(prAdapter, TRUE, FALSE);
+                        }
+                    }
                 }
 
 #if CFG_SUPPORT_ROAMING
@@ -2704,19 +2733,17 @@ aisFsmRunEventJoinComplete (
 #endif /* CFG_SUPPORT_ROAMING */
   	                }
                     else {
-                        /* 4. send reconnect request */
-                        aisFsmInsertRequest(prAdapter, AIS_REQUEST_RECONNECT);
+                        // abort connection trial
+                        prAdapter->rWifiVar.rConnSettings.fgIsConnReqIssued = FALSE;
 
+                        kalIndicateStatusAndComplete(prAdapter->prGlueInfo,
+                                 WLAN_STATUS_CONNECT_INDICATION,
+                                 NULL,
+                                 0);
+                      
                         eNextState = AIS_STATE_IDLE;
                     }
                 }
-
-                kalIndicateStatusAndComplete(prAdapter->prGlueInfo,
-                         WLAN_STATUS_CONNECT_INDICATION,
-                         NULL,
-                         0);
-                
-                eNextState = AIS_STATE_IDLE;
 
             }
         }
@@ -3702,6 +3729,14 @@ aisFsmDisconnect (
 
     //4 <3> Unset the fgIsConnected flag of BSS_DESC_T and send Deauth if needed.
     if (PARAM_MEDIA_STATE_CONNECTED == prAisBssInfo->eConnectionState) {
+        //add for ctia mode
+        {
+            UINT_8 aucP2pSsid[] = CTIA_MAGIC_SSID;
+
+            if (EQUAL_SSID(aucP2pSsid, CTIA_MAGIC_SSID_LEN, prAisBssInfo->aucSSID, prAisBssInfo->ucSSIDLen)) {
+                nicEnterCtiaMode(prAdapter, FALSE, FALSE);
+            }
+        }
 
         if (prAisBssInfo->ucReasonOfDisconnect == DISCONNECT_REASON_CODE_RADIO_LOST) {
             scanRemoveBssDescByBssid(prAdapter, prAisBssInfo->aucBSSID);
@@ -4304,6 +4339,35 @@ aisFsmRunEventRoamingDiscovery (
 
     /* search candidates by best rssi */
     prConnSettings->eConnectionPolicy = CONNECT_BY_SSID_BEST_RSSI;
+
+#if CFG_SUPPORT_WFD
+#if CFG_ENABLE_WIFI_DIRECT
+    {
+        /* Check WFD is running */
+        P_BSS_INFO_T prP2pBssInfo = &(prAdapter->rWifiVar.arBssInfo[NETWORK_TYPE_P2P_INDEX]);
+        P_WFD_CFG_SETTINGS_T prWfdCfgSettings = (P_WFD_CFG_SETTINGS_T)NULL;
+        if (prAdapter->fgIsP2PRegistered &&
+                    IS_BSS_ACTIVE(prP2pBssInfo) &&
+                    (prP2pBssInfo->eCurrentOPMode == OP_MODE_ACCESS_POINT ||
+                    prP2pBssInfo->eCurrentOPMode == OP_MODE_INFRASTRUCTURE)) {
+             DBGLOG(ROAMING, INFO, ("Handle roaming when P2P is GC or GO.\n"));
+             if (prAdapter->rWifiVar.prP2pFsmInfo) {
+                prWfdCfgSettings = &(prAdapter->rWifiVar.prP2pFsmInfo->rWfdConfigureSettings);
+                if ((prWfdCfgSettings->ucWfdEnable == 1) &&
+                        ((prWfdCfgSettings->u4WfdFlag & WFD_FLAGS_DEV_INFO_VALID))) {
+                   DBGLOG(ROAMING, INFO, ("WFD is running. Stop roaming.\n"));
+                   roamingFsmRunEventRoam(prAdapter);
+                   roamingFsmRunEventFail(prAdapter, ROAMING_FAIL_REASON_NOCANDIDATE);
+                   return;
+                }
+            }
+            else {
+                ASSERT(0);
+            }
+        } /* fgIsP2PRegistered */ 
+    }
+#endif
+#endif
 
     /* results are still new */
     if (!u4ReqScan) {

@@ -125,6 +125,11 @@ extern void fan5405_set_opa_mode(kal_uint32 val);
 extern void fan5405_set_otg_pl(kal_uint32 val);
 extern void fan5405_set_otg_en(kal_uint32 val);
 extern kal_uint32 fan5405_config_interface_liao (kal_uint8 RegNum, kal_uint8 val);
+#elif defined(MTK_BQ24158_SUPPORT)
+extern void bq24158_set_opa_mode(kal_uint32 val);
+extern void bq24158_set_otg_pl(kal_uint32 val);
+extern void bq24158_set_otg_en(kal_uint32 val);
+extern kal_uint32 bq24158_config_interface_reg (kal_uint8 RegNum, kal_uint8 val);
 #endif
 
 void musb_otg_reset_usb(void){
@@ -157,9 +162,11 @@ int musb_otg_env_init(void){
     #ifndef MTK_FAN5405_SUPPORT
     #ifndef MTK_NCP1851_SUPPORT
     #ifndef MTK_BQ24196_SUPPORT
+    #ifndef MTK_BQ24158_SUPPORT
     //set the drvvbus mode as drvvbus(mode 6)
 #if !(defined(CONFIG_MT6585_FPGA) || defined(CONFIG_MT6577_FPGA) || defined(CONFIG_MT6589_FPGA) || defined(CONFIG_MT6582_FPGA))
     mt_set_gpio_mode(GPIO_OTG_DRVVBUS_PIN,6);
+    #endif
     #endif
     #endif
     #endif
@@ -764,6 +771,10 @@ int musb_otg_exec_cmd(unsigned int cmd){
 	    fan5405_set_opa_mode(1);
 	    fan5405_set_otg_pl(1);
 	    fan5405_set_otg_en(1);
+            #elif defined(MTK_BQ24158_SUPPORT) 
+            bq24158_set_opa_mode(1);
+	    bq24158_set_otg_pl(1);
+	    bq24158_set_otg_en(1);
 	    #endif
             while(g_exec)
                 msleep(100);
@@ -771,6 +782,9 @@ int musb_otg_exec_cmd(unsigned int cmd){
 	    #ifdef MTK_FAN5405_SUPPORT
 	    fan5405_config_interface_liao(0x01,0x30);
 	    fan5405_config_interface_liao(0x02,0x8e);
+            #elif defined(MTK_BQ24158_SUPPORT)
+            bq24158_config_interface_reg(0x01,0x30);
+	    bq24158_config_interface_reg(0x02,0x8e);
 	    #endif
             break;
         case OTG_CMD_E_ENABLE_SRP: //need to clear session?
@@ -1301,6 +1315,10 @@ static int musb_host_test_mode(unsigned char cmd){
     fan5405_set_opa_mode(1);
     fan5405_set_otg_pl(1);
     fan5405_set_otg_en(1);
+    #elif defined(MTK_BQ24158_SUPPORT) 
+    bq24158_set_opa_mode(1);
+    bq24158_set_otg_pl(1);
+    bq24158_set_otg_en(1);
     #elif defined(MTK_NCP1851_SUPPORT) || defined(MTK_BQ24196_SUPPORT)
      tbl_charger_otg_vbus(1);
     #else

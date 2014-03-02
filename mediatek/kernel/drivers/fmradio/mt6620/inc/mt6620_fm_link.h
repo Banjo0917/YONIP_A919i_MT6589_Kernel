@@ -23,7 +23,7 @@
 
 #ifndef __MT6620_FM_LINK_H__
 #define __MT6620_FM_LINK_H__
-
+#if 0
 #include <linux/wait.h>
 #include "fm_link.h"
 
@@ -70,5 +70,5 @@ struct fm_link_event {
     fm_u32(*get)(struct fm_link_event* thiz);
     fm_u32(*rst)(struct fm_link_event* thiz);
 };
-
+#endif
 #endif

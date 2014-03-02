@@ -1,6 +1,6 @@
 #ifndef __FM_PRIV_LOG_H__
 #define __FM_PRIV_LOG_H__
-
+#if 0
 #include "fm_typedef.h"
 
 /******************DBG level ************************/
@@ -97,5 +97,5 @@ extern fm_u32 g_dbg_level;
                      pub_cb->log("[" #flag "]" fmt, ## args); \
                 } \
             } while(0)
-
+#endif
 #endif //__FM_PRIV_LOG_H__

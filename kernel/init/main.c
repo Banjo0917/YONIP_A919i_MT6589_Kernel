@@ -123,6 +123,7 @@ extern void softirq_init(void);
 char __initdata boot_command_line[COMMAND_LINE_SIZE];
 /* Untouched saved command line (eg. for /proc) */
 char *saved_command_line;
+EXPORT_SYMBOL_GPL(saved_command_line);
 /* Command line for parameter parsing */
 static char *static_command_line;
 
@@ -838,6 +839,10 @@ static noinline int init_post(void)
 	      "See Linux Documentation/init.txt for guidance.");
 }
 
+#ifdef CONFIG_MTK_HIBERNATION
+// IPO-H, move here for console ok after hibernaton
+extern int software_resume(void);
+#endif
 static int __init kernel_init(void * unused)
 {
 	/*
@@ -871,6 +876,11 @@ static int __init kernel_init(void * unused)
 
 	(void) sys_dup(0);
 	(void) sys_dup(0);
+
+#ifdef CONFIG_MTK_HIBERNATION
+    // IPO-H, move here for console ok after hibernaton resume
+    software_resume();
+#endif
 	/*
 	 * check if there is an early userspace init.  If yes, let it do all
 	 * the work

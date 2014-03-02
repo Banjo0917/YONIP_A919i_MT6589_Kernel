@@ -427,7 +427,10 @@ APPEND_VAR_IE_ENTRY_T txAssocRespIETable[] = {
 #endif
 #endif
     { (ELEM_HDR_LEN + ELEM_MAX_LEN_EXT_CAP),     NULL,     rlmRspGenerateExtCapIE   },      /* 127 */
-    { (ELEM_HDR_LEN + ELEM_MAX_LEN_WMM_PARAM),     NULL,    mqmGenerateWmmParamIE }         /* 221 */
+    { (ELEM_HDR_LEN + ELEM_MAX_LEN_WMM_PARAM),     NULL,    mqmGenerateWmmParamIE },         /* 221 */
+
+    { (0),         p2pFuncCalculateWSC_IELenForAssocRsp,      p2pFuncGenerateWSC_IEForAssocRsp }  /* 221 */
+
 };
 #endif
 

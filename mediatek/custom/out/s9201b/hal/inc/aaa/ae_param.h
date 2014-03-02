@@ -1,19 +1,4 @@
-/*
-**
-** Copyright 2008, The Android Open Source Project
-**
-** Licensed under the Apache License, Version 2.0 (the "License");
-** you may not use this file except in compliance with the License.
-** You may obtain a copy of the License at
-**
-**     http://www.apache.org/licenses/LICENSE-2.0
-**
-** Unless required by applicable law or agreed to in writing, software
-** distributed under the License is distributed on an "AS IS" BASIS,
-** WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-** See the License for the specific language governing permissions and
-** limitations under the License.
-*/
+
 
 #ifndef _AE_PARAM_H
 #define _AE_PARAM_H
@@ -22,7 +7,7 @@
 
 #define AE_BLOCK_NO  5
 #define FLARE_SCALE_UNIT (512) // 1.0 = 512
-#define FLARE_OFFSET_DOMAIN (1023) // 10bit domain
+#define FLARE_OFFSET_DOMAIN (4095) // 12bit domain
 #define AE_STABLE_THRES 3   //0.3 ev
 #define AE_WIN_OFFSET          1000   // for android window define
 #define MAX_ISP_GAIN   (10*1024)
@@ -190,9 +175,6 @@ struct AE_PARAMETER
 
 typedef struct AE_PARAMETER AE_PARAM_T;
 
-/***********************
-    Exposure time value , use in AE TV mode
-***********************/
 typedef enum
 {
     TV_1_2      =0x00000002,    //!<: TV= 1/2 sec
@@ -234,12 +216,6 @@ typedef enum
     TV_16_1     =0xFFFF0016    //!<: TV= 16 sec
 }eTimeValue;
 
-/***********************
-    Apertur time value , use in AE AV mode
-    It's impossible list all Fno in enum
-    So choose most close Fno.in enum
-    and set real value in  structure "strAV.AvValue"
-***********************/
 typedef enum
 {
     Fno_2,       //!<: Fno 2.0
@@ -269,6 +245,7 @@ typedef enum
     AE_STATE_ONE_SHOT, // one shot AE
     AE_STATE_BACKUP_PREVIEW,
     AE_STATE_RESTORE_PREVIEW,    
+    AE_STATE_POST_CAPTURE,
     AE_STATE_MAX
 }eAESTATE;
 
@@ -289,7 +266,10 @@ typedef struct
     MUINT32        u4ISO;          //correspoing ISO , only use in capture
     MUINT16         u2FrameRate;     // Calculate the frame
     MINT16        i2FlareOffset;
-    MINT16        i2FlareGain;   // in 512 domain 
+    MINT16        i2FlareGain;   // in 512 domain
+    MINT16        i2FaceDiffIndex;
+    MINT32        i4AEidxCurrent;  // current AE idx
+    MINT32        i4AEidxNext;   // next AE idx
 } strAEOutput;
 
 typedef struct
@@ -405,6 +385,7 @@ typedef struct
     LIB3A_AE_FLICKER_MODE_T eAEFlickerMode;
     LIB3A_AE_FLICKER_AUTO_MODE_T eAEAutoFlickerMode;
     LIB3A_AE_EVCOMP_T eAEEVcomp;
+    LIB3A_AE_ISO_SPEED_T eAEISOSpeed;
     MINT32    i4AEMaxFps;    
     MINT32    i4AEMinFps;    
 } AE_INITIAL_INPUT_T;
@@ -424,6 +405,7 @@ typedef struct
 //AAA_OUTPUT_PARAM_T use strAEOutput
 typedef struct
 {
+	MUINT32 u4ExposureMode;	  // 0: exposure time, 1: exposure line
     MUINT32 u4Eposuretime;   //!<: Exposure time in ms
     MUINT32 u4AfeGain;       //!<: sensor gain
     MUINT32 u4IspGain;       //!<: raw gain

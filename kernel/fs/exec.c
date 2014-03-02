@@ -1479,7 +1479,7 @@ static int do_execve_common(const char *filename,
 	const struct cred *cred = current_cred();
 #ifdef CONFIG_MT_ENG_BUILD
     int *argv_p0;
-    int argv0;
+    int argv0 = 0;
 #endif
 
 	/*
@@ -1555,7 +1555,8 @@ static int do_execve_common(const char *filename,
 
 #ifdef CONFIG_MT_ENG_BUILD
     argv_p0 = (int *)get_user_arg_ptr(argv, 0);
-    argv0 = *argv_p0;
+    if(argv_p0 != 0)
+        argv0 = *argv_p0;
 #endif
 
 	retval = copy_strings(bprm->argc, argv, bprm);

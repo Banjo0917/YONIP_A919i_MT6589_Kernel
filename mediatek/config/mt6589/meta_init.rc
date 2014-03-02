@@ -103,14 +103,15 @@ on fs_property:ro.mount.fs=EXT4
     write /proc/bootprof "INIT:eMMC:Mount_START"
     exec /sbin/e2fsck -p /emmc@android
     # Mount /system rw first to give the filesystem a chance to save a checkpoint
-    #mount ext4 emmc@android /system commit=1,data=journal,noauto_da_alloc
-    mount ext4 /emmc@android /system commit=1,noauto_da_alloc
+    #mount ext4 emmc@android /system wait commit=1,data=journal,noauto_da_alloc
+    mount ext4 /emmc@android /system wait commit=1,noauto_da_alloc
     mkdir /system/secro 0600 system system
-    mount ext4 /emmc@android /system noatime ro remount 
+    mount ext4 /emmc@android /system noatime ro remount wait 
     exec /sbin/e2fsck -pfD /emmc@usrdata
     exec /sbin/tune2fs -O has_journal /emmc@usrdata
-    mount ext4 /emmc@usrdata /data noatime nosuid nodev commit=1,nodelalloc,noauto_da_alloc	
-    mount ext4 /emmc@sec_ro /system/secro ro
+    exec /system/bin/ext4_resize
+    mount ext4 /emmc@usrdata /data noatime nosuid nodev wait commit=1,nodelalloc,noauto_da_alloc	
+    mount ext4 /emmc@sec_ro /system/secro ro wait
     write /proc/bootprof "INIT:eMMC:Mount_END"
 
 on fs_property:ro.mount.fs=UBIFS
@@ -230,14 +231,6 @@ on post-fs
     # RTC
     mkdir /data/misc/rtc 0770 system system
 
-    # Modem related device nodes
-    mkdir /data/nvram/md  0770 root nvram
-    mkdir /data/nvram/md2 0770 root nvram
-
-    insmod /system/lib/modules/ccci_plat.ko
-    insmod /system/lib/modules/ccci.ko
-    chown ccci ccci /sys/class/BOOT/BOOT/boot/md
-
 
     # M4U
     #insmod /system/lib/modules/m4u.ko
@@ -254,6 +247,7 @@ on post-fs
     insmod /system/lib/modules/sec.ko
     mknod /dev/sec c 182 0
     chmod 0660 /dev/sec
+    chown root system /dev/sec
     
     # device info interface
     insmod /system/lib/modules/devinfo.ko
@@ -312,27 +306,6 @@ service console /system/bin/sh
     disabled
     user root
     group log
-
-	
-service ccci_fsd /system/bin/ccci_fsd 0
-    user ccci
-    group  nvram ccci system
-    oneshot
-
-service ccci2_fsd /system/bin/ccci_fsd 1
-    user ccci
-    group  nvram ccci system
-    oneshot
-
-service ccci_mdinit /system/bin/ccci_mdinit 0
-    user system
-    group ccci system
-    oneshot
-
-service ccci2_mdinit /system/bin/ccci_mdinit 1
-    user system
-    group ccci system
-    oneshot
 
 
 service meta_tst /sbin/meta_tst	

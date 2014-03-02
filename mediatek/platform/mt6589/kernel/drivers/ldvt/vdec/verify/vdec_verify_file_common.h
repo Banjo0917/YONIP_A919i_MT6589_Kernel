@@ -70,8 +70,8 @@ size_t  linux_fwrite(const void *buff, size_t length, size_t cnt, FILE *pfile);
 #define   ftell    linux_ftell 
 #define   fseek  linux_fseek
 
-#define   SEEK_SET   0
-#define   SEEK_END   100000
+//#define   SEEK_SET   0
+//#define   SEEK_END   100000
 //#endif //VDEC_EMUVER_FILEIO
 
 #endif

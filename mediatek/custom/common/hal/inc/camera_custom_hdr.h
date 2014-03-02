@@ -1,3 +1,37 @@
+/* Copyright Statement:
+ *
+ * This software/firmware and related documentation ("MediaTek Software") are
+ * protected under relevant copyright laws. The information contained herein
+ * is confidential and proprietary to MediaTek Inc. and/or its licensors.
+ * Without the prior written permission of MediaTek inc. and/or its licensors,
+ * any reproduction, modification, use or disclosure of MediaTek Software,
+ * and information contained herein, in whole or in part, shall be strictly prohibited.
+ *
+ * MediaTek Inc. (C) 2010. All rights reserved.
+ *
+ * BY OPENING THIS FILE, RECEIVER HEREBY UNEQUIVOCALLY ACKNOWLEDGES AND AGREES
+ * THAT THE SOFTWARE/FIRMWARE AND ITS DOCUMENTATIONS ("MEDIATEK SOFTWARE")
+ * RECEIVED FROM MEDIATEK AND/OR ITS REPRESENTATIVES ARE PROVIDED TO RECEIVER ON
+ * AN "AS-IS" BASIS ONLY. MEDIATEK EXPRESSLY DISCLAIMS ANY AND ALL WARRANTIES,
+ * EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE IMPLIED WARRANTIES OF
+ * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE OR NONINFRINGEMENT.
+ * NEITHER DOES MEDIATEK PROVIDE ANY WARRANTY WHATSOEVER WITH RESPECT TO THE
+ * SOFTWARE OF ANY THIRD PARTY WHICH MAY BE USED BY, INCORPORATED IN, OR
+ * SUPPLIED WITH THE MEDIATEK SOFTWARE, AND RECEIVER AGREES TO LOOK ONLY TO SUCH
+ * THIRD PARTY FOR ANY WARRANTY CLAIM RELATING THERETO. RECEIVER EXPRESSLY ACKNOWLEDGES
+ * THAT IT IS RECEIVER'S SOLE RESPONSIBILITY TO OBTAIN FROM ANY THIRD PARTY ALL PROPER LICENSES
+ * CONTAINED IN MEDIATEK SOFTWARE. MEDIATEK SHALL ALSO NOT BE RESPONSIBLE FOR ANY MEDIATEK
+ * SOFTWARE RELEASES MADE TO RECEIVER'S SPECIFICATION OR TO CONFORM TO A PARTICULAR
+ * STANDARD OR OPEN FORUM. RECEIVER'S SOLE AND EXCLUSIVE REMEDY AND MEDIATEK'S ENTIRE AND
+ * CUMULATIVE LIABILITY WITH RESPECT TO THE MEDIATEK SOFTWARE RELEASED HEREUNDER WILL BE,
+ * AT MEDIATEK'S OPTION, TO REVISE OR REPLACE THE MEDIATEK SOFTWARE AT ISSUE,
+ * OR REFUND ANY SOFTWARE LICENSE FEES OR SERVICE CHARGE PAID BY RECEIVER TO
+ * MEDIATEK FOR SUCH MEDIATEK SOFTWARE AT ISSUE.
+ *
+ * The following software/firmware and/or related documentation ("MediaTek Software")
+ * have been modified by MediaTek Inc. All revisions are subject to any receiver's
+ * applicable license agreements with MediaTek Inc.
+ */
 #ifndef _CAMERA_CUSTOM_HDR_H_
 #define _CAMERA_CUSTOM_HDR_H_
 
@@ -13,6 +47,17 @@
 // [Core Number]
 //     - Value Range: 1(For single-core)/2(For multi-core).
 #define CUST_HDR_CORE_NUMBER	2
+
+// [Capture Algorithm]
+//     - When CUST_HDR_CAPTURE_ALGORITHM==0,
+//          Alway take 3 pictures
+//     - When CUST_HDR_CAPTURE_ALGORITHM==1,
+//          it means if there is less than HDR_NEOverExp_Percent/1000 pixels
+//          over saturation in 0EV, we capture 2 frames instead.
+//     - When CUST_HDR_CAPTURE_ALGORITHM==2,
+//          Always take 2 pictures
+#define CUST_HDR_CAPTURE_ALGORITHM   1
+#define CUST_HDR_NEOverExp_Percent   15
 
 // [Prolonged VD]
 //     - Value Range: 1(default)~ (depend on sensor characteristics).
@@ -64,7 +109,7 @@
 #define CUST_HDR_TH_LOW					0
 
 // [Level Subtract]
-//     - Value Range: 0 (more low-frequency halo, more dynamic range) or 1 (less low-frequency halo, less dynamic range). (Default: 0)
+//     - Value Range: 0 (less low-frequency halo, less dynamic range) or 1 (more low-frequency halo, more dynamic range). (Default: 0)
 #define CUST_HDR_TARGET_LEVEL_SUB		0
 
 

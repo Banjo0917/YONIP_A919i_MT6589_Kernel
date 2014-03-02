@@ -1,3 +1,21 @@
+/***
+ * BY OPENING THIS FILE, RECEIVER HEREBY UNEQUIVOCALLY ACKNOWLEDGES AND AGREES
+ * THAT THE SOFTWARE/FIRMWARE AND ITS DOCUMENTATIONS ("MEDIATEK-DISTRIBUTED SOFTWARE")
+ * RECEIVED FROM MEDIATEK AND/OR ITS REPRESENTATIVES ARE PROVIDED TO RECEIVER
+ * ON AN "AS-IS" BASIS ONLY. MEDIATEK EXPRESSLY DISCLAIMS ANY AND ALL
+ * WARRANTIES, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE IMPLIED
+ * WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE OR
+ * NONINFRINGEMENT. NEITHER DOES MEDIATEK PROVIDE ANY WARRANTY WHATSOEVER WITH
+ * RESPECT TO THE SOFTWARE OF ANY THIRD PARTY WHICH MAY BE USED BY,
+ * INCORPORATED IN, OR SUPPLIED WITH THE MEDIATEK-DISTRIBUTED SOFTWARE, AND RECEIVER AGREES
+ * TO LOOK ONLY TO SUCH THIRD PARTY FOR ANY WARRANTY CLAIM RELATING THERETO.
+ * RECEIVER EXPRESSLY ACKNOWLEDGES THAT IT IS RECEIVER'S SOLE RESPONSIBILITY TO
+ * OBTAIN FROM ANY THIRD PARTY ALL PROPER LICENSES CONTAINED IN MEDIATEK-DISTRIBUTED
+ * SOFTWARE. MEDIATEK SHALL ALSO NOT BE RESPONSIBLE FOR ANY MEDIATEK-DISTRIBUTED SOFTWARE
+ * RELEASES MADE TO RECEIVER'S SPECIFICATION OR TO CONFORM TO A PARTICULAR
+ * STANDARD OR OPEN FORUM.
+ */
+
 #include <linux/kernel.h>
 #include <linux/module.h>
 #include <linux/dmi.h>
@@ -113,6 +131,14 @@ struct mtk_gpu_power_info
 };
 static struct mtk_cpu_power_info *mtk_cpu_power;
 static struct mtk_gpu_power_info *mtk_gpu_power;
+
+static bool talking_flag=false;
+void set_taklking_flag(bool flag)
+{
+	talking_flag = flag;
+	printk("Power/CPU_Thermal: talking_flag=%d", talking_flag);
+	return;
+}
 
 
 void get_thermal_slope_intercept(struct TS_PTPOD *ts_info)
@@ -1056,6 +1082,12 @@ static int _mtktscpu_set_power_consumption_state(void)
 					mt_cpufreq_thermal_protect(power);
 					mt_gpufreq_thermal_protect(mtk_gpu_power[Num_of_GPU_OPP-2].gpufreq_power);
 				}
+				else if(Num_of_GPU_OPP==2)
+				{
+					power = (i*100+700) - mtk_gpu_power[1].gpufreq_power;
+					mt_cpufreq_thermal_protect(power);
+					mt_gpufreq_thermal_protect(mtk_gpu_power[1].gpufreq_power);
+				}
 				else if(Num_of_GPU_OPP==1)
 				{
 					power = (i*100+700) - mtk_gpu_power[0].gpufreq_power;
@@ -1195,6 +1227,25 @@ static int mtktscpu_read_opp(char *buf, char **start, off_t off, int count, int 
 	{
 		p += sprintf(p, "no_limit\n");
 	}
+		
+	*start = buf + off;
+
+	len = p - buf;
+	if (len > off)
+		len -= off;
+	else
+		len = 0;
+        
+	return len < count ? len  : count;
+}
+
+static int mtktscpu_read_cal(char *buf, char **start, off_t off, int count, int *eof, void *data)
+{
+	int len = 0;
+	char *p = buf;
+
+	p += sprintf(p, "mtktscpu cal:\nReg(0xF0009100)=0x%x, Reg(0xF0009104)=0x%x, Reg(0xF0009108)=0x%x\n", 
+	                DRV_Reg32(0xF0009100), DRV_Reg32(0xF0009104), DRV_Reg32(0xF0009108));
 		
 	*start = buf + off;
 
@@ -1449,8 +1500,11 @@ static int mtk_thermal_suspend(struct platform_device *dev, pm_message_t state)
 static int mtk_thermal_resume(struct platform_device *dev)
 {
 	mtktscpu_dprintk("[mtk_thermal_resume] \n");
-	thermal_reset_and_initial();
-	set_thermal_ctrl_trigger_SPM(trip_temp[0]);
+	if(talking_flag==false)
+	{	
+		thermal_reset_and_initial();
+		set_thermal_ctrl_trigger_SPM(trip_temp[0]);
+	}	
 	
 	return 0;
 }
@@ -1535,6 +1589,13 @@ static int __init thermal_late_init(void)
 		if (entry)
 		{
 			entry->read_proc = mtktscpu_read_opp;
+			entry->write_proc = NULL;
+		}
+
+		entry = create_proc_entry("mtktscpu_cal", S_IRUGO, mtktscpu_dir);
+		if (entry)
+		{
+			entry->read_proc = mtktscpu_read_cal;
 			entry->write_proc = NULL;
 		}
 	}

@@ -118,6 +118,8 @@ void DPI_InitVSYNC(unsigned int vsync_interval);
 void DPI_PauseVSYNC(bool enable);
 
 DPI_STATUS DPI_ConfigLVDS(LCM_PARAMS *lcm_params);
+
+DPI_STATUS DPI_ConfigHDMI(void);
 // ---------------------------------------------------------------------------
 
 #ifdef __cplusplus

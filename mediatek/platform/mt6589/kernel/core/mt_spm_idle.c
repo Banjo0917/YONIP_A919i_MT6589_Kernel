@@ -15,28 +15,29 @@
 #include <mach/mt_spm_idle.h>
 #include <mach/mt_dormant.h>
 #include <mach/mt_gpt.h>
+#include <mach/mt_reg_base.h>
+#include <mach/env.h> // require from hibboot flag
+
+#include <asm/hardware/gic.h>
 
 //===================================
-#define mcdi_linux_test_mode 0
 
-#if mcdi_linux_test_mode
-
-#define SPM_MCDI_BYPASS_SYSPWREQ 1
-    
-// 1: enable MCDI + Thermal Protect
-// 0: Thermal Protect only
-u32 En_SPM_MCDI = 1;
-
+#ifdef SPM_MCDI_FUNC
+    #define MCDI_KICK_PCM 1
 #else
+    #define MCDI_KICK_PCM 0
+#endif
 
 #define SPM_MCDI_BYPASS_SYSPWREQ 1
+u32 SPM_MCDI_CORE_SEL = 1;   // MCDI core wfi sel (dynamic MCDI switch)
 
-// 1: enable MCDI + Thermal Protect
-// 0: Thermal Protect only
-u32 En_SPM_MCDI = 0;
-
-#endif
 // ===================================
+
+DEFINE_SPINLOCK(spm_sodi_lock);
+
+u32 En_SPM_MCDI = 0;  // flag for idle task
+s32 spm_sodi_disable_counter = 0;
+u32 MCDI_Test_Mode = 0;
 
 static struct task_struct *mcdi_task_0;
 static struct task_struct *mcdi_task_1;
@@ -46,6 +47,8 @@ static struct task_struct *mcdi_task_3;
 #define WFI_OP        4
 #define WFI_L2C      5
 #define WFI_SCU      6
+#define WFI_MM      16
+#define WFI_MD      19
 
 #define mcdi_wfi_with_sync()                         \
 do {                                            \
@@ -80,7 +83,7 @@ do {    \
 } while (0)
 
 // ==========================================
-// PCM code for MCDI (Multi Core Deep Idle)  v 3.7 2012/11/27
+// PCM code for MCDI (Multi Core Deep Idle)  v4.5 IPI 2013/01/08
 //
 // core 0 : local timer
 // core 1 : GPT 1
@@ -89,96 +92,94 @@ do {    \
 // ==========================================
 static u32 spm_pcm_mcdi[] = {
 
-    0x10007c1f, 0x19c0001f, 0x00004900, 0x19c0001f, 0x00004800, 0x1880001f,
+    0x10007c1f, 0x19c0001f, 0x00204800, 0x19c0001f, 0x00204800, 0x1880001f,
     0x100041dc, 0x18c0001f, 0x10004044, 0x1a10001f, 0x100041dc, 0x1a50001f,
-    0x10004044, 0xba008008, 0xff00ffff, 0x00670000, 0xba408009, 0x00ffffff,
+    0x10004044, 0xba008008, 0xff00ffff, 0x00660000, 0xba408009, 0x00ffffff,
     0x9f000000, 0xe0800008, 0xe0c00009, 0xa1d80407, 0x1b00001f, 0xbffff7ff,
     0xf0000000, 0x17c07c1f, 0x1b00001f, 0x3fffe7ff, 0x1b80001f, 0x20000004,
-    0x8090840d, 0xb092044d, 0xd80009ec, 0x17c07c1f, 0x1b00001f, 0xbffff7ff,
-    0xd80009e2, 0x17c07c1f, 0x1240041f, 0x1880001f, 0x100041dc, 0x18c0001f,
-    0x10004044, 0x1a10001f, 0x100041dc, 0x1a50001f, 0x10004044, 0xba008008,
-    0xff00ffff, 0x000a0000, 0xba408009, 0x00ffffff, 0x81000000, 0xe0800008,
-    0xe0c00009, 0x1a50001f, 0x10004044, 0x19c0001f, 0x00014920, 0x19c0001f,
-    0x00004922, 0x1b80001f, 0x2000000a, 0x18c0001f, 0x10006320, 0xe0c0001f,
-    0x809a840d, 0xd8000962, 0x17c07c1f, 0xe0c0000f, 0x18c0001f, 0x10006814,
-    0xe0c00001, 0xd82009e2, 0x17c07c1f, 0xa8000000, 0x00000004, 0x1b00001f,
-    0x7fffefff, 0xf0000000, 0x17c07c1f, 0x1a50001f, 0x10006400, 0x82570409,
-    0xd8000c09, 0x17c07c1f, 0xd8000b6a, 0x17c07c1f, 0xe2e00036, 0xe2e0003e,
-    0xe2e0002e, 0xd8200c2a, 0x17c07c1f, 0xe2e0006e, 0xe2e0004e, 0xe2e0004c,
-    0xe2e0004d, 0xf0000000, 0x17c07c1f, 0x1a50001f, 0x10006400, 0x82570409,
-    0xd8000e29, 0x17c07c1f, 0xd8000d8a, 0x17c07c1f, 0xe2e0006d, 0xe2e0002d,
-    0xd8200e2a, 0x17c07c1f, 0xe2e0002f, 0xe2e0003e, 0xe2e00032, 0xf0000000,
-    0x17c07c1f, 0x1a50001f, 0x10006400, 0x82570409, 0xd8000fa9, 0x17c07c1f,
-    0x12007c1f, 0xa210a001, 0xe2c00008, 0xd8000f2a, 0x02a0040a, 0xf0000000,
-    0x17c07c1f, 0x1a50001f, 0x10006400, 0x82570409, 0xd8001149, 0x17c07c1f,
-    0x1a00001f, 0xffffffff, 0x1210a01f, 0xe2c00008, 0xd80010ca, 0x02a0040a,
-    0xf0000000, 0x17c07c1f, 0x1a10001f, 0x10006608, 0x8ac00008, 0x0000000f,
-    0xf0000000, 0x17c07c1f, 0x8a900001, 0x1000620c, 0x8a100001, 0x10006224,
-    0xa290a00a, 0x8a100001, 0x10006228, 0xa291200a, 0x8a100001, 0x1000622c,
-    0xa291a00a, 0x124e341f, 0xb28024aa, 0x1a10001f, 0x10006400, 0x8206a001,
-    0x6a60000a, 0x0000000f, 0x82e02009, 0x82c0040b, 0xf0000000, 0x17c07c1f,
-    0x1880001f, 0x100041dc, 0x18c0001f, 0x10004044, 0x1a10001f, 0x100041dc,
-    0x1a50001f, 0x10004044, 0xd800170b, 0x17c07c1f, 0xba008008, 0xff00ffff,
-    0x000a0000, 0xba408009, 0x00ffffff, 0x81000000, 0xd820180b, 0x17c07c1f,
-    0xba008008, 0xff00ffff, 0x00670000, 0xba408009, 0x00ffffff, 0x9f000000,
-    0xe0800008, 0xe0c00009, 0xf0000000, 0x17c07c1f, 0x820cb401, 0xd8201908,
-    0x17c07c1f, 0xa1d78407, 0xf0000000, 0x17c07c1f, 0x1a10001f, 0x10008004,
-    0x82402001, 0x1290a41f, 0x8241a001, 0xa291240a, 0x82422001, 0xa291a40a,
-    0x8240a001, 0xa280240a, 0x82412001, 0xa280240a, 0x8242a001, 0xa280240a,
-    0x1a40001f, 0x10006600, 0xe240000a, 0xf0000000, 0x17c07c1f, 0x19c0001f,
-    0x00004922, 0x18c0001f, 0x10006320, 0xe0c0001f, 0x1b80001f, 0x20000014,
-    0x82da840d, 0xd8001d6b, 0x17c07c1f, 0xe0c0000f, 0x18c0001f, 0x10006814,
-    0xe0c00001, 0xf0000000, 0x17c07c1f, 0x10007c1f, 0x19c0001f, 0x00004900,
-    0x19c0001f, 0x00004800, 0xf0000000, 0x17c07c1f, 0x17c07c1f, 0x17c07c1f,
-    0x17c07c1f, 0x17c07c1f, 0x17c07c1f, 0x17c07c1f, 0x17c07c1f, 0x17c07c1f,
+    0x8090840d, 0xb092044d, 0xd80009cc, 0x17c07c1f, 0x1b00001f, 0xbffff7ff,
+    0xd80009c2, 0x17c07c1f, 0x1880001f, 0x100041dc, 0x18c0001f, 0x10004044,
+    0x1a10001f, 0x100041dc, 0x1a50001f, 0x10004044, 0xba008008, 0xff00ffff,
+    0x000a0000, 0xba408009, 0x00ffffff, 0x81000000, 0xe0800008, 0xe0c00009,
+    0x1a50001f, 0x10004044, 0x19c0001f, 0x00214820, 0x19c0001f, 0x00204822,
+    0x1b80001f, 0x2000000a, 0x18c0001f, 0x10006320, 0xe0c0001f, 0x809a840d,
+    0xd8000942, 0x17c07c1f, 0xe0c0000f, 0x18c0001f, 0x10006814, 0xe0c00001,
+    0xd82009c2, 0x17c07c1f, 0xa8000000, 0x00000004, 0x1b00001f, 0x7fffefff,
+    0xf0000000, 0x17c07c1f, 0x1a50001f, 0x10006400, 0x82570409, 0xd8000be9,
+    0x17c07c1f, 0xd8000b4a, 0x17c07c1f, 0xe2e00036, 0xe2e0003e, 0xe2e0002e,
+    0xd8200c0a, 0x17c07c1f, 0xe2e0006e, 0xe2e0004e, 0xe2e0004c, 0xe2e0004d,
+    0xf0000000, 0x17c07c1f, 0x1a50001f, 0x10006400, 0x82570409, 0xd8000e09,
+    0x17c07c1f, 0xd8000d6a, 0x17c07c1f, 0xe2e0006d, 0xe2e0002d, 0xd8200e0a,
+    0x17c07c1f, 0xe2e0002f, 0xe2e0003e, 0xe2e00032, 0xf0000000, 0x17c07c1f,
+    0x1a50001f, 0x10006400, 0x82570409, 0xd8000f89, 0x17c07c1f, 0x12007c1f,
+    0xa210a001, 0xe2c00008, 0xd8000f0a, 0x02a0040a, 0xf0000000, 0x17c07c1f,
+    0x1a50001f, 0x10006400, 0x82570409, 0xd8001129, 0x17c07c1f, 0x1a00001f,
+    0xffffffff, 0x1210a01f, 0xe2c00008, 0xd80010aa, 0x02a0040a, 0xf0000000,
+    0x17c07c1f, 0x1a10001f, 0x10006608, 0xa24e3401, 0x82c02408, 0xf0000000,
+    0x17c07c1f, 0x1a50001f, 0x1000620c, 0x82802401, 0x1180a41f, 0x1a50001f,
+    0x10006224, 0x82002401, 0xa290a00a, 0xa180a406, 0x1a50001f, 0x10006228,
+    0x82002401, 0xa291200a, 0xa180a406, 0x1a50001f, 0x1000622c, 0x82002401,
+    0xa291a00a, 0xa180a406, 0x124e341f, 0xb28024aa, 0x1a10001f, 0x10006400,
+    0x8206a001, 0x6a60000a, 0x0000000f, 0x82e02009, 0x82c0040b, 0xf0000000,
+    0x17c07c1f, 0x1880001f, 0x100041dc, 0x18c0001f, 0x10004044, 0x1a10001f,
+    0x100041dc, 0x1a50001f, 0x10004044, 0xd80017eb, 0x17c07c1f, 0xba008008,
+    0xff00ffff, 0x000a0000, 0xba408009, 0x00ffffff, 0x81000000, 0xd82018eb,
+    0x17c07c1f, 0xba008008, 0xff00ffff, 0x00660000, 0xba408009, 0x00ffffff,
+    0x9f000000, 0xe0800008, 0xe0c00009, 0xf0000000, 0x17c07c1f, 0x820cb401,
+    0xd82019e8, 0x17c07c1f, 0xa1d78407, 0xf0000000, 0x17c07c1f, 0x1a10001f,
+    0x10008004, 0x82402001, 0x1290a41f, 0x8241a001, 0xa291240a, 0x82422001,
+    0xa291a40a, 0x8240a001, 0xa280240a, 0x82412001, 0xa280240a, 0x8242a001,
+    0xa280240a, 0x1a40001f, 0x10006600, 0xe240000a, 0xf0000000, 0x17c07c1f,
+    0x19c0001f, 0x00204822, 0x18c0001f, 0x10006320, 0xe0c0001f, 0x1b80001f,
+    0x20000014, 0x82da840d, 0xd8001e4b, 0x17c07c1f, 0xe0c0000f, 0x18c0001f,
+    0x10006814, 0xe0c00001, 0xf0000000, 0x17c07c1f, 0x10007c1f, 0x19c0001f,
+    0x00204800, 0x19c0001f, 0x00204800, 0xf0000000, 0x17c07c1f, 0x17c07c1f,
     0x17c07c1f, 0x17c07c1f, 0x17c07c1f, 0x17c07c1f, 0x1840001f, 0x00000001,
-    0x11407c1f, 0xc2c01940, 0x17c07c1f, 0xc1001180, 0x11007c1f, 0x109d101f,
-    0xa8800002, 0x01600011, 0x1300081f, 0x1b80001f, 0xd0010000, 0x61a07c05,
-    0x88900006, 0x10006814, 0xd8003f22, 0x808ab001, 0xc8801882, 0x17c07c1f,
-    0x8098840d, 0x810e3404, 0xd8002382, 0x80e01404, 0x81000403, 0xd8202384,
-    0x17c07c1f, 0xa1400405, 0x81108403, 0xd82025c4, 0x17c07c1f, 0x1900001f,
-    0x10006218, 0xc1000c60, 0x12807c1f, 0x1900001f, 0x10006264, 0x1a80001f,
-    0x00000010, 0xc1000e60, 0x17c07c1f, 0x1900001f, 0x10006218, 0xc1000c60,
-    0x1280041f, 0xa1508405, 0x81110403, 0xd8202804, 0x17c07c1f, 0x1900001f,
-    0x1000621c, 0xc1000c60, 0x12807c1f, 0x1900001f, 0x1000626c, 0x1a80001f,
-    0x00000010, 0xc1000e60, 0x17c07c1f, 0x1900001f, 0x1000621c, 0xc1000c60,
-    0x1280041f, 0xa1510405, 0x81118403, 0xd8202a44, 0x17c07c1f, 0x1900001f,
-    0x10006220, 0xc1000c60, 0x12807c1f, 0x1900001f, 0x10006274, 0x1a80001f,
-    0x00000010, 0xc1000e60, 0x17c07c1f, 0x1900001f, 0x10006220, 0xc1000c60,
-    0x1280041f, 0xa1518405, 0xd8203942, 0x17c07c1f, 0xc1001180, 0x11007c1f,
-    0x80c01404, 0x1990001f, 0x10006600, 0x82000c01, 0x824d3001, 0xb2403121,
-    0xb24b3121, 0xb24c3121, 0xb2401921, 0xd8002d28, 0x17c07c1f, 0x120e341f,
-    0x82002004, 0x82000408, 0x82002408, 0xd8002e08, 0x17c07c1f, 0xd0002ec0,
-    0x17c07c1f, 0xd8202ec9, 0x17c07c1f, 0x89400005, 0xfffffffe, 0xe8208000,
-    0x10006f00, 0x00000000, 0xa1d20407, 0xa1d18407, 0x89c00007, 0xfffffff7,
-    0x89c00007, 0xfffffbcf, 0x81008c01, 0xd8203244, 0x810db001, 0xb1009881,
-    0xb1003081, 0xd8203244, 0x17c07c1f, 0x1900001f, 0x10006218, 0xc1000a20,
-    0x12807c1f, 0x1900001f, 0x10006264, 0x1a80001f, 0x00000010, 0xc1000fe0,
-    0x17c07c1f, 0x1b80001f, 0x20000080, 0x1900001f, 0x10006218, 0xc1000a20,
+    0x11407c1f, 0x19c0001f, 0x00215800, 0xc0c01a20, 0x17c07c1f, 0x1b00001f,
+    0x3d200011, 0x1b80001f, 0xd0010000, 0x808ab001, 0xc8801962, 0x17c07c1f,
+    0xc1001160, 0x11007c1f, 0x80e01404, 0x60a07c05, 0x88900002, 0x10006814,
+    0xd8003d62, 0x17c07c1f, 0x81000403, 0xd8202344, 0x17c07c1f, 0xa1400405,
+    0x81008c01, 0xd8202584, 0x17c07c1f, 0x1900001f, 0x10006218, 0xc1000c40,
+    0x12807c1f, 0x1900001f, 0x10006264, 0x1a80001f, 0x00000010, 0xc1000e40,
+    0x17c07c1f, 0x1900001f, 0x10006218, 0xc1000c40, 0x1280041f, 0xa1508405,
+    0x81010c01, 0xd82027c4, 0x17c07c1f, 0x1900001f, 0x1000621c, 0xc1000c40,
+    0x12807c1f, 0x1900001f, 0x1000626c, 0x1a80001f, 0x00000010, 0xc1000e40,
+    0x17c07c1f, 0x1900001f, 0x1000621c, 0xc1000c40, 0x1280041f, 0xa1510405,
+    0x81018c01, 0xd8202a04, 0x17c07c1f, 0x1900001f, 0x10006220, 0xc1000c40,
+    0x12807c1f, 0x1900001f, 0x10006274, 0x1a80001f, 0x00000010, 0xc1000e40,
+    0x17c07c1f, 0x1900001f, 0x10006220, 0xc1000c40, 0x1280041f, 0xa1518405,
+    0xd820378c, 0x17c07c1f, 0xc1001160, 0x11007c1f, 0x80c01404, 0x1890001f,
+    0x10006600, 0xa0800806, 0x82000c01, 0xd8202d68, 0x17c07c1f, 0x824d3001,
+    0xb2403121, 0xb24c3121, 0xb2400921, 0xd8202d69, 0x17c07c1f, 0x89400005,
+    0xfffffffe, 0xe8208000, 0x10006f00, 0x00000000, 0xa1d18407, 0x1b80001f,
+    0x20000010, 0x89c00007, 0xfffffff7, 0x81008c01, 0xd82030c4, 0x17c07c1f,
+    0x810db001, 0xb1008881, 0xb1003081, 0xd82030c4, 0x17c07c1f, 0x1900001f,
+    0x10006218, 0xc1000a00, 0x12807c1f, 0x1900001f, 0x10006264, 0x1a80001f,
+    0x00000010, 0xc1000fc0, 0x17c07c1f, 0x1900001f, 0x10006218, 0xc1000a00,
     0x1280041f, 0x89400005, 0xfffffffd, 0xe8208000, 0x10006f04, 0x00000000,
-    0x81010c01, 0xd82035c4, 0x810e3001, 0xb1011881, 0xb1003081, 0xd82035c4,
-    0x17c07c1f, 0x1900001f, 0x1000621c, 0xc1000a20, 0x12807c1f, 0x1900001f,
-    0x1000626c, 0x1a80001f, 0x00000010, 0xc1000fe0, 0x17c07c1f, 0x1b80001f,
-    0x20000080, 0x1900001f, 0x1000621c, 0xc1000a20, 0x1280041f, 0x89400005,
-    0xfffffffb, 0xe8208000, 0x10006f08, 0x00000000, 0x81018c01, 0xd8203944,
-    0x810eb001, 0xb1019881, 0xb1003081, 0xd8203944, 0x17c07c1f, 0x1900001f,
-    0x10006220, 0xc1000a20, 0x12807c1f, 0x1900001f, 0x10006274, 0x1a80001f,
-    0x00000010, 0xc1000fe0, 0x17c07c1f, 0x1b80001f, 0x20000080, 0x1900001f,
-    0x10006220, 0xc1000a20, 0x1280041f, 0x89400005, 0xfffffff7, 0xe8208000,
-    0x10006f0c, 0x00000000, 0xc0801240, 0x10807c1f, 0xd8202062, 0x17c07c1f,
-    0x1b00001f, 0x7fffefff, 0x1b80001f, 0xd0010000, 0x8098840d, 0x80d0840d,
-    0xb0d2046d, 0xa0800c02, 0xd8203bc2, 0x17c07c1f, 0x8880000c, 0x3d600011,
-    0xd8002062, 0x17c07c1f, 0xd00039c0, 0x17c07c1f, 0xe8208000, 0x10006310,
-    0x0b1600f8, 0xc1001500, 0x11007c1f, 0x19c0001f, 0x00014920, 0xc0801ba0,
-    0x10807c1f, 0xd8202062, 0x17c07c1f, 0xa8000000, 0x00000004, 0x1b00001f,
-    0x7fffefff, 0x1b80001f, 0x90100000, 0x80810001, 0xd8202062, 0x17c07c1f,
-    0xc1001da0, 0x17c07c1f, 0xc1001500, 0x1100041f, 0xa1d80407, 0xd0002060,
-    0x17c07c1f, 0x19c0001f, 0x00015800, 0x10007c1f, 0xf0000000
+    0x81010c01, 0xd8203424, 0x17c07c1f, 0x810e3001, 0xb1010881, 0xb1003081,
+    0xd8203424, 0x17c07c1f, 0x1900001f, 0x1000621c, 0xc1000a00, 0x12807c1f,
+    0x1900001f, 0x1000626c, 0x1a80001f, 0x00000010, 0xc1000fc0, 0x17c07c1f,
+    0x1900001f, 0x1000621c, 0xc1000a00, 0x1280041f, 0x89400005, 0xfffffffb,
+    0xe8208000, 0x10006f08, 0x00000000, 0x81018c01, 0xd8203784, 0x17c07c1f,
+    0x810eb001, 0xb1018881, 0xb1003081, 0xd8203784, 0x17c07c1f, 0x1900001f,
+    0x10006220, 0xc1000a00, 0x12807c1f, 0x1900001f, 0x10006274, 0x1a80001f,
+    0x00000010, 0xc1000fc0, 0x17c07c1f, 0x1900001f, 0x10006220, 0xc1000a00,
+    0x1280041f, 0x89400005, 0xfffffff7, 0xe8208000, 0x10006f0c, 0x00000000,
+    0xc0801220, 0x10807c1f, 0xd8202062, 0x17c07c1f, 0x1b00001f, 0x7fffefff,
+    0x1b80001f, 0xd0010000, 0x8098840d, 0x80d0840d, 0xb0d2046d, 0xa0800c02,
+    0xd8203a02, 0x17c07c1f, 0x8880000c, 0x3d200011, 0xd8002062, 0x17c07c1f,
+    0xd0003800, 0x17c07c1f, 0xe8208000, 0x10006310, 0x0b1600f8, 0xc10015e0,
+    0x11007c1f, 0x19c0001f, 0x00214820, 0xc0801c80, 0x10807c1f, 0xd8202062,
+    0x17c07c1f, 0xa8000000, 0x00000004, 0x1b00001f, 0x7fffefff, 0x1b80001f,
+    0x90100000, 0x80810001, 0xd8202062, 0x17c07c1f, 0xc1001e80, 0x17c07c1f,
+    0xc10015e0, 0x1100041f, 0xa1d80407, 0xd0002060, 0x17c07c1f, 0xc10015e0,
+    0x1100041f, 0x19c0001f, 0x00215800, 0x10007c1f, 0xf0000000
     
 };
 
 #define PCM_MCDI_BASE            __pa(spm_pcm_mcdi)
-#define PCM_MCDI_LEN              ( 509 - 1 )
+#define PCM_MCDI_LEN              ( 497 - 1 )
 #define MCDI_pcm_pc_0      0
 #define MCDI_pcm_pc_1      26
 #define MCDI_pcm_pc_2      MCDI_pcm_pc_0
@@ -190,6 +191,8 @@ extern int mt_irq_mask_all(struct mtk_irq_mask *mask);
 extern int mt_irq_mask_restore(struct mtk_irq_mask *mask);
 extern int mt_SPI_mask_all(struct mtk_irq_mask *mask);
 extern int mt_SPI_mask_restore(struct mtk_irq_mask *mask);
+extern int mt_PPI_mask_all(struct mtk_irq_mask *mask);
+extern int mt_PPI_mask_restore(struct mtk_irq_mask *mask);
 extern void mt_irq_mask_for_sleep(unsigned int irq);
 extern void mt_irq_unmask_for_sleep(unsigned int irq);
 extern void mt_cirq_enable(void);
@@ -197,10 +200,15 @@ extern void mt_cirq_disable(void);
 extern void mt_cirq_clone_gic(void);
 extern void mt_cirq_flush(void);
 extern void mt_cirq_mask(unsigned int cirq_num);
+extern void mt_cirq_mask_all(void);
+
 
 extern spinlock_t spm_lock;
 
-static struct mtk_irq_mask MCDI_cpu_irq_mask;
+//static struct mtk_irq_mask MCDI_cpu_irq_mask;
+//static struct mtk_irq_mask MCDI_cpu_1_PPI_mask;
+//static struct mtk_irq_mask MCDI_cpu_2_PPI_mask;
+//static struct mtk_irq_mask MCDI_cpu_3_PPI_mask;
 
 static void spm_mcdi_dump_regs(void)
 {
@@ -259,16 +267,6 @@ static void spm_mcdi_dump_regs(void)
 
 static void SPM_SW_Reset(void)
 {
-#if 0
-    //Enable register access key
-    spm_write(SPM_POWERON_CONFIG_SET, (SPM_PROJECT_CODE << 16) | (1U << 0));
-
-    /* re-init power control register (select PCM clock to qaxi) */
-    spm_write(SPM_POWER_ON_VAL0, 0);
-    spm_write(SPM_POWER_ON_VAL1, 0x00015800);
-    spm_write(SPM_PCM_PWR_IO_EN, 0);
-#endif
-
     //Software reset
     spm_write(SPM_PCM_CON0, (CON0_CFG_KEY | CON0_PCM_SW_RESET | CON0_IM_SLEEP_DVS));
     spm_write(SPM_PCM_CON0, (CON0_CFG_KEY | CON0_IM_SLEEP_DVS));
@@ -302,7 +300,7 @@ static void PCM_Init(void)
     spm_write(SPM_PCM_REG_DATA_INI, 0);
         
     // set AP STANBY CONTROL
-    spm_write(SPM_AP_STANBY_CON, ((0x0<<WFI_OP) | (0x1<<WFI_L2C) | (0x1<<WFI_SCU)));  // operand or, mask l2c, mask scu 
+    spm_write(SPM_AP_STANBY_CON, ((0x0<<WFI_OP) | (0x1<<WFI_L2C) | (0x1<<WFI_SCU) | (0x7<<WFI_MM) | (0x3<<WFI_MD)));  // operand or, mask l2c, mask scu, 16~18: MM, 19~20:MD
     spm_write(SPM_CORE0_CON, 0x0); // core_0 wfi_sel
     spm_write(SPM_CORE1_CON, 0x0); // core_1 wfi_sel
     spm_write(SPM_CORE2_CON, 0x0); // core_2 wfi_sel 
@@ -325,9 +323,6 @@ static void PCM_Init(void)
     // set SPM_APMCU_PWRCTL
     spm_write(SPM_APMCU_PWRCTL, 0x0);
 
-    // set SPM_MP_CORE0_AUX
-    spm_write(SPM_MP_CORE0_AUX, 0x0);
-
     // unmask SPM ISR ( 1 : Mask and will not issue the ISR )    
     spm_write(SPM_SLEEP_ISR_MASK, 0);
 }
@@ -340,7 +335,8 @@ static void KICK_IM_PCM(u32 pcm_sa, u32 len)
     spm_write(SPM_PCM_IM_LEN, len);
     
     //set non-replace mde 
-    spm_write(SPM_PCM_CON1, (CON1_CFG_KEY | CON1_MIF_APBEN | CON1_IM_NONRP_EN));
+    //spm_write(SPM_PCM_CON1, (CON1_CFG_KEY | CON1_MIF_APBEN | CON1_IM_NONRP_EN));
+    spm_write(SPM_PCM_CON1, (CON1_CFG_KEY | CON1_IM_NONRP_EN));
 
     //sync register and enable IO output for regiser 0 and 7
     spm_write(SPM_PCM_PWR_IO_EN, (PCM_PWRIO_EN_R7|PCM_PWRIO_EN_R0));  
@@ -355,9 +351,18 @@ static void spm_go_to_MCDI(void)
 {
     unsigned long flags;
     spin_lock_irqsave(&spm_lock, flags);
+
+    En_SPM_MCDI = 2;
     
+    #if 1
     // check dram controller setting ==============================
-    spm_check_dramc_for_pcm();
+    if(((spm_read(0xf00041dc) & 0x00ff0000) != 0x00660000 || (spm_read(0xf0004044) & 0xff000000) != 0x9f000000))
+    {
+        clc_notice("spm_go_to_MCDI : check dramc failed (0x%x, 0x%x, 0x%x, 0x%x)\n", spm_read(0xf00041dc), 0x00660000, spm_read(0xf0004044), 0x9f000000);
+        BUG_ON(1);
+    }
+    //spm_check_dramc_for_pcm();
+    #endif
 
     // mask SPM IRQ =======================================
     mt_irq_mask_for_sleep(MT_SPM_IRQ_ID); // mask spm    
@@ -382,17 +387,22 @@ static void spm_go_to_MCDI(void)
     KICK_IM_PCM(PCM_MCDI_BASE, PCM_MCDI_LEN); 
     clc_notice("Kick PCM and IM OK.\r\n");
 
+    En_SPM_MCDI = 1;
+
     spin_unlock_irqrestore(&spm_lock, flags);
 }
 
 static u32 spm_leave_MCDI(void)
 {
     u32 spm_counter;
+    u32 spm_core_pws, hotplug_out_core_id;
     unsigned long flags;
 
     /* Mask ARM i bit */
     //asm volatile("cpsid i @ arch_local_irq_disable" : : : "memory", "cc"); // set i bit to disable interrupt    
     local_irq_save(flags);
+
+    En_SPM_MCDI = 2;
   
     // trigger cpu wake up event
     spm_write(SPM_SLEEP_CPU_WAKEUP_EVENT, 0x1);   
@@ -407,7 +417,9 @@ static u32 spm_leave_MCDI(void)
             // set cpu wake up event = 0
             spm_write(SPM_SLEEP_CPU_WAKEUP_EVENT, 0x0);   
         
-            clc_notice("spm_leave_MCDI : failed.\r\n");
+            clc_notice("spm_leave_MCDI : failed_0.\r\n");
+
+            En_SPM_MCDI = 0;
 
             /* Un-Mask ARM i bit */
             //asm volatile("cpsie i @ arch_local_irq_enable" : : : "memory", "cc"); // clear i bit to enable interrupt
@@ -433,33 +445,45 @@ static u32 spm_leave_MCDI(void)
     // clean wakeup event raw status
     spm_write(SPM_SLEEP_WAKEUP_EVENT_MASK, 0xffffffff);
 
+    #if 1
     // check dram controller setting ==============================
-    spm_check_dramc_for_pcm();
+    if(((spm_read(0xf00041dc) & 0x00ff0000) != 0x00660000 || (spm_read(0xf0004044) & 0xff000000) != 0x9f000000))
+    {
+        clc_notice("spm_go_to_MCDI : check dramc failed (0x%x, 0x%x, 0x%x, 0x%x)\n", spm_read(0xf00041dc), 0x00660000, spm_read(0xf0004044), 0x9f000000);
+        BUG_ON(1);
+    }
+    //spm_check_dramc_for_pcm();
+    #endif
+
+    // check cpu power ======================================
+    spm_core_pws = ((spm_read(SPM_FC0_PWR_CON) == 0x4d) ? 0 : 1) | ((spm_read(SPM_FC1_PWR_CON) == 0x4d) ? 0 : 2) |
+                             ((spm_read(SPM_FC2_PWR_CON) == 0x4d) ? 0 : 4) | ((spm_read(SPM_FC3_PWR_CON) == 0x4d) ? 0 : 8); // power_state => 1: power down
+
+    hotplug_out_core_id = ((spm_read(SPM_MP_CORE0_AUX) & 0x1)<<0) | ((spm_read(SPM_MP_CORE1_AUX) & 0x1)<<1) | 
+    	                              ((spm_read(SPM_MP_CORE2_AUX) & 0x1)<<2) | ((spm_read(SPM_MP_CORE3_AUX) & 0x1)<<3); // 1: hotplug out
+
+    if( spm_core_pws != hotplug_out_core_id )
+    {
+        clc_notice("spm_leave_MCDI : failed_1.(0x%x, 0x%x)\r\n", spm_core_pws, hotplug_out_core_id);
+
+        En_SPM_MCDI = 0;
+
+        /* Un-Mask ARM i bit */
+        //asm volatile("cpsie i @ arch_local_irq_enable" : : : "memory", "cc"); // clear i bit to enable interrupt
+        local_irq_restore(flags);
+
+        //BUG_ON(1);
+        return 0;
+    }   
     
     clc_notice("spm_leave_MCDI : OK.\r\n");
+
+    En_SPM_MCDI = 0;
 
     /* Un-Mask ARM i bit */
     //asm volatile("cpsie i @ arch_local_irq_enable" : : : "memory", "cc"); // clear i bit to enable interrupt
     local_irq_restore(flags);
     return 0;
-}
-
-
-static void spm_core_wfi_sel(u32 spm_core_no, u32 spm_core_sel)
-{
-    if( spm_core_no >= NR_CPUS)
-    {
-        return;
-    }
-    
-    switch (spm_core_no)
-    {
-        case 0 : spm_write(SPM_CORE0_CON, spm_core_sel); break;                     
-        case 1 : spm_write(SPM_CORE1_CON, spm_core_sel); break;                     
-        case 2 : spm_write(SPM_CORE2_CON, spm_core_sel); break;                     
-        case 3 : spm_write(SPM_CORE3_CON, spm_core_sel); break;                     
-        default : break;
-    }
 }
 
 void spm_clean_ISR_status(void)
@@ -1090,150 +1114,142 @@ clc_notice("spm_show_lcm_image() end.\n");
 void spm_mcdi_wfi(void)
 {   
         volatile u32 core_id;
-        unsigned long flags;  
-        //u32 temp_address;
-
-        preempt_disable();
+        u32 clc_counter;
+        u32 spm_val;
 
         core_id = (u32)smp_processor_id();
-        
-        /* Mask ARM i bit */
-        //asm volatile("cpsid i @ arch_local_irq_disable" : : : "memory", "cc"); // set i bit to disable interrupt    
-        local_irq_save(flags);
         
         if(core_id == 0)
         {
             /* enable & init CIRQ */
-    	     mt_cirq_clone_gic();        
-            mt_cirq_mask((MT6589_GPT_IRQ_ID-64));
-    	     mt_cirq_enable();
+            //mt_cirq_clone_gic();        
+            //mt_cirq_mask((MT6589_GPT_IRQ_ID-64));
+            //mt_cirq_enable();
 
             // CPU0 enable CIRQ for SPM, Mask all IRQ keep only SPM IRQ ==========
-            mt_SPI_mask_all(&MCDI_cpu_irq_mask); // mask core_0 SPI
-            mt_irq_unmask_for_sleep(MT_SPM_IRQ_ID); // unmask spm    
+            //mt_SPI_mask_all(&MCDI_cpu_irq_mask); // mask core_0 SPI
+            //mt_irq_unmask_for_sleep(MT_SPM_IRQ_ID); // unmask spm    
 
-            spm_core_wfi_sel( core_id, 0x1);
+            if(MCDI_Test_Mode == 1)
+                clc_notice("core_%d set wfi_sel.\n", core_id);
 
-            //clc_notice("core_%d enter wfi.\n", core_id);
+            spm_write(SPM_CORE0_CON, SPM_MCDI_CORE_SEL);
 
-            mcdi_wfi_with_sync(); // enter wfi 
+            while(1)
+            {
+                mcdi_wfi_with_sync(); // enter wfi 
 
-            //clc_notice("core_%d exit wfi.\n", core_id);
+                if((spm_read(SPM_AP_STANBY_CON) & 0x1) == 0x0) // check wfi_sel_0 == 0
+                {
+                    break;
+                }
+            }        
+            
+            if(MCDI_Test_Mode == 1)
+                clc_notice("core_%d exit wfi.\n", core_id);            
+            
+            // debug info ===========================================================================
+            #if 1
+            
+            if( (spm_read(SPM_PCM_REG_DATA_INI) != 0x0) || (spm_read(SPM_SLEEP_CPU_WAKEUP_EVENT) == 0x1) )
+            {
+                clc_notice("MCDI SPM assert_0 ==================================================\n");
+                clc_notice("SPM_PCM_REG_DATA_INI   0x%x = 0x%x\n", SPM_PCM_REG_DATA_INI          , spm_read(SPM_PCM_REG_DATA_INI));
+                clc_notice("SPM_PCM_REG5_DATA   0x%x = 0x%x\n", SPM_PCM_REG5_DATA          , spm_read(SPM_PCM_REG5_DATA));
+                clc_notice("SPM_PCM_REG7_DATA   0x%x = 0x%x\n", SPM_PCM_REG7_DATA          , spm_read(SPM_PCM_REG7_DATA));
+                clc_notice("SPM_PCM_REG12_DATA   0x%x = 0x%x\n", SPM_PCM_REG12_DATA          , spm_read(SPM_PCM_REG12_DATA));
+                clc_notice("SPM_PCM_REG13_DATA   0x%x = 0x%x\n", SPM_PCM_REG13_DATA          , spm_read(SPM_PCM_REG13_DATA));
+                clc_notice("SPM_PCM_REG14_DATA   0x%x = 0x%x\n", SPM_PCM_REG14_DATA          , spm_read(SPM_PCM_REG14_DATA));
+                clc_notice("SPM_APMCU_PWRCTL   0x%x = 0x%x\n", SPM_APMCU_PWRCTL          , spm_read(SPM_APMCU_PWRCTL));
+                clc_notice("SPM_AP_STANBY_CON   0x%x = 0x%x\n", SPM_AP_STANBY_CON          , spm_read(SPM_AP_STANBY_CON));
+                clc_notice("SPM_CLK_CON   0x%x = 0x%x\n", SPM_CLK_CON          , spm_read(SPM_CLK_CON));
+                clc_notice("MCDI SPM assert_1 ==================================================\n");
+            }
+            
+            #endif
+            // ==================================================================================
 
             // restore irq mask
-            mt_SPI_mask_restore(&MCDI_cpu_irq_mask);
+            //mt_SPI_mask_restore(&MCDI_cpu_irq_mask);
 
             /* flush & disable CIRQ */
             //mt_cirq_flush();
-            mt_cirq_disable();
-
-            // wait for SPM edge interrupt = 0;
-            while(((spm_read(SPM_SLEEP_ISR_STATUS)>>4) & 0x1) == 0x1);
+            //mt_cirq_disable();
+           
+            if(MCDI_Test_Mode == 1)
+                mdelay(10);  // delay 10 ms
+                
+            // wait for SPM edge interrupt = 0
+            clc_counter = 0;
+            while(((spm_read(SPM_SLEEP_ISR_STATUS)>>4) & 0x1) == 0x1)
+            {
+                clc_counter++;
+                if(clc_counter >=100)
+                {
+                    clc_notice("wait for SPM edge interrupt = 0 : failed. (0x%x, 0x%x)\n", spm_read(SPM_SLEEP_ISR_STATUS), clc_counter);
+                }
+            }
         }
         else // Core 1,2,3  Keep original IRQ
         {
-            spm_core_wfi_sel( core_id, 0x1);
+            #if 0
+            switch (core_id)
+            {
+                case 1 : mt_PPI_mask_all(&MCDI_cpu_1_PPI_mask); break;                     
+                case 2 : mt_PPI_mask_all(&MCDI_cpu_2_PPI_mask); break;                      
+                case 3 : mt_PPI_mask_all(&MCDI_cpu_3_PPI_mask); break;             
+                default : break;
+            }
+            #endif        
 
-            //clc_notice("core_%d enter wfi.\n", core_id);
+            /* disableNS and disableS mask all cpu interface*/
+            spm_val = spm_read((GIC_CPU_BASE + GIC_CPU_CTRL));
+            spm_val= spm_val & (~0x3U);
+            spm_write((GIC_CPU_BASE + GIC_CPU_CTRL), spm_val);
+
+            switch (core_id)
+            {
+                case 1 : spm_write(SPM_CORE1_CON, SPM_MCDI_CORE_SEL); break;                     
+                case 2 : spm_write(SPM_CORE2_CON, SPM_MCDI_CORE_SEL); break;                     
+                case 3 : spm_write(SPM_CORE3_CON, SPM_MCDI_CORE_SEL); break;                     
+                default : break;
+            }
+            
+            //if(MCDI_Test_Mode == 1)
+                clc_notice("core_%d enter wfi.\n", core_id);
+                //clc_notice("a\n");
 
             if (!cpu_power_down(DORMANT_MODE)) 
             {
-                switch_to_amp();
-                
+                switch_to_amp();  
+
                 /* do not add code here */
                 mcdi_wfi_with_sync();
             }
             
-            switch_to_smp();                                      
+            switch_to_smp();                        
             
             cpu_check_dormant_abort();
 
-            //clc_notice("core_%d exit wfi.\n", core_id);
-
-            // read/clear XGPT status
-            if(core_id == 1)
-            {
-                if(((spm_read(0xf0008004)>>0) & 0x1) == 0x1 )
-                {
-                    spm_write(0xf0008008, (0x1<<0));
-                }
-            }
-            else if(core_id == 2)
-            {
-                if(((spm_read(0xf0008004)>>3) & 0x1) == 0x1 )
-                {
-                    spm_write(0xf0008008, (0x1<<3));
-                }
-            }
-            else if(core_id == 3)
-            {
-                if(((spm_read(0xf0008004)>>4) & 0x1) == 0x1 )
-                {
-                    spm_write(0xf0008008, (0x1<<4));
-                }
-            }           
-        }
-
-        /* Un-Mask ARM i bit */
-        //asm volatile("cpsie i @ arch_local_irq_enable" : : : "memory", "cc"); // clear i bit to enable interrupt
-        local_irq_restore(flags);
-        
-        preempt_enable();
-}    
-
-int spm_wfi_for_sodi_test(void *sodi_data)
-{   
-    volatile u32 do_not_change_it;
-    volatile u32 lo, hi, core_id;
-    unsigned long flags;
-    //u32 temp_address;
-
-    preempt_disable();
-    do_not_change_it = 1;
-
-    while(do_not_change_it)     
-    {
-        core_id = (u32)smp_processor_id();
-
-        /* Mask ARM i bit */
-        //asm volatile("cpsid i @ arch_local_irq_disable" : : : "memory", "cc"); // set i bit to disable interrupt    
-        local_irq_save(flags);
-    
-        if(core_id == 0)
-        {
-            // set core_0  local timer
-            read_cntp_cval(lo, hi);
-            hi+=0xffffffff; // very very long
-            write_cntp_cval(lo, hi);
-            write_cntp_ctl(0x1);  // CNTP_CTL_ENABLE
-        
-            /* enable & init CIRQ */
-    	     mt_cirq_clone_gic();        
-            mt_cirq_mask((MT6589_GPT_IRQ_ID-64));
-    	     mt_cirq_enable();
-
-            // CPU0 enable CIRQ for SPM, Mask all IRQ keep only SPM IRQ ==========
-            mt_SPI_mask_all(&MCDI_cpu_irq_mask); // mask core_0 SPI
-            mt_irq_unmask_for_sleep(MT_SPM_IRQ_ID); // unmask spm    
-
-            spm_core_wfi_sel( core_id, 0x1);
-
-            clc_notice("core_%d enter wfi.\n", core_id);
-
-            mcdi_wfi_with_sync(); // enter wfi 
-
-            clc_notice("core_%d exit wfi.\n", core_id);
-
+            //if(MCDI_Test_Mode == 1)
+                clc_notice("core_%d exit wfi.\n", core_id);
+                //clc_notice("b\n");
+            
             // debug info ===========================================================================
-            #if 1
+            #if 0
+            clc_notice("SPM_PCM_REG5_DATA   0x%x = 0x%x\n", SPM_PCM_REG5_DATA          , spm_read(SPM_PCM_REG5_DATA));
             clc_notice("SPM_PCM_REG7_DATA   0x%x = 0x%x\n", SPM_PCM_REG7_DATA          , spm_read(SPM_PCM_REG7_DATA));
             clc_notice("SPM_PCM_REG12_DATA   0x%x = 0x%x\n", SPM_PCM_REG12_DATA          , spm_read(SPM_PCM_REG12_DATA));
+            clc_notice("SPM_PCM_REG13_DATA   0x%x = 0x%x\n", SPM_PCM_REG13_DATA          , spm_read(SPM_PCM_REG13_DATA));
+            clc_notice("SPM_PCM_REG14_DATA   0x%x = 0x%x\n", SPM_PCM_REG14_DATA          , spm_read(SPM_PCM_REG14_DATA));
             clc_notice("SPM_APMCU_PWRCTL   0x%x = 0x%x\n", SPM_APMCU_PWRCTL          , spm_read(SPM_APMCU_PWRCTL));
+            clc_notice("SPM_AP_STANBY_CON   0x%x = 0x%x\n", SPM_AP_STANBY_CON          , spm_read(SPM_AP_STANBY_CON));
             clc_notice("SPM_CLK_CON   0x%x = 0x%x\n", SPM_CLK_CON          , spm_read(SPM_CLK_CON));
             clc_notice("[0x%x] = 0x%x\n", 0xf0211100 , spm_read(0xf0211100));
             clc_notice("[0x%x] = 0x%x\n", 0xf0211200 , spm_read(0xf0211200));
 
-            #if 0
+            clc_notice("GPT 01 ======================================================\n");
+            clc_notice("GPT status [0x%x] = 0x%x\n", 0xf0008004 , spm_read(0xf0008004));
             {
             u32 temp_address;
             
@@ -1243,46 +1259,99 @@ int spm_wfi_for_sodi_test(void *sodi_data)
             }
             }
             #endif
-            #endif
             // ==================================================================================
 
-            // restore irq mask
-            mt_SPI_mask_restore(&MCDI_cpu_irq_mask);
-
-            /* flush & disable CIRQ */
-            //mt_cirq_flush();
-            mt_cirq_disable();
-
-            // wait for SPM edge interrupt = 0;
-            while(((spm_read(SPM_SLEEP_ISR_STATUS)>>4) & 0x1) == 0x1);
-        }
-        else // Core 1,2,3  Keep original IRQ
-        {
-            spm_core_wfi_sel( core_id, 0x1);
-
-            clc_notice("core_%d enter wfi.\n", core_id);
-
-            if (!cpu_power_down(DORMANT_MODE)) 
+            if(MCDI_Test_Mode == 1)
             {
-                switch_to_amp();
-                
-                /* do not add code here */
-                mcdi_wfi_with_sync();
+                // read/clear XGPT status
+                if(core_id == 1)
+                {
+                    if(((spm_read(0xf0008004)>>0) & 0x1) == 0x1 )
+                    {
+                        spm_write(0xf0008008, (0x1<<0));
+                    }
+                }
+                else if(core_id == 2)
+                {
+                    if(((spm_read(0xf0008004)>>3) & 0x1) == 0x1 )
+                    {
+                        spm_write(0xf0008008, (0x1<<3));
+                    }
+                }
+                else if(core_id == 3)
+                {
+                    if(((spm_read(0xf0008004)>>4) & 0x1) == 0x1 )
+                    {
+                        spm_write(0xf0008008, (0x1<<4));
+                    }
+                }
+
+                mdelay(10);  // delay 10 ms
             }
 
-            switch_to_smp();                                             
-
-            cpu_check_dormant_abort();
-           
-            clc_notice("core_%d exit wfi.\n", core_id);
-
-            // delay 10 ms
-            mdelay(10);
+            /* EnableNS and EnableS unmask all cpu interface*/
+            spm_val = spm_read((GIC_CPU_BASE + GIC_CPU_CTRL));
+            spm_val = spm_val | (0x3);
+            spm_write((GIC_CPU_BASE + GIC_CPU_CTRL), spm_val);
+            
+            #if 0
+            switch (core_id)
+            {
+                case 1 : mt_PPI_mask_restore(&MCDI_cpu_1_PPI_mask); break;                     
+                case 2 : mt_PPI_mask_restore(&MCDI_cpu_2_PPI_mask); break;                      
+                case 3 : mt_PPI_mask_restore(&MCDI_cpu_3_PPI_mask); break;             
+                default : break;
+            }
+            #endif
         }
-        
+}    
+
+int spm_wfi_for_sodi_test(void *sodi_data)
+{   
+    volatile u32 do_not_change_it;
+    volatile u32 lo, hi, core_id;
+    unsigned long flags;
+
+    preempt_disable();
+    do_not_change_it = 1;
+    MCDI_Test_Mode = 1;
+
+    while(do_not_change_it)     
+    {
+        /* Mask ARM i bit */
+        local_irq_save(flags);
+    
+        core_id = (u32)smp_processor_id();
+
+        // set local timer & GPT =========================================
+        switch (core_id)
+        {
+            case 0 : 
+                read_cntp_cval(lo, hi);
+                hi+=0xffffffff; // very very long
+                write_cntp_cval(lo, hi);
+                write_cntp_ctl(0x1);  // CNTP_CTL_ENABLE
+            break;       
+            
+            case 1 : 
+                spm_write(0xf0008010, 0x0); // disable GPT
+            break;          
+            
+            case 2 : 
+                spm_write(0xf0008040, 0x0); // disable GPT
+            break;        
+            
+            case 3 : 
+                spm_write(0xf0008050, 0x0); // disable GPT
+            break;        
+            
+            default : break;
+        }    
+
+        spm_mcdi_wfi();
+
         /* Un-Mask ARM i bit */
-        //asm volatile("cpsie i @ arch_local_irq_enable" : : : "memory", "cc"); // clear i bit to enable interrupt
-        local_irq_restore(flags);        
+        local_irq_restore(flags);
     }
 
     preempt_enable();
@@ -1297,38 +1366,16 @@ int spm_wfi_for_mcdi_test(void *mcdi_data)
 
     preempt_disable();
     do_not_change_it = 1;
+    MCDI_Test_Mode = 1;
 
     while(do_not_change_it)     
     {
+        /* Mask ARM i bit */
+        local_irq_save(flags);
+    
         core_id = (u32)smp_processor_id();
 
-        #if 0 // set local timer =============================================
-        read_cntp_cval(lo, hi);
-
-        switch (core_id)
-        {
-            case 0 : 
-                lo+=5070000; //(1*13*1000*1000);  390 ms
-            break;       
-            
-            case 1 : 
-                lo+=2470000; //(2*13*1000*1000); 190ms
-            break;          
-            
-            case 2 : 
-                lo+=1170000; //(3*13*1000*1000); 90ms
-            break;        
-            
-            case 3 : 
-                lo+=520000; //(4*13*1000*1000); 40ms
-            break;        
-            
-            default : break;
-        }
-
-        write_cntp_cval(lo, hi);
-        write_cntp_ctl(0x1);  // CNTP_CTL_ENABLE
-        #else // set local timer & GPT =========================================
+        // set local timer & GPT =========================================
         switch (core_id)
         {
             case 0 : 
@@ -1361,280 +1408,201 @@ int spm_wfi_for_mcdi_test(void *mcdi_data)
             
             default : break;
         }
-        #endif
-        // =======================================================
+
+        spm_mcdi_wfi();
         
-        if(core_id == 0)
-        {
-            /* Mask ARM i bit */
-            //asm volatile("cpsid i @ arch_local_irq_disable" : : : "memory", "cc"); // set i bit to disable interrupt    
-            local_irq_save(flags);
-       
-            /* enable & init CIRQ */
-    	     mt_cirq_clone_gic();        
-            mt_cirq_mask((MT6589_GPT_IRQ_ID-64));
-    	     mt_cirq_enable();
-
-            // CPU0 enable CIRQ for SPM, Mask all IRQ keep only SPM IRQ ==========
-            mt_SPI_mask_all(&MCDI_cpu_irq_mask); // mask core_0 SPI
-            mt_irq_unmask_for_sleep(MT_SPM_IRQ_ID); // unmask spm    
-
-            spm_core_wfi_sel( core_id, 0x1);
-
-            clc_notice("core_%d enter wfi.\n", core_id);
-
-            mcdi_wfi_with_sync(); // enter wfi 
-
-            clc_notice("core_%d exit wfi.\n", core_id);
-            
-            // debug info ===========================================================================
-            #if 0
-            clc_notice("SPM_PCM_REG7_DATA   0x%x = 0x%x\n", SPM_PCM_REG7_DATA          , spm_read(SPM_PCM_REG7_DATA));
-            clc_notice("SPM_PCM_REG12_DATA   0x%x = 0x%x\n", SPM_PCM_REG12_DATA          , spm_read(SPM_PCM_REG12_DATA));
-            clc_notice("SPM_APMCU_PWRCTL   0x%x = 0x%x\n", SPM_APMCU_PWRCTL          , spm_read(SPM_APMCU_PWRCTL));
-            clc_notice("SPM_CLK_CON   0x%x = 0x%x\n", SPM_CLK_CON          , spm_read(SPM_CLK_CON));
-            clc_notice("[0x%x] = 0x%x\n", 0xf0211100 , spm_read(0xf0211100));
-            clc_notice("[0x%x] = 0x%x\n", 0xf0211200 , spm_read(0xf0211200));
-
-            {
-            u32 temp_address;
-            
-            for( temp_address = 0xf0211100 ; temp_address <= 0xf0211200 ; temp_address+=4 )
-            {
-                clc_notice("[0x%x] = 0x%x\n", temp_address , spm_read(temp_address));
-            }
-            }
-            #endif
-            // ==================================================================================
-
-            // restore irq mask
-            mt_SPI_mask_restore(&MCDI_cpu_irq_mask);
-
-            /* flush & disable CIRQ */
-            //mt_cirq_flush();
-            mt_cirq_disable();
-
-            // delay 10 ms
-            mdelay(10);
-
-            // wait for SPM edge interrupt = 0;
-            while(((spm_read(SPM_SLEEP_ISR_STATUS)>>4) & 0x1) == 0x1);
-
-            /* Un-Mask ARM i bit */
-            //asm volatile("cpsie i @ arch_local_irq_enable" : : : "memory", "cc"); // clear i bit to enable interrupt       
-            local_irq_restore(flags);
-        }
-        else // Core 1,2,3  Keep original IRQ
-        {
-            /* Mask ARM i bit */
-            //asm volatile("cpsid i @ arch_local_irq_disable" : : : "memory", "cc"); // set i bit to disable interrupt    
-            local_irq_save(flags);
-
-            spm_core_wfi_sel( core_id, 0x1);
-
-            clc_notice("core_%d enter wfi.\n", core_id);
-
-            if (!cpu_power_down(DORMANT_MODE)) 
-            {
-           
-                switch_to_amp();                                              
-           
-                /* do not add code here */
-                mcdi_wfi_with_sync();
-            }
-           
-            switch_to_smp();                                              
-           
-            cpu_check_dormant_abort();
-           
-            clc_notice("core_%d exit wfi.\n", core_id);        
-            
-            // debug info ===========================================================================
-            #if 0
-            clc_notice("SPM_PCM_REG7_DATA   0x%x = 0x%x\n", SPM_PCM_REG7_DATA          , spm_read(SPM_PCM_REG7_DATA));
-            clc_notice("SPM_PCM_REG12_DATA   0x%x = 0x%x\n", SPM_PCM_REG12_DATA          , spm_read(SPM_PCM_REG12_DATA));
-            clc_notice("SPM_APMCU_PWRCTL   0x%x = 0x%x\n", SPM_APMCU_PWRCTL          , spm_read(SPM_APMCU_PWRCTL));
-            clc_notice("SPM_CLK_CON   0x%x = 0x%x\n", SPM_CLK_CON          , spm_read(SPM_CLK_CON));
-            clc_notice("[0x%x] = 0x%x\n", 0xf0211100 , spm_read(0xf0211100));
-            clc_notice("[0x%x] = 0x%x\n", 0xf0211200 , spm_read(0xf0211200));
-
-            clc_notice("GPT 01 ======================================================\n");
-            clc_notice("GPT status [0x%x] = 0x%x\n", 0xf0008004 , spm_read(0xf0008004));
-            {
-            u32 temp_address;
-            
-            for( temp_address = 0xf0211100 ; temp_address <= 0xf0211200 ; temp_address+=4 )
-            {
-                clc_notice("[0x%x] = 0x%x\n", temp_address , spm_read(temp_address));
-            }
-            }
-            #endif
-            // ==================================================================================
-
-            // read/clear XGPT status
-            if(core_id == 1)
-            {
-                if(((spm_read(0xf0008004)>>0) & 0x1) == 0x1 )
-                {
-                    spm_write(0xf0008008, (0x1<<0));
-                }
-            }
-            else if(core_id == 2)
-            {
-                if(((spm_read(0xf0008004)>>3) & 0x1) == 0x1 )
-                {
-                    spm_write(0xf0008008, (0x1<<3));
-                }
-            }
-            else if(core_id == 3)
-            {
-                if(((spm_read(0xf0008004)>>4) & 0x1) == 0x1 )
-                {
-                    spm_write(0xf0008008, (0x1<<4));
-                }
-            }
-
-            //clc_notice("GPT 02 ======================================================\n");
-            //clc_notice("GPT status [0x%x] = 0x%x\n", 0xf0008004 , spm_read(0xf0008004));
-
-            // delay 10 ms
-            mdelay(10);
-
-            /* Un-Mask ARM i bit */
-            //asm volatile("cpsie i @ arch_local_irq_enable" : : : "memory", "cc"); // clear i bit to enable interrupt
-            local_irq_restore(flags);
-        }
-        
+        /* Un-Mask ARM i bit */
+        local_irq_restore(flags);
     }
     
     preempt_enable();
     return 0;
 }    
 
-void spm_check_core_status(u32 target_core)
+void spm_check_core_status_before(u32 target_core)
 {
-    u32 clc_temp_00, target_core_temp, spm_core_wfi, spm_core_pws;
-    u32 spm_core_sel_0=0, spm_core_sel_1=0, spm_core_sel_2=0, spm_core_sel_3=0;
+    #if 1
+    u32 target_core_temp,hotplug_out_core_id;
+    volatile u32 core_id;
 
-    if(En_SPM_MCDI == 0)
+    if(En_SPM_MCDI != 1)
     {
         return;
     }
-
+    
+    core_id = (u32)smp_processor_id();
+    
     target_core_temp = target_core & 0xf;
 
-    //clc_notice(" issue IPI, target_core_temp = 0x%x\n", target_core_temp);
+    hotplug_out_core_id = ((spm_read(SPM_MP_CORE0_AUX) & 0x1)<<0) | ((spm_read(SPM_MP_CORE1_AUX) & 0x1)<<1) | 
+    	                              ((spm_read(SPM_MP_CORE2_AUX) & 0x1)<<2) | ((spm_read(SPM_MP_CORE3_AUX) & 0x1)<<3);
 
-    // wfi_sel
-    if( (target_core_temp & 0x1) == 0x1 )
-    {
-        spm_core_sel_0 = (spm_read(SPM_CORE0_CON)) & 0x1;     
-    }
-    
-    if( (target_core_temp & 0x2) == 0x2 )
-    {
-        spm_core_sel_1 = (spm_read(SPM_CORE1_CON)) & 0x1;      
-    }
-    
-    if( (target_core_temp & 0x4) == 0x4 )
-    {
-        spm_core_sel_2 = (spm_read(SPM_CORE2_CON)) & 0x1;      
-    }
-    
-    if( (target_core_temp & 0x8) == 0x8 )
-    {
-        spm_core_sel_3 = (spm_read(SPM_CORE3_CON)) & 0x1;    
-    }
+    target_core_temp &= (~hotplug_out_core_id);
 
-    if( ( spm_core_sel_0 | spm_core_sel_1 | spm_core_sel_2 | spm_core_sel_3 ) == 0x0)
+    //clc_notice("issue IPI, spm_check_core_status_before = 0x%x\n", target_core_temp);
+
+    if( target_core_temp == 0x0)
     {
         return;
     }
 
-    // =========================================================
+    // set IPI SPM register ==================================================
+
+    switch (core_id)
+    {
+        case 0 : spm_write(SPM_MP_CORE0_AUX, (spm_read(SPM_MP_CORE0_AUX) | (target_core_temp << 1)) );  break;                     
+        case 1 : spm_write(SPM_MP_CORE1_AUX, (spm_read(SPM_MP_CORE1_AUX) | (target_core_temp << 1)) );  break;                     
+        case 2 : spm_write(SPM_MP_CORE2_AUX, (spm_read(SPM_MP_CORE2_AUX) | (target_core_temp << 1)) );  break;                     
+        case 3 : spm_write(SPM_MP_CORE3_AUX, (spm_read(SPM_MP_CORE3_AUX) | (target_core_temp << 1)) );  break;                     
+        default : break;
+    }
+    
+    #if 0
+    // check CPU wake up ==============================================
+    {
+    u32 clc_counter, spm_core_pws;
+    clc_counter = 0;
+    
     while(1)
     {    
-        // wfi => 1:wfi
-        clc_temp_00 = spm_read(SPM_PCM_REG13_DATA);
-        spm_core_wfi = (clc_temp_00 >> 28) & 0xf;          
-
         // power_state => 1: power down
-        clc_temp_00 = spm_read(SPM_PCM_REG5_DATA);
-        spm_core_pws = (clc_temp_00 >> 0) & 0xf;         
+        spm_core_pws = ((spm_read(SPM_FC0_PWR_CON) == 0x4d) ? 0 : 1) | ((spm_read(SPM_FC1_PWR_CON) == 0x4d) ? 0 : 2) |
+                                 ((spm_read(SPM_FC2_PWR_CON) == 0x4d) ? 0 : 4) | ((spm_read(SPM_FC3_PWR_CON) == 0x4d) ? 0 : 8); // power_state => 1: power down
 
-        if( (target_core_temp == spm_core_wfi) && (target_core_temp == spm_core_pws))
+        if( (target_core_temp & ((~spm_core_pws) & 0xf)) == target_core_temp )
         {
+            break;
+        }
+        
+        clc_counter++;
+
+        if(clc_counter >= 1000)
+        {
+            clc_notice("spm_check_core_status_before : check CPU wake up failed.(0x%x, 0x%x)\n", target_core_temp, ((~spm_core_pws) & 0xf));
+            break;
+        }
+    }
+    }
+    #endif
+    
+    #endif
+}
+
+void spm_check_core_status_after(u32 target_core)
+{
+    #if 1
+    u32 target_core_temp, clc_counter, spm_core_pws, hotplug_out_core_id;
+    volatile u32 core_id;
+
+    if(En_SPM_MCDI != 1)
+    {
+        return;
+    }
+    
+    core_id = (u32)smp_processor_id();
+    
+    target_core_temp = target_core & 0xf;
+
+    hotplug_out_core_id = ((spm_read(SPM_MP_CORE0_AUX) & 0x1)<<0) | ((spm_read(SPM_MP_CORE1_AUX) & 0x1)<<1) | 
+    	                              ((spm_read(SPM_MP_CORE2_AUX) & 0x1)<<2) | ((spm_read(SPM_MP_CORE3_AUX) & 0x1)<<3);
+
+    target_core_temp &= (~hotplug_out_core_id);
+
+    //clc_notice("issue IPI, spm_check_core_status_after = 0x%x\n", target_core_temp);
+
+    if( target_core_temp == 0x0)
+    {
+        return;
+    }
+
+    // check CPU wake up ==============================================
+
+    clc_counter = 0;
+    
+    while(1)
+    {    
+        // power_state => 1: power down
+        spm_core_pws = ((spm_read(SPM_FC0_PWR_CON) == 0x4d) ? 0 : 1) | ((spm_read(SPM_FC1_PWR_CON) == 0x4d) ? 0 : 2) |
+                                 ((spm_read(SPM_FC2_PWR_CON) == 0x4d) ? 0 : 4) | ((spm_read(SPM_FC3_PWR_CON) == 0x4d) ? 0 : 8); // power_state => 1: power down
+
+        if( (target_core_temp & ((~spm_core_pws) & 0xf)) == target_core_temp )
+        {
+            break;
+        }
+        
+        clc_counter++;
+
+        if(clc_counter >= 100)
+        {
+            clc_notice("spm_check_core_status_after : check CPU wake up failed.(0x%x, 0x%x)\n", target_core_temp, ((~spm_core_pws) & 0xf));
             break;
         }
     }
 
+    // clear IPI SPM register ==================================================
+    
+    switch (core_id)
+    {
+        case 0 : spm_write(SPM_MP_CORE0_AUX, (spm_read(SPM_MP_CORE0_AUX) & (~(target_core_temp << 1))) );  break;                     
+        case 1 : spm_write(SPM_MP_CORE1_AUX, (spm_read(SPM_MP_CORE1_AUX) & (~(target_core_temp << 1))) );  break;                     
+        case 2 : spm_write(SPM_MP_CORE2_AUX, (spm_read(SPM_MP_CORE2_AUX) & (~(target_core_temp << 1))) );  break;                     
+        case 3 : spm_write(SPM_MP_CORE3_AUX, (spm_read(SPM_MP_CORE3_AUX) & (~(target_core_temp << 1))) );  break;                     
+        default : break;
+    }
+    #endif
 }
 
 void spm_hot_plug_in_before(u32 target_core)
-{
-    u32 target_core_temp;
+{    
+    clc_notice("spm_hot_plug_in_before()........ target_core = 0x%x\n", target_core);
 
-    if(En_SPM_MCDI == 0)
+    #if 1
+    switch (target_core)
     {
-        return;
+        case 0 : spm_write(SPM_MP_CORE0_AUX, (spm_read(SPM_MP_CORE0_AUX) & (~0x1U)));  break;                     
+        case 1 : spm_write(SPM_MP_CORE1_AUX, (spm_read(SPM_MP_CORE1_AUX) & (~0x1U)));  break;                     
+        case 2 : spm_write(SPM_MP_CORE2_AUX, (spm_read(SPM_MP_CORE2_AUX) & (~0x1U)));  break;                     
+        case 3 : spm_write(SPM_MP_CORE3_AUX, (spm_read(SPM_MP_CORE3_AUX) & (~0x1U)));  break;                     
+        default : break;
     }
-
-    target_core_temp = target_core & 0xf;
-
-    if( (target_core_temp & 0x1) == 0x1 )
+    #else
+    switch (target_core)
     {
-        spm_write(SPM_MP_CORE0_AUX, 0x0);     
+        case 0 : spm_write(SPM_MP_CORE0_AUX, 0x0);  break;                     
+        case 1 : spm_write(SPM_MP_CORE1_AUX, 0x0);  break;                     
+        case 2 : spm_write(SPM_MP_CORE2_AUX, 0x0);  break;                     
+        case 3 : spm_write(SPM_MP_CORE3_AUX, 0x0);  break;                     
+        default : break;
     }
-    
-    if( (target_core_temp & 0x2) == 0x2 )
-    {
-        spm_write(SPM_MP_CORE1_AUX, 0x0);     
-    }
-    
-    if( (target_core_temp & 0x4) == 0x4 )
-    {
-        spm_write(SPM_MP_CORE2_AUX, 0x0);     
-    }
-    
-    if( (target_core_temp & 0x8) == 0x8 )
-    {
-        spm_write(SPM_MP_CORE3_AUX, 0x0);     
-    }
+    #endif
 }
 
 void spm_hot_plug_out_after(u32 target_core)
 {
-    u32 target_core_temp;
-
-    if(En_SPM_MCDI == 0)
-    {
-        return;
-    }
-
-    target_core_temp = target_core & 0xf;
-
-    if( (target_core_temp & 0x1) == 0x1 )
-    {
-        spm_write(SPM_MP_CORE0_AUX, 0x1);     
-    }
+    clc_notice("spm_hot_plug_out_after()........ target_core = 0x%x\n", target_core);
     
-    if( (target_core_temp & 0x2) == 0x2 )
+    #if 1
+    switch (target_core)
     {
-        spm_write(SPM_MP_CORE1_AUX, 0x1);     
+        case 0 : spm_write(SPM_MP_CORE0_AUX, (spm_read(SPM_MP_CORE0_AUX) | 0x1));  break;                     
+        case 1 : spm_write(SPM_MP_CORE1_AUX, (spm_read(SPM_MP_CORE1_AUX) | 0x1));  break;                     
+        case 2 : spm_write(SPM_MP_CORE2_AUX, (spm_read(SPM_MP_CORE2_AUX) | 0x1));  break;                     
+        case 3 : spm_write(SPM_MP_CORE3_AUX, (spm_read(SPM_MP_CORE3_AUX) | 0x1));  break;                     
+        default : break;
     }
-    
-    if( (target_core_temp & 0x4) == 0x4 )
+    #else
+    switch (target_core)
     {
-        spm_write(SPM_MP_CORE2_AUX, 0x1);     
+        case 0 : spm_write(SPM_MP_CORE0_AUX, 0x1);  break;                     
+        case 1 : spm_write(SPM_MP_CORE1_AUX, 0x1);  break;                     
+        case 2 : spm_write(SPM_MP_CORE2_AUX, 0x1);  break;                     
+        case 3 : spm_write(SPM_MP_CORE3_AUX, 0x1);  break;                     
+        default : break;
     }
-    
-    if( (target_core_temp & 0x8) == 0x8 )
-    {
-        spm_write(SPM_MP_CORE3_AUX, 0x1);     
-    }
+    #endif
 }
 
-void spm_disable_sodi(void)
+static void spm_direct_disable_sodi(void)
 {
     u32 clc_temp;
 
@@ -1644,7 +1612,7 @@ void spm_disable_sodi(void)
     spm_write(SPM_CLK_CON, clc_temp);  
 }
 
-void spm_enable_sodi(void)
+static void spm_direct_enable_sodi(void)
 {
     u32 clc_temp;
 
@@ -1654,25 +1622,79 @@ void spm_enable_sodi(void)
     spm_write(SPM_CLK_CON, clc_temp);  
 }
 
+void spm_disable_sodi(void)
+{
+    spin_lock(&spm_sodi_lock);
+
+    spm_sodi_disable_counter++;
+    clc_debug("spm_disable_sodi() : spm_sodi_disable_counter = 0x%x\n", spm_sodi_disable_counter);    
+
+    if(spm_sodi_disable_counter > 0)
+    {
+        spm_direct_disable_sodi();
+    }
+
+    spin_unlock(&spm_sodi_lock);
+}
+
+void spm_enable_sodi(void)
+{
+    spin_lock(&spm_sodi_lock);
+
+    spm_sodi_disable_counter--;
+    clc_debug("spm_enable_sodi() : spm_sodi_disable_counter = 0x%x\n", spm_sodi_disable_counter);    
+    
+    if(spm_sodi_disable_counter <= 0)
+    {
+        spm_direct_enable_sodi();
+    }
+
+    spin_unlock(&spm_sodi_lock);
+}
+
+
 // ==============================================================================
 
 static int spm_mcdi_probe(struct platform_device *pdev)
 {
-    clc_notice("spm_mcdi_probe start. (0x%x)\n", En_SPM_MCDI);
-    //spm_go_to_MCDI();  
+    int hibboot = 0;
+    hibboot = get_env("hibboot") == NULL ? 0 : simple_strtol(get_env("hibboot"), NULL, 10);
+
+    // set SPM_MP_CORE0_AUX
+    spm_write(SPM_MP_CORE0_AUX, 0x0);
+    spm_write(SPM_MP_CORE1_AUX, 0x0);
+    spm_write(SPM_MP_CORE2_AUX, 0x0);
+    spm_write(SPM_MP_CORE3_AUX, 0x0);
+
+    #if MCDI_KICK_PCM
+    clc_notice("spm_mcdi_probe start.\n");        
+    if (1 == hibboot)
+    {
+        clc_notice("[%s] skip spm_go_to_MCDI due to hib boot\n", __func__);
+    }
+    else
+    {
+        spm_go_to_MCDI();  
+    } 
+    #endif
+    
     return 0;
 }
 
 static void spm_mcdi_early_suspend(struct early_suspend *h) 
 {
-    clc_notice("spm_mcdi_early_suspend start. (0x%x)\n", En_SPM_MCDI);
-    //spm_leave_MCDI();    
+    #if MCDI_KICK_PCM
+    clc_notice("spm_mcdi_early_suspend start.\n");
+    spm_leave_MCDI();    
+    #endif
 }
 
 static void spm_mcdi_late_resume(struct early_suspend *h) 
 {
-    clc_notice("spm_mcdi_late_resume start. (0x%x)\n", En_SPM_MCDI);
-    //spm_go_to_MCDI();    
+    #if MCDI_KICK_PCM
+    clc_notice("spm_mcdi_late_resume start.\n");
+    spm_go_to_MCDI();    
+    #endif
 }
 
 static struct platform_driver mtk_spm_mcdi_driver = {
@@ -1701,8 +1723,8 @@ void spm_mcdi_LDVT_sodi(void)
     // show image on screen ============================
     spm_show_lcm_image();
 
-    // spm_enable_sodi ============================
-    spm_enable_sodi();    
+    // spm_direct_enable_sodi ============================
+    spm_direct_enable_sodi();    
 
     mcdi_task_0 = kthread_create(spm_wfi_for_sodi_test, NULL, "mcdi_task_0");
     mcdi_task_1 = kthread_create(spm_wfi_for_sodi_test, NULL, "mcdi_task_1");
@@ -1736,8 +1758,8 @@ void spm_mcdi_LDVT_mcdi(void)
     clc_notice("spm_mcdi_LDVT_mcdi() start.\n");
     mtk_wdt_suspend();    
 
-    // spm_disable_sodi ============================
-    spm_disable_sodi();    
+    // spm_direct_disable_sodi ============================
+    spm_direct_disable_sodi();    
 
 #if 0
 {
@@ -1813,10 +1835,10 @@ static int spm_mcdi_debug_read(char *buf, char **start, off_t off, int count, in
     int len = 0;
     char *p = buf;
 
-    if (En_SPM_MCDI)
+    if (SPM_MCDI_CORE_SEL)
         p += sprintf(p, "SPM MCDI+Thermal Protect enabled.\n");
     else
-        p += sprintf(p, "SPM MCDI disabled, Thermal Protect only.\n");
+        p += sprintf(p, "SPM MCDI disabled, Thermal Protect enabled.\n");
 
     len = p - buf;
     return len;
@@ -1833,16 +1855,17 @@ static ssize_t spm_mcdi_debug_write(struct file *file, const char *buffer, unsig
     {
         if (enabled == 0)
         {
-            En_SPM_MCDI = 0; 
             spm_leave_MCDI();    
+            SPM_MCDI_CORE_SEL = 0;
         }
         else if (enabled == 1)
         {
-            En_SPM_MCDI = 1; 
+            SPM_MCDI_CORE_SEL = 1;
             spm_go_to_MCDI();  
         }
         else if (enabled == 2)
         {
+            SPM_MCDI_CORE_SEL = 1;
             clc_notice("spm_mcdi_LDVT_sodi() (argument_0 = %d)\n", enabled);
             spm_mcdi_LDVT_sodi();    
         }
@@ -1850,6 +1873,23 @@ static ssize_t spm_mcdi_debug_write(struct file *file, const char *buffer, unsig
         {
             clc_notice("spm_mcdi_LDVT_mcdi() (argument_0 = %d)\n", enabled);
             spm_mcdi_LDVT_mcdi();    
+        }
+        else if (enabled == 4)
+        {
+            clc_notice("Peri_0      ( 1: off) 0x%x = 0x%x\n", 0xf0003018	          , spm_read(0xf0003018));
+            clc_notice("Peri_1      ( 1: off) 0x%x = 0x%x\n", 0xf000301c	          , spm_read(0xf000301c));
+            clc_notice("Infra        ( 1: off) 0x%x = 0x%x\n", 0xf0001048	          , spm_read(0xf0001048));
+            clc_notice("TopPCK    ( 1: off) 0x%x = 0x%x\n", 0xf0000178            , spm_read(0xf0000178));
+
+            clc_notice("display_0 ( 1: off) 0x%x = 0x%x\n", 0xf4000100	          , spm_read(0xf4000100));
+            clc_notice("display_1 ( 1: off) 0x%x = 0x%x\n", 0xf4000110	          , spm_read(0xf4000110));
+            clc_notice("IMG         ( 1: off) 0x%x = 0x%x\n", 0xf5000000            , spm_read(0xf5000000));
+            clc_notice("MFG         ( 1: off) 0x%x = 0x%x\n", 0xf0206000	          , spm_read(0xf0206000));
+            
+            clc_notice("Audio       ( 1: off) 0x%x = 0x%x\n", 0xf2070000	          , spm_read(0xf2070000));
+            clc_notice("VDEC0     ( 0: off) 0x%x = 0x%x\n", 0xf6000000	          , spm_read(0xf6000000));
+            clc_notice("VDEC1     ( 0: off) 0x%x = 0x%x\n", 0xf6000008	          , spm_read(0xf6000008));
+            clc_notice("VEN         ( 0: off) 0x%x = 0x%x\n", 0xf7000000	          , spm_read(0xf7000000));
         }
         else
         {
@@ -1864,9 +1904,36 @@ static ssize_t spm_mcdi_debug_write(struct file *file, const char *buffer, unsig
     return count;
 }
 
+/************************************
+* set SPM-SODI Enable by sysfs interface
+*************************************/
+static ssize_t spm_user_sodi_en(struct file *file, const char *buffer, unsigned long count, void *data)
+{
+    int enabled = 0;
+
+    if (sscanf(buffer, "%d", &enabled) == 1)
+    {
+        if (enabled == 0)
+        {
+            spm_disable_sodi();  
+        }
+        else if (enabled == 1)
+        {
+            spm_enable_sodi();    
+        }
+    }
+    else
+    {
+            clc_notice("bad argument_1!! \n");
+    }
+
+    return count;
+}
+
+
 static int __init spm_mcdi_init(void)
 {
-    struct proc_dir_entry *mt_entry = NULL;
+    struct proc_dir_entry *mt_entry = NULL;    
     struct proc_dir_entry *mt_mcdi_dir = NULL;
     int mcdi_err = 0;
 
@@ -1882,6 +1949,12 @@ static int __init spm_mcdi_init(void)
         {
             mt_entry->read_proc = spm_mcdi_debug_read;
             mt_entry->write_proc = spm_mcdi_debug_write;
+        }
+
+        mt_entry = create_proc_entry("sodi_en", S_IRUGO | S_IWUSR | S_IWGRP, mt_mcdi_dir);
+        if (mt_entry)
+        {
+            mt_entry->write_proc = spm_user_sodi_en;
         }
     }
 

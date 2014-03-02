@@ -190,7 +190,12 @@ typedef struct _MTK_WCN_STP_SDIO_HIF_INFO {
 #if STP_SDIO_OWN_THREAD
     //struct tasklet_struct tx_rx_job;
     OSAL_THREAD tx_rx_thread;
+    INT32 irq_pending;
+    INT32 sleep_flag;
+    INT32 wakeup_flag;
+    INT32 awake_flag;
     OSAL_EVENT tx_rx_event;
+    OSAL_SIGNAL isr_check_complete;
 #endif
     struct work_struct tx_work;
     struct work_struct rx_work;
@@ -234,10 +239,10 @@ mtk_wcn_hif_sdio_client_reg (
     );
 
 extern INT32
-mtk_wcn_stp_sdio_do_own_set (void);
-
-extern INT32
 mtk_wcn_stp_sdio_do_own_clr (void);
+
+//extern INT32
+//mtk_wcn_stp_sdio_do_own_set (void);
 
 /*******************************************************************************
 *                              F U N C T I O N S

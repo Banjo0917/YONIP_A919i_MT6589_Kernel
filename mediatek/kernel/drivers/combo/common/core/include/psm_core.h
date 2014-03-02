@@ -44,6 +44,7 @@
 
 #define STP_PSM_WMT_PS_TASK_HANDLING_TIME  30   //20 milli-seconds
 #define STP_PSM_IDLE_TIME_SLEEP           5000   //temporary for stress testing
+#define STP_PSM_SDIO_IDLE_TIME_SLEEP           100   //temporary for SDIO stress testing
 #define STP_PSM_WAIT_EVENT_TIMEOUT        6000
 
 #define STP_PSM_WMT_EVENT_SLEEP_EN                    (0x1UL << 0)
@@ -55,6 +56,7 @@
 #define STP_PSM_WMT_EVENT_HOST_WAKEUP_EN                    (0x1UL << 6)
 #define STP_PSM_WMT_EVENT_DISABLE_MONITOR_TX_HIGH_DENSITY   (0x1UL << 7) 
 #define STP_PSM_WMT_EVENT_DISABLE_MONITOR_RX_HIGH_DENSITY   (0x1UL << 8)
+
 
 /* OP command ring buffer : must be power of 2 */
 #define STP_OP_BUF_SIZE (16)
@@ -114,10 +116,15 @@ typedef struct mtk_stp_psm
     OSAL_OP_Q               rActiveOpQ; /* active op queue */
     OSAL_OP                 arQue[STP_OP_BUF_SIZE]; /* real op instances */
 
+    //OSAL_OP                 current_active_op;
     //P_OSAL_OP               current_active_op;
     UINT32               last_active_opId;
     MTKSTP_PSM_STATE_T      work_state; /*working state*/
     INT32                   flag;
+    
+    /* in normal cases, sleep op is always enabled; but in error cases, we can't execute sleep cmd, Eg: FW assert, core dump*/
+    INT32                   sleep_en;   
+    
 //    OSAL_UNSLEEPABLE_LOCK   flagSpinlock;
     INT32                   idle_time_to_sleep;
     OSAL_WAKE_LOCK          wake_lock;
@@ -130,6 +137,7 @@ typedef struct mtk_stp_psm
 	OSAL_SLEEPABLE_LOCK     stp_psm_lock;
     INT32                   (*wmt_notify)(MTKSTP_PSM_ACTION_T action);
     INT32                   (*stp_tx_cb)(unsigned  char*buffer,UINT32 length, UINT8 type);
+	MTK_WCN_BOOL            (*is_wmt_quick_ps_support)(VOID);
     UINT8                   out_buf[STP_PSM_TX_SIZE];
 }MTKSTP_PSM_T;
 
@@ -164,11 +172,7 @@ INT32 stp_psm_hold_data (
     const UINT8 type
     );
 INT32 stp_psm_do_wakeup(MTKSTP_PSM_T *stp_psm);
-
-#if  defined(MT6628) && defined(MTK_COMBO_QUICK_SLEEP_SUPPORT) && defined(MTK_COMBO_QUICK_SLEEP_SUPPORT_OPEN)
 INT32 stp_psm_disable_by_tx_rx_density(MTKSTP_PSM_T *stp_psm, INT32 dir);
-#endif 
-
 INT32 stp_psm_reset(MTKSTP_PSM_T *stp_psm);
 INT32 stp_psm_disable(MTKSTP_PSM_T *stp_psm);
 INT32 stp_psm_enable(MTKSTP_PSM_T *stp_psm, INT32 idle_time_to_sleep);
@@ -179,6 +183,12 @@ INT32 stp_psm_sleep_for_thermal(MTKSTP_PSM_T *stp_psm);
 INT32  stp_psm_thread_lock_aquire(MTKSTP_PSM_T *stp_psm);
 INT32  stp_psm_thread_lock_release(MTKSTP_PSM_T *stp_psm);
 INT32 stp_psm_set_state(MTKSTP_PSM_T *stp_psm, MTKSTP_PSM_STATE_T state);
+MTK_WCN_BOOL stp_psm_is_quick_ps_support (VOID);
+
+INT32 stp_psm_set_sleep_enable(MTKSTP_PSM_T *stp_psm);
+INT32 stp_psm_set_sleep_disable(MTKSTP_PSM_T *stp_psm);
+INT32 stp_psm_check_sleep_enable(MTKSTP_PSM_T *stp_psm);
+
 /*******************************************************************************
 *                              F U N C T I O N S
 ********************************************************************************

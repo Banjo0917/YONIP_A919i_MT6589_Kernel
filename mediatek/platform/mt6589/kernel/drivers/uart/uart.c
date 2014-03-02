@@ -99,7 +99,7 @@ void mtk_uart_save(struct mtk_uart *uart);
 //volatile unsigned int pll_for_uart;
 void dump_uart_history(void);
 volatile unsigned int	stop_update = 0;
-unsigned int			curr_record=0;
+unsigned int			curr_record=-1;
 volatile unsigned int	curr_idx;
 #define			RECORD_NUMBER	10
 #define			RECORD_LENGTH	1032
@@ -107,7 +107,7 @@ unsigned char 			uart_history[RECORD_NUMBER][RECORD_LENGTH];
 unsigned int		uart_history_cnt[RECORD_NUMBER];
 spinlock_t		tx_history_lock,rx_history_lock;
 
-unsigned int			curr_rx_record=0;
+unsigned int			curr_rx_record=-1;
 volatile unsigned int	curr_rx_idx;
 unsigned char 			uart_rx_history[RECORD_NUMBER][RECORD_LENGTH];
 unsigned int		uart_rx_history_cnt[RECORD_NUMBER];
@@ -117,7 +117,6 @@ spinlock_t		 mtk_uart_bt_lock;
 
 struct mtk_uart *console_port;
 struct mtk_uart *bt_port = NULL;
-
 /*---------------------------------------------------------------------------*/
 #define HW_FLOW_CTRL_PORT(uart) (uart->setting->hw_flow)
 /*---------------------------------------------------------------------------*/
@@ -134,7 +133,7 @@ static struct mtk_uart_setting mtk_uart_default_settings[] =
         .sysrq = FALSE, .hw_flow = TRUE, .vff = TRUE,
     },
     {
-        .tx_mode = UART_NON_DMA, .rx_mode = UART_NON_DMA, .dma_mode = UART_DMA_MODE_0, 
+        .tx_mode = UART_TX_VFIFO_DMA, .rx_mode = UART_RX_VFIFO_DMA, .dma_mode = UART_DMA_MODE_0,
         .tx_trig = UART_FCR_TXFIFO_1B_TRI, .rx_trig = UART_FCR_RXFIFO_12B_TRI, 
 
         .uart_base = UART2_BASE, .irq_num = UART2_IRQ_ID, .irq_sen = MT65xx_LEVEL_SENSITIVE,  
@@ -873,12 +872,15 @@ unsigned int mtk_uart_pdn_enable(char *port, int enable)
 	switch(port_num){
 	    case 0:
 		enable_dpidle_by_bit(PDN_FOR_UART1);
+		enable_mcidle_by_bit(PDN_FOR_UART1);
 	        break;
 	    case 1:
 		enable_dpidle_by_bit(PDN_FOR_UART2);
+		enable_mcidle_by_bit(PDN_FOR_UART2);
 	        break;
 	    case 2:
 		enable_dpidle_by_bit(PDN_FOR_UART3);
+		enable_mcidle_by_bit(PDN_FOR_UART3);
 	        break;
 	    default:
 		break;
@@ -887,12 +889,15 @@ unsigned int mtk_uart_pdn_enable(char *port, int enable)
 	switch(port_num){
 	    case 0:
 		disable_dpidle_by_bit(PDN_FOR_UART1);
+		disable_mcidle_by_bit(PDN_FOR_UART1);
 	        break;
 	    case 1:
 		disable_dpidle_by_bit(PDN_FOR_UART2);
+		disable_mcidle_by_bit(PDN_FOR_UART2);
 	        break;
 	    case 2:
 		disable_dpidle_by_bit(PDN_FOR_UART3);
+		disable_mcidle_by_bit(PDN_FOR_UART3);
 	        break;
 	    default:
 		break;
@@ -945,7 +950,6 @@ void dump_uart_reg(void)
     }
     
 }
-
 /*---------------------------------------------------------------------------*/
 #ifdef CONFIG_MTK_SERIAL_CONSOLE
 /*---------------------------------------------------------------------------*/
@@ -1024,6 +1028,7 @@ static int __init mtk_uart_console_setup(struct console *co, char *options)
         uart->tx_mode = UART_NON_DMA;
         uart->rx_mode = UART_NON_DMA;
 	enable_dpidle_by_bit(PDN_FOR_UART1);
+	enable_mcidle_by_bit(PDN_FOR_UART1);
     }
 
     if (options)
@@ -1867,6 +1872,20 @@ static void mtk_uart_dma_vfifo_rx_tasklet_str(unsigned long arg)
         
     DGBUF_INIT(vfifo);
 
+    if(uart->nport==2){
+		spin_lock_irqsave(&rx_history_lock, history_flags);
+		if(!stop_update){
+			curr_rx_record++;
+			curr_rx_idx = 0;
+			if(curr_rx_record >= RECORD_NUMBER)
+				curr_rx_record = 0;
+			uart_rx_history_cnt[curr_rx_record] = 0;
+			for(curr_rx_idx=0; curr_rx_idx<RECORD_LENGTH; curr_rx_idx++)
+				uart_rx_history[curr_rx_record][curr_rx_idx] = 0;
+			curr_rx_idx = 0;
+		}
+		spin_unlock_irqrestore(&rx_history_lock, history_flags);
+	}
     if ((rxptr+count) <= txptr) {
         ptr = (unsigned char*)(rxptr+vfifo->addr);
         mtk_uart_tty_insert_flip_string(uart, ptr, count);
@@ -1884,21 +1903,6 @@ static void mtk_uart_dma_vfifo_rx_tasklet_str(unsigned long arg)
     dsb();                                                  //make sure read point updated after VFIFO read.
     reg_sync_writel(txreg, VFF_RPT(base));
     tty_flip_buffer_push(tty);
-
-    if(uart->nport==2){
-		spin_lock_irqsave(&rx_history_lock, history_flags);
-		if(!stop_update){
-			curr_rx_record++;
-			curr_rx_idx = 0;
-			if(curr_rx_record >= RECORD_NUMBER)
-				curr_rx_record = 0;
-			uart_rx_history_cnt[curr_rx_record] = 0;
-			for(curr_rx_idx=0; curr_rx_idx<RECORD_LENGTH; curr_rx_idx++)
-				uart_rx_history[curr_rx_record][curr_rx_idx] = 0;
-			curr_rx_idx = 0;
-		}
-		spin_unlock_irqrestore(&rx_history_lock, history_flags);
-	}
 
 #if defined(ENABLE_VFIFO_DEBUG)    
     if (UART_DEBUG_EVT(DBG_EVT_DMA) && UART_DEBUG_EVT(DBG_EVT_BUF)) {
@@ -1966,12 +1970,16 @@ static void mtk_uart_dma_vfifo_rx_tasklet(unsigned long arg)
 static irqreturn_t mtk_vfifo_irq_handler(int irq, void *dev_id)
 {
     struct mtk_uart_vfifo *vfifo;
-
-    if (!dev_id){
+    vfifo = (struct mtk_uart_vfifo *)dev_id;
+ 
+    if (!vfifo){
+	printk(KERN_ERR "mtk_vfifo_irq_handler: vfifo is NULL\n");
 	return IRQ_NONE;
     }
-
-    vfifo = (struct mtk_uart_vfifo *)dev_id;
+    if (!vfifo->dma){
+	printk(KERN_ERR "mtk_vfifo_irq_handler: dma is NULL\n");
+	return IRQ_NONE;
+    }
 
     /* Call call back function */
     mtk_uart_dma_vfifo_callback(vfifo->dma);
@@ -3169,8 +3177,6 @@ static void mtk_uart_start_tx(struct uart_port *port)
     unsigned long size;
     unsigned long flags;
     
-    MSG(INFO, "[UART%d] start tx\n", uart->nport);
-
     size = CIRC_CNT_TO_END(xmit->head, xmit->tail, UART_XMIT_SIZE);
 
     if (!size)
@@ -3194,6 +3200,8 @@ static void mtk_uart_start_tx(struct uart_port *port)
 
 #if defined(ENABLE_VFIFO)
     if (uart->tx_mode == UART_TX_VFIFO_DMA) {
+	if (UART_DEBUG_EVT(DBG_EVT_BUF))
+    	    printk("[UART%d] mtk_uart_start_tx\n", uart->nport);
         if (!uart->write_allow(uart))
             mtk_uart_vfifo_enable_tx_intr(uart);
         else 
@@ -3377,12 +3385,15 @@ static int mtk_uart_startup(struct uart_port *port)
 	switch(uart->nport){
 	    case 0:
 		disable_dpidle_by_bit(PDN_FOR_UART1);
+		disable_mcidle_by_bit(PDN_FOR_UART1);
 	        break;
 	    case 1:
 		disable_dpidle_by_bit(PDN_FOR_UART2);
+		disable_mcidle_by_bit(PDN_FOR_UART2);
 	        break;
 	    case 2:
 		disable_dpidle_by_bit(PDN_FOR_UART3);
+		disable_mcidle_by_bit(PDN_FOR_UART3);
 	        break;
 	    default:
 		break;
@@ -3391,12 +3402,15 @@ static int mtk_uart_startup(struct uart_port *port)
 	switch(uart->nport){
 	    case 0:
 		enable_dpidle_by_bit(PDN_FOR_UART1);
+		enable_mcidle_by_bit(PDN_FOR_UART1);
 	        break;
 	    case 1:
 		enable_dpidle_by_bit(PDN_FOR_UART2);
+		enable_mcidle_by_bit(PDN_FOR_UART2);
 	        break;
 	    case 2:
 		enable_dpidle_by_bit(PDN_FOR_UART3);
+		enable_mcidle_by_bit(PDN_FOR_UART3);
 	        break;
 	    default:
 		break;
@@ -3500,12 +3514,15 @@ static void mtk_uart_shutdown(struct uart_port *port)
     switch(uart->nport){
 	case 0:
 	    enable_dpidle_by_bit(PDN_FOR_UART1);
+	    enable_mcidle_by_bit(PDN_FOR_UART1);
 	    break;
 	case 1:
 	    enable_dpidle_by_bit(PDN_FOR_UART2);
+	    enable_mcidle_by_bit(PDN_FOR_UART2);
 	    break;
 	case 2:
 	    enable_dpidle_by_bit(PDN_FOR_UART3);
+	    enable_mcidle_by_bit(PDN_FOR_UART3);
 	    break;
 	default:
     	    break;
@@ -3955,6 +3972,7 @@ static void mtk_uart_bt_resume(void)
 	mt_set_gpio_mode(GPIO220, GPIO_MODE_01);
 	ret = uart_resume_port(&mtk_uart_drv, &uart->port);
 	spin_unlock_irqrestore(&mtk_uart_bt_lock, flags);
+	disable_irq(uart->port.irq);
 	printk(KERN_NOTICE "[UART%d] Resume(%d)!\n", uart->nport, ret);
     }
 }
@@ -3999,8 +4017,84 @@ static int mtk_uart_resume(struct platform_device *pdev)
 #endif //PM_SUSPEND_RESUME_CONFIG_EN
     return ret;
 }
+int mtk_uart_pm_suspend(struct device *device)
+{
+    struct platform_device *pdev;
+    pr_debug("calling %s()\n", __func__);
+
+    pdev = to_platform_device(device);
+    BUG_ON(pdev == NULL);
+
+    return mtk_uart_suspend(pdev, PMSG_SUSPEND);
+}
+
+int mtk_uart_pm_resume(struct device *device)
+{
+    struct platform_device *pdev;
+    pr_debug("calling %s()\n", __func__);
+
+    pdev = to_platform_device(device);
+    BUG_ON(pdev == NULL);
+
+    return mtk_uart_resume(pdev);
+}
+
+int mtk_uart_pm_restore_noirq(struct device *device)
+{
+    unsigned int gic_pending, fifo_int_stat;
+    struct mtk_uart *uart;
+    //pr_warn("calling %s()\n", __func__);
+    
+    uart = dev_get_drvdata(device);
+    if (!uart || !uart->setting) {
+        pr_warn("[%s] uart (%p) or uart->setting (%p) is null!!\n", __func__, uart, uart->setting);
+        return 0;
+    }
+    mtk_uart_fifo_set_trig(uart, uart->tx_trig, uart->rx_trig);
+    if (uart->setting->irq_sen == MT65xx_EDGE_SENSITIVE) {
+        irq_set_irq_type(uart->setting->irq_num, IRQF_TRIGGER_FALLING);
+    } else {
+        irq_set_irq_type(uart->setting->irq_num, IRQF_TRIGGER_LOW);
+    }
+    
+#define GIC_DIST_PENDING_SET 0x200
+    if (uart->tx_vfifo && uart->tx_mode == UART_TX_VFIFO_DMA) {
+        irq_set_irq_type(uart->tx_vfifo->irq_id, IRQF_TRIGGER_LOW);
+        fifo_int_stat = UART_READ32(VFF_INT_EN(uart->tx_vfifo->base));
+        gic_pending = DRV_Reg32(GIC_DIST_BASE + GIC_DIST_PENDING_SET + uart->tx_vfifo->irq_id/32*4);
+        pr_warn("[%s] tx_vfifo(%p) int(0x%08x) gic_pending_mask(0x%08x)\n",
+                __func__, uart->tx_vfifo->base, fifo_int_stat, gic_pending);
+    }
+    if (uart->rx_vfifo && uart->rx_mode == UART_RX_VFIFO_DMA) {
+        irq_set_irq_type(uart->rx_vfifo->irq_id, IRQF_TRIGGER_LOW);
+        fifo_int_stat = UART_READ32(VFF_INT_EN(uart->rx_vfifo->base));
+        gic_pending = DRV_Reg32(GIC_DIST_BASE + GIC_DIST_PENDING_SET + uart->rx_vfifo->irq_id/32*4);
+        pr_warn("[%s] rx_vfifo(%p) int(0x%08x) gic_pending_mask(0x%08x)\n",
+                __func__, uart->rx_vfifo->base, fifo_int_stat, gic_pending);
+    }
+    return 0;
+}
+
+/*---------------------------------------------------------------------------*/
+#else /*CONFIG_PM*/
+/*---------------------------------------------------------------------------*/
+#define mtk_uart_pm_suspend    NULL
+#define mtk_uart_pm_resume NULL
+#define mtk_uart_pm_restore_noirq NULL
 /*---------------------------------------------------------------------------*/
 #endif /*CONFIG_PM*/
+/*---------------------------------------------------------------------------*/
+struct dev_pm_ops mtk_uart_pm_ops = {
+    .suspend = mtk_uart_pm_suspend,
+    .resume = mtk_uart_pm_resume,
+    //.freeze = mtk_uart_pm_suspend,
+    //.thaw = mtk_uart_pm_resume,
+    .poweroff = mtk_uart_pm_suspend,
+    .restore = mtk_uart_pm_resume,
+    .restore_noirq = mtk_uart_pm_restore_noirq,
+};
+
+
 /*---------------------------------------------------------------------------*/
 static int mtk_uart_init_ports(void)
 {
@@ -4049,7 +4143,7 @@ static int mtk_uart_init_ports(void)
         uart->timeout_count = 0;
         uart->baudrate      = 0;
         uart->custom_baud   = 0;
-	uart->registers.dll = 1;
+ 	uart->registers.dll = 1;
 	uart->registers.dlh = 0;
 	uart->registers.ier = 0;
 	uart->registers.lcr = 0;
@@ -4088,7 +4182,7 @@ static int mtk_uart_init_ports(void)
         mtk_uart_fifo_init(uart);
         mtk_uart_set_mode(uart, uart->dma_mode);
         //mtk_uart_power_down(uart);
-  	reg_sync_writel(0x1, UART_SLEEP_EN);
+ 	reg_sync_writel(0x1, UART_SLEEP_EN);
     	printk("SLEEP_EN = 0x%x\n",UART_READ32(UART_SLEEP_EN));
 #endif        
     }
@@ -4111,7 +4205,11 @@ static struct platform_driver mtk_uart_dev_drv =
 #endif    
     .driver = {
         .name    = DRV_NAME,
-        .owner   = THIS_MODULE,    
+        .owner   = THIS_MODULE,   
+#ifdef CONFIG_PM
+        .pm      = &mtk_uart_pm_ops,
+#endif
+ 
     }
 };
 

@@ -14,6 +14,10 @@
 
 /*
 ** $Log: gl_p2p_cfg80211.c $
+**
+** 01 30 2013 yuche.tsai
+** [ALPS00455459] [GN_WIFI]??wifi direct???????????
+** Fix possible race condition under GO mode.
 ** 
 ** 09 12 2012 wcpadmin
 ** [ALPS00276400] Remove MTK copyright and legal header on GPL/LGPL related packages
@@ -1572,7 +1576,7 @@ mtk_p2p_cfg80211_disconnect (
         mboxSendMsg(prGlueInfo->prAdapter,
                                 MBOX_ID_0,
                                 (P_MSG_HDR_T)prDisconnMsg,
-                                MSG_SEND_METHOD_UNBUF);
+                                MSG_SEND_METHOD_BUF);
 
         i4Rslt = 0;
     } while (FALSE);
@@ -1784,12 +1788,12 @@ mtk_p2p_cfg80211_mgmt_frame_register (
 
            prGlueInfo->u4Flag |= GLUE_FLAG_FRAME_FILTER;
 
-           /* wake up main thread */
-           wake_up_interruptible(&prGlueInfo->waitq);
+        /* wake up main thread */
+        wake_up_interruptible(&prGlueInfo->waitq);
 
-           if (in_interrupt()) {
-              DBGLOG(P2P, TRACE, ("It is in interrupt level\n"));
-           }
+        if (in_interrupt()) {
+            DBGLOG(P2P, TRACE, ("It is in interrupt level\n"));
+        }
         }
 
 
@@ -1904,7 +1908,7 @@ int mtk_p2p_cfg80211_testmode_cmd(
     prGlueInfo = *((P_GLUE_INFO_T *) wiphy_priv(wiphy));
 
 	DBGLOG(P2P, TRACE, ("mtk_p2p_cfg80211_testmode_cmd\n"));
-     
+    
     if(data && len)
         prParams = (P_NL80211_DRIVER_TEST_PARAMS)data;
 
@@ -2162,6 +2166,17 @@ mtk_p2p_cfg80211_testmode_p2p_sigma_cmd(
           break;
       case 109: /* Max Clients*/
           kalP2PSetMaxClients(prGlueInfo, value);
+          break;
+      case 110: /* Hotspot WPS mode */
+            kalIoctl(prGlueInfo,
+                wlanoidSetP2pWPSmode,
+                &value,
+                sizeof(value),
+                FALSE,
+                FALSE,
+                TRUE,
+                TRUE,
+                &u4Leng);  
           break;
       default:
           break;

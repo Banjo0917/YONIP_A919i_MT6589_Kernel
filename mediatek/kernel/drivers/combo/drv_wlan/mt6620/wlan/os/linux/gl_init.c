@@ -2312,6 +2312,10 @@ static void wlanEarlySuspend(void)
 
     // <1> Sanity check and acquire the net_device
     ASSERT(u4WlanDevNum <= CFG_MAX_WLAN_DEVICES);
+    if(u4WlanDevNum == 0){
+        DBGLOG(INIT, ERROR, ("wlanEarlySuspend u4WlanDevNum==0 invalid!!\n"));
+        return;
+    }
     prDev = arWlanDevInfo[u4WlanDevNum-1].prDev;
     ASSERT(prDev);
 
@@ -2438,6 +2442,10 @@ static void wlanLateResume(void)
 
     // <1> Sanity check and acquire the net_device
     ASSERT(u4WlanDevNum <= CFG_MAX_WLAN_DEVICES);
+    if(u4WlanDevNum == 0){
+        DBGLOG(INIT, ERROR, ("wlanLateResume u4WlanDevNum==0 invalid!!\n"));
+        return;
+    }
     prDev = arWlanDevInfo[u4WlanDevNum-1].prDev;
     ASSERT(prDev);
 
@@ -2525,6 +2533,9 @@ static void wlan_late_resume(struct early_suspend *h)
 }
 #endif //defined(CONFIG_HAS_EARLYSUSPEND)
 #endif //! CONFIG_X86
+
+extern void wlanRegisterNotifier(void);
+extern void wlanUnregisterNotifier(void);
 
 /*----------------------------------------------------------------------------*/
 /*!
@@ -2762,6 +2773,10 @@ bailout:
             DBGLOG(INIT, ERROR, ("wlanProbe: Cannot register the net_device context to the kernel\n"));
             break;
         }
+#if defined(CONFIG_HAS_EARLYSUSPEND)
+        glRegisterEarlySuspend(&mt6620_early_suspend_desc, wlan_early_suspend, wlan_late_resume);
+        wlanRegisterNotifier();
+#endif
 
         //4 <6> Initialize /proc filesystem
 #ifdef WLAN_INCLUDE_PROC
@@ -2926,10 +2941,13 @@ wlanRemove(
     wlanNetDestroy(prDev->ieee80211_ptr);
     prDev = NULL;
 
+#if defined(CONFIG_HAS_EARLYSUSPEND)
+    glUnregisterEarlySuspend(&mt6620_early_suspend_desc);
+#endif
+    wlanUnregisterNotifier();
+
     return;
 } /* end of wlanRemove() */
-extern void wlanRegisterNotifier(void);
-extern void wlanUnregisterNotifier(void);
 
 /*----------------------------------------------------------------------------*/
 /*!
@@ -2958,12 +2976,6 @@ static int __init initWlan(void)
         return ret;
     }
 
-#if defined(CONFIG_HAS_EARLYSUSPEND)
-
-    glRegisterEarlySuspend(&mt6620_early_suspend_desc, wlan_early_suspend, wlan_late_resume);
-    wlanRegisterNotifier();
-#endif
-
 #if (CFG_CHIP_RESET_SUPPORT)
     glResetInit();
 #endif
@@ -2985,11 +2997,6 @@ static int __init initWlan(void)
 static VOID __exit exitWlan(void)
 {
     //printk("remove %p\n", wlanRemove);
-#if defined(CONFIG_HAS_EARLYSUSPEND)
-    glUnregisterEarlySuspend(&mt6620_early_suspend_desc);
-#endif
-    wlanUnregisterNotifier();
-
 #if CFG_CHIP_RESET_SUPPORT
     glResetUninit();
 #endif

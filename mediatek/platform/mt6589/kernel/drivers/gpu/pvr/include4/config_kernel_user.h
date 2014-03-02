@@ -43,4 +43,4 @@
 #define USE_ARGB8888_FB 
 #define MTK_DEBUG_LFB 
 #define MTK_DEBUG_TIMER_MONITOR 
-#define MTK_FREQ_INIT 
+#define MTK_FREQ_OD_INIT 

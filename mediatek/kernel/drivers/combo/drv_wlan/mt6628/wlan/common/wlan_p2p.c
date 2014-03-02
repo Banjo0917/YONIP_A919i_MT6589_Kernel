@@ -1737,6 +1737,60 @@ wlanoidSetP2pSupplicantVersion (
     return rResult;
 } /* wlanoidSetP2pSupplicantVersion */
 
+
+/*----------------------------------------------------------------------------*/
+/*!
+* \brief This routine is used to set the WPS mode.
+*
+* \param[in] pvAdapter Pointer to the Adapter structure.
+* \param[in] pvSetBuffer A pointer to the buffer that holds the data to be set.
+* \param[in] u4SetBufferLen The length of the set buffer.
+* \param[out] pu4SetInfoLen If the call is successful, returns the number of
+*                          bytes read from the set buffer. If the call failed
+*                          due to invalid length of the set buffer, returns
+*                          the amount of storage needed.
+*
+* \retval WLAN_STATUS_SUCCESS
+* \retval WLAN_STATUS_INVALID_LENGTH
+*/
+/*----------------------------------------------------------------------------*/
+WLAN_STATUS
+wlanoidSetP2pWPSmode (
+    IN  P_ADAPTER_T prAdapter,
+    IN  PVOID       pvSetBuffer,
+    IN  UINT_32     u4SetBufferLen,
+    OUT PUINT_32    pu4SetInfoLen
+    )
+{
+    WLAN_STATUS status;
+    UINT_32 u4IsWPSmode = 0;
+    DEBUGFUNC("wlanoidSetP2pWPSmode");
+
+    ASSERT(prAdapter);
+    ASSERT(pu4SetInfoLen);
+
+    if(pvSetBuffer) {
+        u4IsWPSmode = *(PUINT_32)pvSetBuffer;
+    }
+    else{
+        u4IsWPSmode = 0;
+    }
+
+    if(u4IsWPSmode){
+        prAdapter->rWifiVar.prP2pFsmInfo->fgIsWPSMode = 1;
+    }
+    else{
+        prAdapter->rWifiVar.prP2pFsmInfo->fgIsWPSMode = 0;
+    }
+
+    status = nicUpdateBss(
+        prAdapter,
+        NETWORK_TYPE_P2P_INDEX);
+    
+    return status;
+} /* end of wlanoidSetP2pWPSmode() */
+
+
 #if CFG_SUPPORT_P2P_RSSI_QUERY
 WLAN_STATUS
 wlanoidQueryP2pRssi (

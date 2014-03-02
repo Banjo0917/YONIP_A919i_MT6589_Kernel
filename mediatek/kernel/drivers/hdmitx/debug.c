@@ -1,4 +1,4 @@
-#if defined(MTK_HDMI_SUPPORT)
+#if defined(MTK_HDMI_SUPPORT) || defined(MTK_WFD_SUPPORT)
 #include <linux/string.h>
 #include <linux/time.h>
 #include <linux/uaccess.h>
@@ -51,7 +51,12 @@ extern 	void wfd_force_pattern_output(int enable);
 //extern int hdmi_drv_init(void);
 static void process_dbg_opt(const char *opt)
 {
-	if (0 == strncmp(opt, "on", 2))
+	if(0)
+	{
+
+	}
+#if defined(MTK_HDMI_SUPPORT)
+	else if (0 == strncmp(opt, "on", 2))
     {
 		hdmi_power_on();
     }
@@ -85,18 +90,6 @@ static void process_dbg_opt(const char *opt)
             goto Error;
         }
     }
-#if defined(MTK_WFD_SUPPORT)
-       else if (0 == strncmp(opt, "pattern:", 8))
-    {
-        if (0 == strncmp(opt + 4, "on", 2)) {
-            wfd_force_pattern_output(true);
-        } else if (0 == strncmp(opt + 4, "off", 3)) {
-            wfd_force_pattern_output(false);
-        } else {
-            goto Error;
-        }
-    }
-#endif
     else if(0 == strncmp(opt, "fakecablein:", 12))
     {
         if (0 == strncmp(opt + 12, "enable", 6))
@@ -112,6 +105,19 @@ static void process_dbg_opt(const char *opt)
             goto Error;
         }
     }
+#endif
+#if defined(MTK_WFD_SUPPORT)
+					 else if (0 == strncmp(opt, "pattern:", 8))
+				{
+						if (0 == strncmp(opt + 8, "on", 2)) {
+								wfd_force_pattern_output(1);
+						} else if (0 == strncmp(opt + 8, "off", 3)) {
+								wfd_force_pattern_output(0);
+						} else {
+								goto Error;
+						}
+				}
+#endif		
 	else
 	{
 		goto Error;

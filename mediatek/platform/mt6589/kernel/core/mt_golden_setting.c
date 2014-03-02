@@ -1,8 +1,10 @@
 #include <linux/init.h>
 #include <linux/module.h>
 #include <linux/kernel.h>
-#include <mach/mt_typedefs.h>
+#include <linux/proc_fs.h>
+#include <linux/platform_device.h>
 
+#include <mach/mt_typedefs.h>
 #include <mach/mt_pmic_wrap.h>
 #include <mach/upmu_hw.h>
 #include <mach/mt_spm_idle.h>
@@ -61,7 +63,7 @@ u32 MT6320_E1_Suspend_Golden[] = {
 0x438, 0xffff, 0x0     ,
 0x12A, 0xffff, 0x8001  ,
 0x502, 0xf00f, 0x400c  ,
-//0x102, 0xffff, 0xe61f  ,
+0x102, 0xffff, 0xc61f  ,
 0x108, 0xffff, 0x0     ,
 0x128, 0x003f, 0xf0a   ,
 0x718, 0xffff, 0x4     ,
@@ -96,7 +98,7 @@ u32 MT6320_E2_Suspend_Golden[] = {
 0x438, 0xffff, 0x0     ,
 0x12A, 0xffff, 0x8001  ,
 0x502, 0xf00f, 0x400c  ,
-//0x102, 0xffff, 0xe61f  ,
+0x102, 0xffff, 0xc61f  ,
 0x108, 0xffff, 0x0     ,
 0x128, 0x003f, 0xf0a   ,
 0x718, 0xffff, 0x6     ,
@@ -259,5 +261,92 @@ void Golden_Setting_Compare_for_Suspend(void)
     // ============================================================================================================
 }
 
+static struct platform_driver mtk_golden_setting_driver = {
+    .remove     = NULL,
+    .shutdown   = NULL,
+    .probe      = NULL,
+    .suspend	= NULL,
+    .resume		= NULL,
+    .driver     = {
+        .name = "mtk-golden-setting",
+    },
+};
+
+/***************************
+* golden_setting_debug_read
+****************************/
+static int golden_setting_debug_read(char *buf, char **start, off_t off, int count, int *eof, void *data)
+{
+    int len = 0;
+    char *p = buf;
+
+    p += sprintf(p, "golden setting\n");
+
+    len = p - buf;
+    return len;
+}
+
+/************************************
+* golden_setting_debug_write
+*************************************/
+static ssize_t golden_setting_debug_write(struct file *file, const char *buffer, unsigned long count, void *data)
+{
+    int enabled = 0;
+
+    if (sscanf(buffer, "%d", &enabled) == 1)
+    {
+        if (enabled == 1)
+        {
+            Golden_Setting_Compare_for_Suspend();
+        }
+        else
+        {
+            clc_notice("bad argument_0!! argument should be \"1\"\n");
+        }
+    }
+    else
+    {
+        clc_notice("bad argument_0!! argument should be \"1\"\n");
+    }
+
+    return count;
+}
+
+
+static int __init golden_setting_init(void)
+{
+    struct proc_dir_entry *mt_entry = NULL;
+    struct proc_dir_entry *mt_golden_setting_dir = NULL;
+    int golden_setting_err = 0;
+
+    mt_golden_setting_dir = proc_mkdir("golden_setting", NULL);
+    if (!mt_golden_setting_dir)
+    {
+        clc_notice("[%s]: mkdir /proc/golden_setting failed\n", __FUNCTION__);
+    }
+    else
+    {
+        mt_entry = create_proc_entry("golden_setting_debug", S_IRUGO | S_IWUSR | S_IWGRP, mt_golden_setting_dir);
+        if (mt_entry)
+        {
+            mt_entry->read_proc = golden_setting_debug_read;
+            mt_entry->write_proc = golden_setting_debug_write;
+        }
+    }
+
+    golden_setting_err = platform_driver_register(&mtk_golden_setting_driver);
+    
+    if (golden_setting_err)
+    {
+        clc_notice("golden setting driver callback register failed..\n");
+        return golden_setting_err;
+    }
+    
+    return 0;
+}
+
+
 MODULE_DESCRIPTION("MT6589 golden setting compare v0.1");
+
+late_initcall(golden_setting_init);
 

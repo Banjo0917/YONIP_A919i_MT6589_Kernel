@@ -33,69 +33,53 @@
 #include <linux/rtpm_prio.h>
 #include <linux/vmalloc.h>
 #include <linux/disp_assert_layer.h>
-
-#include <asm/uaccess.h>
-#include <asm/atomic.h>
-#include <asm/mach-types.h>
-#include <asm/cacheflush.h>
-#include <asm/io.h>
-
-#include <mach/dma.h>
-#include <mach/irqs.h>
-
 #include <linux/miscdevice.h>
-#include <linux/platform_device.h>
 #include <linux/fs.h>
 #include <linux/file.h>
-#include <linux/mm.h>
 #include <linux/cdev.h>
-#include <asm/tlbflush.h>
-#include <asm/page.h>
-#include <asm/io.h>
-#include <asm/uaccess.h>
 #include <linux/slab.h>
-
-#include <linux/autoconf.h>
 #include <linux/module.h>
-#include <linux/mm.h>
-#include <linux/init.h>
-#include <linux/fb.h>
-#include <linux/delay.h>
-#include <linux/device.h>
-#include <linux/platform_device.h>
-#include <linux/dma-mapping.h>
-#include <linux/earlysuspend.h>
-#include <linux/kthread.h>
-#include <linux/rtpm_prio.h>
 #include <linux/list.h>
+#include <linux/switch.h>
 
 #include <asm/uaccess.h>
 #include <asm/atomic.h>
 #include <asm/mach-types.h>
 #include <asm/cacheflush.h>
 #include <asm/io.h>
-
 #include <mach/dma.h>
 #include <mach/irqs.h>
-#include <linux/vmalloc.h>
+#include <asm/tlbflush.h>
+#include <asm/page.h>
 
-#include <asm/uaccess.h>
+#include <mach/m4u.h>
+#include <mach/mt_typedefs.h>
+#include <mach/mt_reg_base.h>
+#include <mach/mt_clkmgr.h>
 
+#include "hdmitx.h"
 #include "hdmi_drv.h"
+#include "hdmi_utils.h"
+
+#include "dpi_reg.h"
+#include "mach/eint.h"
+#include "mach/irqs.h"
 
 #include "disp_drv_platform.h"
 #include "ddp_reg.h"
 
-//#include "lcd_drv.h"
-//#include "lcd_reg.h"
-//#include "dsi_reg.h"
-#include "dpi_reg.h"
-#include "mach/eint.h"
-#include "mach/irqs.h"
-#include "hdmitx.h"
+#include "dpi1_drv.h"
+#include <ddp_dpfd.h>
 
-#include <linux/switch.h>
 
+
+#ifdef I2C_DBG
+#include "tmbslHdmiTx_types.h"
+#include "tmbslTDA9989_local.h"
+#endif
+
+
+#define HDMI_DEVNAME "hdmitx"
 
 #undef OUTREG32
 #define OUTREG32(x, y) {/*printk("[hdmi]write 0x%08x to 0x%08x\n", (y), (x)); */__OUTREG32((x),(y))}
@@ -107,65 +91,34 @@
 #define RET_VOID_IF_NOLOG(cond)       if ((cond)){return;}
 #define RETIFNOT(cond, rslt)    if (!(cond)){HDMI_LOG("return in %d\n",__LINE__);return (rslt);}
 
+#ifdef MTK_MT8193_HDMI_SUPPORT
+#define HDMI_DPI(suffix)        DPI1 ## suffix
+#define HMID_DEST_DPI    		DISP_MODULE_DPI1
+static int hdmi_bpp = 3;
+#else
+#define HDMI_DPI(suffix)        DPI  ## suffix
+#define HMID_DEST_DPI    		DISP_MODULE_DPI0
+static int hdmi_bpp = 3;
+#endif
+
 #define ALIGN_TO(x, n)  \
     (((x) + ((n) - 1)) & ~((n) - 1))
 
-#ifdef I2C_DBG
-#include "tmbslHdmiTx_types.h"
-#include "tmbslTDA9989_local.h"
-#endif
-
-#include <mach/m4u.h>
-#include <mach/mt_typedefs.h>
-//#include <mach/mt_gpio.h>
-
-#if defined(CONFIG_ARCH_MT6577) || defined(CONFIG_ARCH_MT6575)
-#include <mach/mt_clock_manager.h>
-#include "dpi_drv.h"
-#elif defined(CONFIG_ARCH_MT6589)
-#include <mach/mt_clkmgr.h>
-#include "dpi1_drv.h"
-#include <ddp_dpfd.h>
-#define NEW_HDMI_ARCH
-#endif
-
-//#include <mach/mt_mdp.h>
-#include <mach/mt_reg_base.h>
-
-//static PDSI_PHY_REGS const DSI_PHY_REG_DPI = (PDSI_PHY_REGS)(MIPI_CONFG_BASE + 0x800);
-extern int m4u_config_port(M4U_PORT_STRUCT* pm4uport);
+extern const HDMI_DRIVER* HDMI_GetDriver(void);
 extern void HDMI_DBG_Init(void);
-
-extern bool mtkfb_is_suspend(void);
-
 
 extern UINT32 DISP_GetScreenHeight(void);
 extern UINT32 DISP_GetScreenWidth(void);
+extern BOOL DISP_IsVideoMode(void);
 extern int disp_lock_mutex(void);
 extern int disp_unlock_mutex(int id);
+static void hdmi_update_impl(void);
 
 static size_t hdmi_log_on = 1;
 static struct switch_dev hdmi_switch_data;
-#define HDMI_LOG(fmt, arg...) \
-	do { \
-		if (hdmi_log_on) {printk("[hdmi]%s,#%d ", __func__, __LINE__); printk(fmt, ##arg);} \
-	}while (0)
-
-#define HDMI_FUNC()	\
-    do { \
-        if(hdmi_log_on) printk("[hdmi] %s\n", __func__); \
-    }while (0)
-
-#define HDMI_LINE()	\
-    do { \
-        if (hdmi_log_on) {printk("[hdmi]%s,%d ", __func__, __LINE__); printk(fmt, ##arg);} \
-    }while (0)
-
-//extern int pll_fsel(enum mt65xx_pll_id id, unsigned int pll_value);
-#define HDMI_DEVNAME "hdmitx"
 HDMI_PARAMS _s_hdmi_params = {0};
 HDMI_PARAMS *hdmi_params = &_s_hdmi_params;
-HDMI_DRIVER *hdmi_drv = NULL;
+static HDMI_DRIVER *hdmi_drv = NULL;
 
 void hdmi_log_enable(int enable)
 {
@@ -176,27 +129,21 @@ void hdmi_log_enable(int enable)
 
 static DEFINE_SEMAPHORE(hdmi_update_mutex);
 typedef struct{
-    bool is_ipo_poweroff;   // IPO power off or not, like hdmi_suspend(), hdmi_resume()
-    bool is_force_fullscreen;    // whether memory is forced to be rotated in Camera, no need to set orientation again
-    bool is_force_portrait; // whether forced portrait mode, priority is higher than is_force_fullscreen
     bool is_reconfig_needed;    // whether need to reset HDMI memory
     bool is_enabled;    // whether HDMI is enabled or disabled by user
-    //bool is_active;     // whether HDMI is actived with cable pluged in.
     bool is_force_disable; 		//used for camera scenario.
     bool is_clock_on;   // DPI is running or not
-    bool is_factory_mode;
     atomic_t state; // HDMI_POWER_STATE state
-    bool is_audio_avaliable;
     int 	lcm_width;  // LCD write buffer width
     int		lcm_height; // LCD write buffer height
+    bool    lcm_is_video_mode;
     int		hdmi_width; // DPI read buffer width
     int		hdmi_height; // DPI read buffer height
     HDMI_VIDEO_RESOLUTION		output_video_resolution;
     HDMI_AUDIO_FORMAT           output_audio_format;
     int		orientation;    // MDP's orientation, 0 means 0 degree, 1 means 90 degree, 2 means 180 degree, 3 means 270 degree
-    int     orientation_store;    // Store orientation setting when HDMI driver is_force_fullscreen
-    int     orientation_store_portrait;	    // Store orientation setting when HDMI driver is_force_portrait
     HDMI_OUTPUT_MODE    output_mode;
+    int     scaling_factor;
 }_t_hdmi_context;
 
 struct hdmi_video_buffer_list {
@@ -208,18 +155,18 @@ struct hdmi_video_buffer_list {
 };
 
 static struct list_head hdmi_video_mode_buffer_list;
-//static struct list_head *hdmi_video_buffer_list_head = &hdmi_video_mode_buffer_list;
+static struct list_head *hdmi_video_buffer_list_head = &hdmi_video_mode_buffer_list;
 DEFINE_SEMAPHORE(hdmi_video_mode_mutex);
 static atomic_t hdmi_video_mode_flag = ATOMIC_INIT(0);
-//static int hdmi_add_video_buffer(struct hdmi_video_buffer_info *buffer_info, struct file *file);
-//static struct hdmi_video_buffer_list* hdmi_search_video_buffer(struct hdmi_video_buffer_info *buffer_info, struct file *file);
-//static void hdmi_destory_video_buffer(void);
+static int hdmi_add_video_buffer(struct hdmi_video_buffer_info *buffer_info, struct file *file);
+static struct hdmi_video_buffer_list* hdmi_search_video_buffer(struct hdmi_video_buffer_info *buffer_info, struct file *file);
+static void hdmi_destory_video_buffer(void);
 #define IS_HDMI_IN_VIDEO_MODE()        atomic_read(&hdmi_video_mode_flag)
 #define SET_HDMI_TO_VIDEO_MODE()       atomic_set(&hdmi_video_mode_flag, 1)
 #define SET_HDMI_LEAVE_VIDEO_MODE()    atomic_set(&hdmi_video_mode_flag, 0)
 static wait_queue_head_t hdmi_video_mode_wq;
-static atomic_t hdmi_video_mode_event = ATOMIC_INIT(0);
-static atomic_t hdmi_video_mode_dpi_change_address = ATOMIC_INIT(0);
+//static atomic_t hdmi_video_mode_event = ATOMIC_INIT(0);
+//static atomic_t hdmi_video_mode_dpi_change_address = ATOMIC_INIT(0);
 #define IS_HDMI_VIDEO_MODE_DPI_IN_CHANGING_ADDRESS()    atomic_read(&hdmi_video_mode_dpi_change_address)
 #define SET_HDMI_VIDEO_MODE_DPI_CHANGE_ADDRESS()        atomic_set(&hdmi_video_mode_dpi_change_address, 1)
 #define SET_HDMI_VIDEO_MODE_DPI_CHANGE_ADDRESS_DONE()   atomic_set(&hdmi_video_mode_dpi_change_address, 0)
@@ -240,50 +187,106 @@ static _t_hdmi_context *p = &hdmi_context;
 #define SET_HDMI_OFF()	        atomic_set(&p->state, HDMI_POWER_STATE_OFF)
 #define SET_HDMI_STANDBY()	    atomic_set(&p->state, HDMI_POWER_STATE_STANDBY)
 
-extern int m4u_alloc_mva_stub(M4U_MODULE_ID_ENUM eModuleID, const unsigned int BufAddr, const unsigned int BufSize, unsigned int *pRetMVABuf);
-extern int m4u_dealloc_mva_stub(M4U_MODULE_ID_ENUM eModuleID, const unsigned int BufAddr, const unsigned int BufSize, const unsigned int MVA);
-extern int m4u_config_port_stub(M4U_PORT_STRUCT* pM4uPort);
-
-extern int m4u_insert_tlb_range_stub(M4U_MODULE_ID_ENUM eModuleID, unsigned int MVAStart, const unsigned int MVAEnd, M4U_RANGE_PRIORITY_ENUM ePriority, unsigned int entryCount);
-extern int m4u_invalid_tlb_range_stub(M4U_MODULE_ID_ENUM eModuleID, unsigned int MVAStart, unsigned int MVAEnd);
-
-#ifndef NEW_HDMI_ARCH
-static unsigned int temp_mva, temp_va, hdmi_va, hdmi_mva /*, fb_pa, fb_va, fb_size*/;
-#else
 int hdmi_allocate_hdmi_buffer(void);
 int hdmi_free_hdmi_buffer(void);
 int hdmi_display_path_overlay_config(bool enable);
 int hdmi_dst_display_path_config(bool enable);
 int hdmi_src_display_path_config(bool enable);
 static int dp_mutex_src = -1, dp_mutex_dst = -1;
-static unsigned int temp_mva_r, temp_mva_w, temp_va, hdmi_va, hdmi_mva_r, hdmi_mva_w /*, fb_pa, fb_va, fb_size*/;
-#endif
+static unsigned int temp_mva_r, temp_mva_w, temp_va, hdmi_va, hdmi_mva_r, hdmi_mva_w;
+
 
 static dev_t hdmi_devno;
 static struct cdev *hdmi_cdev;
 static struct class *hdmi_class = NULL;
 
-static UINT32 const DPI_PAD_CON = 0xf2080900;
-static UINT32 const NLI_ARB_CS = 0xf100d014;
+#include <linux/mmprofile.h>
+struct HDMI_MMP_Events_t
+{
+    MMP_Event HDMI;
+    MMP_Event DDPKBitblt;
+    MMP_Event OverlayDone;
+    MMP_Event SwitchRDMABuffer;
+    MMP_Event SwitchOverlayBuffer;
+    MMP_Event StopOverlayBuffer;
+    MMP_Event RDMA1RegisterUpdated;
+    MMP_Event WDMA1RegisterUpdated;
+} HDMI_MMP_Events;
 
-static int hdmi_bpp = 4;
+
+// ---------------------------------------------------------------------------
+//  Information Dump Routines
+// ---------------------------------------------------------------------------
+
+void init_hdmi_mmp_events(void)
+{
+    if (HDMI_MMP_Events.HDMI == 0)
+    {
+        HDMI_MMP_Events.HDMI = MMProfileRegisterEvent(MMP_RootEvent, "HDMI");
+        HDMI_MMP_Events.OverlayDone = MMProfileRegisterEvent(HDMI_MMP_Events.HDMI, "OverlayDone");
+        HDMI_MMP_Events.DDPKBitblt = MMProfileRegisterEvent(HDMI_MMP_Events.HDMI, "DDPKBitblt");
+        HDMI_MMP_Events.SwitchRDMABuffer = MMProfileRegisterEvent(HDMI_MMP_Events.HDMI, "SwitchRDMABuffer");
+        HDMI_MMP_Events.RDMA1RegisterUpdated = MMProfileRegisterEvent(HDMI_MMP_Events.HDMI, "RDMA1RegisterUpdated");
+        HDMI_MMP_Events.SwitchOverlayBuffer = MMProfileRegisterEvent(HDMI_MMP_Events.HDMI, "SwitchOverlayBuffer");
+        HDMI_MMP_Events.WDMA1RegisterUpdated = MMProfileRegisterEvent(HDMI_MMP_Events.HDMI, "WDMA1RegisterUpdated");
+        HDMI_MMP_Events.StopOverlayBuffer = MMProfileRegisterEvent(HDMI_MMP_Events.HDMI, "StopOverlayBuffer");
+        MMProfileEnableEventRecursive(HDMI_MMP_Events.HDMI, 1);
+    }
+}
 
 //static int hdmi_default_width = 1280;
 //static int hdmi_default_height = 720;
 
+#define ENABLE_HDMI_FPS_CONTROL_LOG 1
+#if ENABLE_HDMI_FPS_CONTROL_LOG
+static unsigned int hdmi_fps_control_fps_wdma0 = 0;
+static unsigned long hdmi_fps_control_time_base_wdma0 = 0;
+static unsigned int hdmi_fps_control_fps_wdma1 = 0;
+static unsigned long hdmi_fps_control_time_base_wdma1 = 0;
+static unsigned int hdmi_fps_control_fps_rdma1 = 0;
+static unsigned long hdmi_fps_control_time_base_rdma1 = 0;
+#endif
+
+typedef enum
+{
+    HDMI_OVERLAY_STATUS_STOPPED,
+    HDMI_OVERLAY_STATUS_STOPPING,
+    HDMI_OVERLAY_STATUS_STARTING,
+    HDMI_OVERLAY_STATUS_STARTED,
+}HDMI_OVERLAY_STATUS;
+
+static unsigned int hdmi_fps_control_dpi = 0;
+static unsigned int hdmi_fps_control_overlay = 0;
+static HDMI_OVERLAY_STATUS hdmi_overlay_status = HDMI_OVERLAY_STATUS_STOPPED;
+static unsigned int hdmi_rdma_switch_count = 0;
+
 static int hdmi_buffer_write_id = 0;
 static int hdmi_buffer_read_id = 0;
-//static int hdmi_buffer_lcdw_id = 0;
+static int hdmi_buffer_read_id_tmp = 0;
+static int hdmi_buffer_lcdw_id = 0;
+static int hdmi_buffer_lcdw_id_tmp = 0;
 
 static DPI_POLARITY clk_pol, de_pol, hsync_pol, vsync_pol;
-static unsigned int dpi_clk_div, dpi_clk_duty, hsync_pulse_width, hsync_back_porch, hsync_front_porch, vsync_pulse_width, vsync_back_porch, vsync_front_porch, intermediat_buffer_num;//mipi_pll_clk_ref, mipi_pll_clk_div1, mipi_pll_clk_div2, 
+static unsigned int dpi_clk_div, dpi_clk_duty, hsync_pulse_width, hsync_back_porch, hsync_front_porch, vsync_pulse_width, vsync_back_porch, vsync_front_porch, intermediat_buffer_num;
 static HDMI_COLOR_ORDER rgb_order;
 
-
 static struct task_struct *hdmi_update_task = NULL;
-
 static wait_queue_head_t hdmi_update_wq;
 static atomic_t hdmi_update_event = ATOMIC_INIT(0);
+
+static struct task_struct *hdmi_overlay_config_task = NULL;
+static wait_queue_head_t hdmi_overlay_config_wq;
+static atomic_t hdmi_overlay_config_event = ATOMIC_INIT(0);
+
+static struct task_struct *hdmi_rdma_config_task = NULL;
+static wait_queue_head_t hdmi_rdma_config_wq;
+static atomic_t hdmi_rdma_config_event = ATOMIC_INIT(0);
+
+static wait_queue_head_t reg_update_wq;
+static atomic_t reg_update_event = ATOMIC_INIT(0);
+
+static wait_queue_head_t dst_reg_update_wq;
+static atomic_t dst_reg_update_event = ATOMIC_INIT(0);
 
 static unsigned int hdmi_resolution_param_table[][3] =
 {
@@ -303,13 +306,225 @@ static unsigned int hdmi_resolution_param_table[][3] =
         
         {1920,  1080,   60},
         {1920,  1080,   50},
-        #else 
+        #else
         {720,   480,    60},
         {1280,  720,    60},
         {1920,  1080,   30},
         #endif
 };
 
+#define ENABLE_HDMI_BUFFER_LOG 1
+#if ENABLE_HDMI_BUFFER_LOG
+bool enable_hdmi_buffer_log = 0;
+#define HDMI_BUFFER_LOG(fmt, arg...) \
+    do { \
+        if(enable_hdmi_buffer_log){printk("[hdmi_buffer] "); printk(fmt, ##arg);} \
+    }while (0)
+#else
+bool enable_hdmi_buffer_log = 0;
+#define HDMI_BUFFER_LOG(fmt, arg...)
+#endif
+
+int hdmi_rdma_buffer_switch_mode = 0; // 0: switch in rdma1 frame done interrupt, 1: switch after DDPK_Bitblt done
+static int hdmi_buffer_num = 0;
+static int* hdmi_buffer_available = 0;
+static int* hdmi_buffer_queue = 0;
+static int hdmi_buffer_end = 0;
+static int hdmi_buffer_start = 0;
+static int hdmi_buffer_fill_count = 0;
+static DEFINE_SEMAPHORE(hdmi_buffer_mutex);
+
+static void hdmi_buffer_init(int num)
+{
+    int i;
+
+    if(down_interruptible(&hdmi_buffer_mutex))
+    {
+        HDMI_LOG("Can't get semaphore in %s()\n", __func__);
+        return;
+    }
+
+    HDMI_FUNC();
+
+    hdmi_buffer_num = num;
+    hdmi_buffer_start = 0;
+    hdmi_buffer_end = 0;
+    hdmi_buffer_fill_count = 0;
+
+    hdmi_buffer_write_id = 0;
+    hdmi_buffer_read_id = 0;
+    hdmi_buffer_lcdw_id = 0;
+    //hdmi_buffer_lcdr_id = 0;
+
+    hdmi_buffer_available = (int*)vmalloc(hdmi_buffer_num * sizeof(int));
+    hdmi_buffer_queue = (int*)vmalloc(hdmi_buffer_num * sizeof(int));
+
+    for(i=0; i<hdmi_buffer_num; i++)
+    {
+        hdmi_buffer_available[i] = 1;
+        hdmi_buffer_queue[i] = -1;
+    }
+
+    up(&hdmi_buffer_mutex);
+}
+
+static void hdmi_buffer_deinit(void)
+{
+    if(down_interruptible(&hdmi_buffer_mutex))
+    {
+        HDMI_LOG("Can't get semaphore in %s()\n", __func__);
+        return;
+    }
+
+    HDMI_FUNC();
+
+    hdmi_buffer_start = 0;
+    hdmi_buffer_end = 0;
+    hdmi_buffer_fill_count = 0;
+
+    if(hdmi_buffer_available)
+    {
+        vfree((const void*)hdmi_buffer_available);
+        hdmi_buffer_available = 0;
+    }
+
+    if(hdmi_buffer_queue)
+    {
+        vfree((const void*)hdmi_buffer_queue);
+        hdmi_buffer_queue = 0;
+    }
+
+    up(&hdmi_buffer_mutex);
+}
+
+static void hdmi_dump_buffer_queue(void)
+{
+    HDMI_BUFFER_LOG("[hdmi] available={%d,%d,%d,%d} queue={%d,%d,%d,%d}, {start,end}={%d,%d} count=%d\n",
+            hdmi_buffer_available[0], hdmi_buffer_available[1], hdmi_buffer_available[2], hdmi_buffer_available[3],
+            hdmi_buffer_queue[hdmi_buffer_start],
+            hdmi_buffer_queue[(hdmi_buffer_start+1)%hdmi_buffer_num],
+            hdmi_buffer_queue[(hdmi_buffer_start+2)%hdmi_buffer_num],
+            hdmi_buffer_queue[(hdmi_buffer_start+3)%hdmi_buffer_num],
+            hdmi_buffer_start, hdmi_buffer_end, hdmi_buffer_fill_count);
+}
+
+static int hdmi_is_buffer_empty(void)
+{
+    return hdmi_buffer_fill_count == 0;
+}
+
+static void hdmi_release_buffer(int index)
+{
+    //down_interruptible(&hdmi_buffer_mutex);
+
+    HDMI_BUFFER_LOG("[hdmi] hdmi_release_buffer: %d\n", index);
+    hdmi_buffer_available[index] = 1;
+    hdmi_dump_buffer_queue();
+
+    //up(&hdmi_buffer_mutex);
+}
+
+static int hdmi_acquire_buffer(void)
+{
+    int index = -1;
+
+    if(down_interruptible(&hdmi_buffer_mutex))
+    {
+        HDMI_LOG("Can't get semaphore in %s()\n", __func__);
+        return -1;
+    }
+
+    if(!hdmi_is_buffer_empty())
+    {
+        index = hdmi_buffer_queue[hdmi_buffer_start];
+
+        HDMI_BUFFER_LOG("[hdmi] hdmi_acquire_buffer: %d\n", index);
+
+        hdmi_buffer_queue[hdmi_buffer_start] = -1;
+        hdmi_buffer_start = (hdmi_buffer_start + 1) % hdmi_buffer_num;
+
+        hdmi_buffer_fill_count--;
+
+        hdmi_dump_buffer_queue();
+    }
+
+    up(&hdmi_buffer_mutex);
+    return index;
+}
+
+static int hdmi_dequeue_buffer(void)
+{
+    int i;
+    if(down_interruptible(&hdmi_buffer_mutex))
+    {
+        HDMI_LOG("Can't get semaphore in %s()\n", __func__);
+        return -1;
+    }
+
+    for(i=0; i<hdmi_buffer_num; i++)
+    {
+        if(hdmi_buffer_available[i])
+        {
+            hdmi_buffer_available[i] = 0;
+            HDMI_BUFFER_LOG("[hdmi] hdmi_dequeue_buffer: %d\n", i);
+
+            hdmi_dump_buffer_queue();
+            up(&hdmi_buffer_mutex);
+            return i;
+        }
+    }
+#if 1
+    // if no available buffer, return the last buffer in queue
+    if(!hdmi_is_buffer_empty())
+    {
+        int index = hdmi_buffer_queue[hdmi_buffer_end];
+        HDMI_BUFFER_LOG("[hdmi] hdmi_dequeue_buffer(last): %d\n", index);
+
+        hdmi_buffer_queue[hdmi_buffer_end] = -1;
+        hdmi_buffer_end = (hdmi_buffer_end + (hdmi_buffer_num - 1)) % hdmi_buffer_num;
+        hdmi_buffer_fill_count--;
+
+        hdmi_dump_buffer_queue();
+        up(&hdmi_buffer_mutex);
+        return index;
+    }
+#endif
+    up(&hdmi_buffer_mutex);
+    HDMI_LOG("no available buffer\n");
+    return -1;
+}
+
+static void hdmi_enqueue_buffer(int index)
+{
+    if(down_interruptible(&hdmi_buffer_mutex))
+    {
+        HDMI_LOG("Can't get semaphore in %s()\n", __func__);
+        hdmi_release_buffer(index);
+        return;
+    }
+
+    HDMI_BUFFER_LOG("[hdmi] hdmi_enqueue_buffer: %d\n", index);
+
+    //hdmi_buffer_available[index] = 1;
+    hdmi_buffer_end = (hdmi_buffer_start + hdmi_buffer_fill_count) % hdmi_buffer_num;
+    hdmi_buffer_queue[hdmi_buffer_end] = index;
+
+    if(hdmi_buffer_fill_count == hdmi_buffer_num)
+        hdmi_buffer_start = (hdmi_buffer_start + 1) % hdmi_buffer_num;
+    else
+        hdmi_buffer_fill_count++;
+
+    hdmi_dump_buffer_queue();
+
+    up(&hdmi_buffer_mutex);
+}
+
+static unsigned long get_current_time_us(void)
+{
+    struct timeval t;
+    do_gettimeofday(&t);
+    return t.tv_sec * 1000 + t.tv_usec / 1000;
+}
 
 static void hdmi_udelay(unsigned int us)
 {
@@ -373,54 +588,6 @@ void hdmi_cable_fake_plug_out(void)
     }
 }
 
-extern const HDMI_DRIVER* HDMI_GetDriver(void);
-
-#if 0
-static void freq_meter(void)
-{
-	unsigned int temp = 0;
-	unsigned int temp1 = 0;
-	__OUTREG32(0xF0007400, 0xC800);
-	__OUTREG32(0xF0007404, 0x000B);
-	__OUTREG32(0xF0007400, 0x8800);
-	while(INREG32(0xF0007404) & 0x8000);
-	temp = INREG32(0xF0007410);
-	//printk("tvdss clock=%d, %dMhz\n", temp, (temp+1)*26/2048);
-
-	__OUTREG32(0xF0007400, 0xC800);
-	__OUTREG32(0xF0007404, 0x0008);
-	__OUTREG32(0xF0007400, 0x8800);
-	while(INREG32(0xF0007404) & 0x8000);
-	temp1 = INREG32(0xF0007410);
-	//printk("upll clock=%d, %dMhz\n", temp, (temp+1)*26/2048);
-	printk("[hdmi]upll=%dMhz, tvdss=%dMhz\n", (temp1+1)*26/2048, (temp+1)*26/2048);
-}
-
-static long int get_current_time_us(void)
-{
-	struct timeval t;
-	do_gettimeofday(&t);
-	return (t.tv_sec & 0xFFF) * 1000000 + t.tv_usec;
-}
-#endif
-
-
-extern unsigned int DPI_GetCurrentFB(void);
-
-#if 0
-static bool is_hdmi_clock_on(void)
-{
-	return p->is_clock_on;
-}
-#endif
-
-/* Will be called in LCD Interrupt handler to check whether HDMI is actived */
-bool is_hdmi_active(void)
-{
-	return IS_HDMI_ON();
-}
-
-
 void hdmi_set_mode(unsigned char ucMode)
 {
     HDMI_FUNC();
@@ -447,21 +614,21 @@ void hdmi_read_reg(unsigned char u8Reg)
 #endif
 void hdmi_write_reg(unsigned char u8Reg, unsigned char u8Data)
 {
-	hdmi_drv->write(u8Reg,u8Data);
+	hdmi_drv->write(u8Reg, u8Data);
 }
 
 /* Used for HDMI Driver update */
 static int hdmi_update_kthread(void *data)
 {
-	struct sched_param param = { .sched_priority = RTPM_PRIO_SCRN_UPDATE };
-	sched_setscheduler(current, SCHED_RR, &param);
+    struct sched_param param = { .sched_priority = RTPM_PRIO_SCRN_UPDATE };
+    sched_setscheduler(current, SCHED_RR, &param);
 
     for( ;; ) {
         wait_event_interruptible(hdmi_update_wq, atomic_read(&hdmi_update_event));
-		//HDMI_LOG("wq wakeup\n");
+        //HDMI_LOG("wq wakeup\n");
         //hdmi_update_impl();
 
-		atomic_set(&hdmi_update_event,0);
+        atomic_set(&hdmi_update_event,0);
         hdmi_update_impl();
         if (kthread_should_stop())
             break;
@@ -470,21 +637,216 @@ static int hdmi_update_kthread(void *data)
     return 0;
 }
 
+/* Will be called in LCD Interrupt handler to check whether HDMI is actived */
+bool is_hdmi_active(void)
+{
+	return IS_HDMI_ON();
+}
+
+void hdmi_wdma1_done(void)
+{
+#if ENABLE_HDMI_FPS_CONTROL_LOG
+    unsigned long currentTime = get_current_time_us();
+    hdmi_fps_control_fps_wdma1++;
+
+    if(currentTime - hdmi_fps_control_time_base_wdma1 >= 1000)
+    {
+        HDMI_LOG("overlay>wdma1 fps:%d\n", hdmi_fps_control_fps_wdma1);
+        hdmi_fps_control_time_base_wdma1 = currentTime;
+        hdmi_fps_control_fps_wdma1 = 0;
+    }
+#endif
+}
+
+void hdmi_wdma0_done(void)
+{
+#if ENABLE_HDMI_FPS_CONTROL_LOG
+    unsigned long currentTime = get_current_time_us();
+    hdmi_fps_control_fps_wdma0++;
+
+    if(currentTime - hdmi_fps_control_time_base_wdma0 >= 1000)
+    {
+        HDMI_LOG("rot>scl>wdma0 fps:%d\n", hdmi_fps_control_fps_wdma0);
+        hdmi_fps_control_time_base_wdma0 = currentTime;
+        hdmi_fps_control_fps_wdma0 = 0;
+    }
+#endif
+}
+
+void hdmi_rdma1_done(void)
+{
+#if ENABLE_HDMI_FPS_CONTROL_LOG
+    unsigned long currentTime = get_current_time_us();
+    hdmi_fps_control_fps_rdma1++;
+
+    if(currentTime - hdmi_fps_control_time_base_rdma1 >= 1000)
+    {
+        HDMI_LOG("rdma1>dpi fps:%d(%d)\n", hdmi_fps_control_fps_rdma1, hdmi_rdma_switch_count);
+        hdmi_fps_control_time_base_rdma1 = currentTime;
+        hdmi_fps_control_fps_rdma1 = 0;
+        hdmi_rdma_switch_count = 0;
+    }
+#endif
+}
+
+/* Used for HDMI Driver update */
+static int hdmi_overlay_config_kthread(void *data)
+{
+    unsigned int addr = 0;
+    bool needStopWdma1 = false;
+    struct disp_path_config_mem_out_struct wdma1Config = {0};
+    struct sched_param param = { .sched_priority = RTPM_PRIO_SCRN_UPDATE };
+    sched_setscheduler(current, SCHED_RR, &param);
+
+    wdma1Config.outFormat = WDMA_OUTPUT_FORMAT_RGB888;
+    wdma1Config.srcROI.x = 0;
+    wdma1Config.srcROI.y = 0;
+
+    for( ;; ) {
+
+        wait_event_interruptible(hdmi_overlay_config_wq, atomic_read(&hdmi_overlay_config_event));
+        atomic_set(&hdmi_overlay_config_event, 0);
+
+        needStopWdma1 = hdmi_fps_control_overlay > hdmi_fps_control_dpi + 1;
+
+        if(hdmi_overlay_status != HDMI_OVERLAY_STATUS_STOPPING &&
+           !(needStopWdma1 && hdmi_overlay_status == HDMI_OVERLAY_STATUS_STOPPED))
+        {
+            disp_path_get_mutex();
+
+            if(needStopWdma1)
+            {
+                //HDMI_LOG("Stop WDMA1\n");
+                unsigned int reg;
+
+                MMProfileLogEx(HDMI_MMP_Events.StopOverlayBuffer, MMProfileFlagStart, hdmi_fps_control_overlay, 0);
+
+                // Stop WDMA1
+                wdma1Config.enable = 0;
+                disp_path_config_mem_out(&wdma1Config);
+
+                WDMAStop(1);
+
+                hdmi_overlay_status = HDMI_OVERLAY_STATUS_STOPPING;
+
+                MMProfileLogEx(HDMI_MMP_Events.StopOverlayBuffer, MMProfileFlagEnd, hdmi_fps_control_overlay, 0);
+            }
+            else
+            {
+                hdmi_buffer_lcdw_id_tmp = (hdmi_buffer_lcdw_id+1)%hdmi_params->intermediat_buffer_num;
+                addr = temp_mva_w+hdmi_buffer_lcdw_id_tmp*p->lcm_width*p->lcm_height*3;
+
+                MMProfileLogEx(HDMI_MMP_Events.SwitchOverlayBuffer, MMProfileFlagStart, hdmi_buffer_lcdw_id_tmp, hdmi_fps_control_overlay);
+
+                // Start WDMA1
+                wdma1Config.enable = 1;
+                wdma1Config.dstAddr = addr;
+                wdma1Config.srcROI.width = p->lcm_width;
+                wdma1Config.srcROI.height = p->lcm_height;
+
+                if(hdmi_overlay_status == HDMI_OVERLAY_STATUS_STOPPED)
+                {
+                    //HDMI_LOG("Start WDMA1, ovl_w=%d\n", hdmi_buffer_lcdw_id_tmp);
+                    hdmi_overlay_status = HDMI_OVERLAY_STATUS_STARTING;
+                }
+
+                disp_path_config_mem_out(&wdma1Config);
+
+                hdmi_fps_control_overlay++;
+
+                MMProfileLogEx(HDMI_MMP_Events.SwitchOverlayBuffer, MMProfileFlagEnd, hdmi_buffer_lcdw_id_tmp, hdmi_fps_control_overlay);
+            }
+
+            disp_path_release_mutex();
+        }
+
+        if (kthread_should_stop())
+                break;
+    }
+
+    return 0;
+}
+
 /* Switch LCD write buffer, will be called in LCD Interrupt handler */
 void hdmi_source_buffer_switch(void)
 {
-
     //printk("lcd write buffer:%d\n", hdmi_buffer_lcdw_id);
 
     RET_VOID_IF_NOLOG(IS_HDMI_NOT_ON());
     RET_VOID_IF_NOLOG(p->output_mode == HDMI_OUTPUT_MODE_DPI_BYPASS);
     RET_VOID_IF_NOLOG(IS_HDMI_IN_VIDEO_MODE());
 
-#if 0
-    hdmi_buffer_lcdw_id = (hdmi_buffer_lcdw_id+1)%hdmi_params->intermediat_buffer_num;
+    if(p->lcm_is_video_mode)
+    {
+        atomic_set(&hdmi_overlay_config_event, 1);
+        wake_up_interruptible(&hdmi_overlay_config_wq);
+        //DISP_Config_Overlay_to_Memory(temp_mva_w + p->lcm_width * p->lcm_height * 3 * hdmi_buffer_lcdw_id_tmp, 1);
+    }
+    else
+    {
+        hdmi_buffer_lcdw_id = (hdmi_buffer_lcdw_id+1)%hdmi_params->intermediat_buffer_num;
+        DISP_Config_Overlay_to_Memory(temp_mva_w + p->lcm_width * p->lcm_height * 3 * hdmi_buffer_lcdw_id, 1);
+    }
+}
 
-    LCD_CHECK_RET(LCD_FBSetAddress(LCD_FB_0, temp_mva + p->lcm_width*p->lcm_height*3*hdmi_buffer_lcdw_id));
+void hdmi_set_rdma_address(int bufferIndex)
+{
+    unsigned int hdmiSourceAddr;
+    disp_path_get_mutex_(dp_mutex_dst);
+    hdmi_buffer_read_id_tmp = bufferIndex;
+    hdmiSourceAddr = hdmi_mva_r + p->hdmi_width * p->hdmi_height * hdmi_bpp * bufferIndex;
+    DISP_REG_SET(0x1000 + DISP_REG_RDMA_MEM_START_ADDR, hdmiSourceAddr);
+    disp_path_release_mutex_(dp_mutex_dst);
+
+    HDMI_BUFFER_LOG("rdma1 address set done, hdmi_r=%d\n", bufferIndex);
+}
+
+void hdmi_rdma_buffer_switch(void)
+{
+    int acquired;
+
+#if 0
+    if(hdmi_buffer_read_id == hdmi_buffer_read_id_tmp && (acquired = hdmi_acquire_buffer()) != -1)
+    {
+        MMProfileLogEx(HDMI_MMP_Events.SwitchRDMABuffer, MMProfileFlagStart, acquired, 0);
+    }
+        hdmi_set_rdma_address(acquired);
+#else
+    if((acquired = hdmi_acquire_buffer()) != -1)
+    {
+        unsigned int hdmiSourceAddr;
+
+        disp_path_get_mutex_(dp_mutex_dst);
+
+        if(hdmi_buffer_read_id != hdmi_buffer_read_id_tmp)
+        {
+            // if hdmi_buffer_read_id_tmp has not be writen to working register, drop it
+            HDMI_BUFFER_LOG("drop %d\n", hdmi_buffer_read_id_tmp);
+            hdmi_release_buffer(hdmi_buffer_read_id_tmp);
+        }
+
+        MMProfileLogEx(HDMI_MMP_Events.SwitchRDMABuffer, MMProfileFlagStart, acquired, hdmi_buffer_read_id_tmp);
+
+        hdmi_buffer_read_id_tmp = acquired;
+        hdmiSourceAddr = hdmi_mva_r + p->hdmi_width * p->hdmi_height * hdmi_bpp * hdmi_buffer_read_id_tmp;
+        DISP_REG_SET(0x1000 + DISP_REG_RDMA_MEM_START_ADDR, hdmiSourceAddr);
+        disp_path_release_mutex_(dp_mutex_dst);
+
+        HDMI_BUFFER_LOG("rdma1 address set done, hdmi_r=%d\n", hdmi_buffer_read_id_tmp);
+
 #endif
+
+        hdmi_rdma_switch_count++;
+    }
+    else
+    {
+        MMProfileLogEx(HDMI_MMP_Events.SwitchRDMABuffer, MMProfileFlagStart, acquired, 0);
+
+        HDMI_BUFFER_LOG("no available buffer, wait buffer...\n");
+        hdmi_set_rdma_address(hdmi_buffer_read_id_tmp);
+    }
+
+    MMProfileLogEx(HDMI_MMP_Events.SwitchRDMABuffer, MMProfileFlagEnd, acquired, 0);
 }
 
 /* Switch DPI read buffer, will be called in DPI Interrupt handler */
@@ -494,7 +856,7 @@ void hdmi_update_buffer_switch(void)
 
     RET_VOID_IF_NOLOG(IS_HDMI_NOT_ON());
     RET_VOID_IF_NOLOG(p->output_mode == HDMI_OUTPUT_MODE_DPI_BYPASS);
-
+#if 0
     if(IS_HDMI_IN_VIDEO_MODE())
     {
         if (IS_HDMI_VIDEO_MODE_DPI_IN_CHANGING_ADDRESS())
@@ -511,6 +873,34 @@ void hdmi_update_buffer_switch(void)
     {
         //DPI_CHECK_RET(DPI_FBSetAddress(DPI_FB_0, hdmi_mva + p->hdmi_width*p->hdmi_height*3*hdmi_buffer_read_id));
     }
+#endif
+
+    if(p->lcm_is_video_mode && hdmi_rdma_buffer_switch_mode == 0)
+    {
+        if(hdmi_fps_control_dpi <= hdmi_fps_control_overlay + 1)
+            hdmi_fps_control_dpi++;
+
+        atomic_set(&hdmi_rdma_config_event, 1);
+        wake_up_interruptible(&hdmi_rdma_config_wq);
+    }
+}
+
+static int hdmi_rdma_config_kthread(void *data)
+{
+    struct sched_param param = { .sched_priority = RTPM_PRIO_SCRN_UPDATE };
+    sched_setscheduler(current, SCHED_RR, &param);
+
+    for( ;; ) {
+        wait_event_interruptible(hdmi_rdma_config_wq, atomic_read(&hdmi_rdma_config_event));
+        atomic_set(&hdmi_rdma_config_event, 0);
+
+        hdmi_rdma_buffer_switch();
+
+        if (kthread_should_stop())
+            break;
+    }
+
+    return 0;
 }
 
 extern void DBG_OnTriggerHDMI(void);
@@ -530,13 +920,10 @@ void hdmi_update(void)
     hdmi_update_impl();
 #endif
 }
-void hdmi_update_impl(void)
+
+static void hdmi_update_impl(void)
 {
     //HDMI_LOG("hdmi_update_impl\n");
-
-    //int ret = 0;
-    //MdpkBitbltConfig pmdp;
-    //int lcm_physical_rotation = 0;
     int pixelSize =  p->hdmi_width * p->hdmi_height;
     int dataSize = pixelSize * hdmi_bpp;
 
@@ -572,72 +959,12 @@ void hdmi_update_impl(void)
         memset((void*)hdmi_va, 0, dataSize * hdmi_params->intermediat_buffer_num);
         p->is_reconfig_needed = false;
     }
-
-#ifndef NEW_HDMI_ARCH
-    memset((void*)&pmdp, 0, sizeof(MdpkBitbltConfig));
-    pmdp.srcX = pmdp.srcY = 0;
-    pmdp.srcW = p->lcm_width;
-    pmdp.srcH	= p->lcm_height;
-    pmdp.srcWStride = p->lcm_width;
-    pmdp.srcHStride = p->lcm_height;
-    pmdp.srcAddr = temp_va + p->lcm_width*p->lcm_height*3*((hdmi_buffer_lcdw_id+(hdmi_params->intermediat_buffer_num-1))%hdmi_params->intermediat_buffer_num);
-    pmdp.srcFormat = MDPK_FORMAT_RGB_888;
-    pmdp.srcBufferSize = p->lcm_width*p->lcm_height*3;
-    pmdp.srcMemType =  MDPK_MEMTYPE_VMALLOC;
-
-    //MTK_LCM_PHYSICAL_ROTATION in PRODUCT_CONFIG.mk
-    if (0 == strncmp(MTK_LCM_PHYSICAL_ROTATION, "90", 2))
-    {
-        lcm_physical_rotation = 1;
-    }
-    else if(0 == strncmp(MTK_LCM_PHYSICAL_ROTATION, "180", 3))
-    {
-        lcm_physical_rotation = 2;
-    }
-    else if(0 == strncmp(MTK_LCM_PHYSICAL_ROTATION, "270", 3))
-    {
-        lcm_physical_rotation = 3;
-    }
-    pmdp.orientation = (p->orientation + 4 - lcm_physical_rotation) % 4 ;
-    switch(pmdp.orientation)
-    {
-        case 0:
-        case 2:
-        {
-            // make sure in portrait mode, MDP resize must be as propotion
-            // that is p.dstW/p.dstH == lcm_width/lcm_height
-            pmdp.dstW = p->lcm_width * p->hdmi_height * 95 / 100 / p->lcm_height;
-            pmdp.dstH = p->hdmi_height * 95 / 100;
-            // setting memory write start address
-            pmdp.dstAddr = hdmi_va + hdmi_buffer_write_id * p->hdmi_width * p->hdmi_height * 3 + 
-                           (p->hdmi_height - pmdp.dstH) / 2 * p->hdmi_width * 3 +
-                           (p->hdmi_width - pmdp.dstW) / 2 * 3;
-            pmdp.dstFormat = MDPK_FORMAT_RGB_888;
-            pmdp.pitch = p->hdmi_width;
-            pmdp.dstBufferSize = p->hdmi_width*p->hdmi_height*3;
-            pmdp.dstMemType =  MDPK_MEMTYPE_VMALLOC;
-            break;
-        }
-        case 1:
-        case 3:
-        {
-            pmdp.dstW = p->hdmi_width * 95 / 100;
-            pmdp.dstH = p->hdmi_height * 95 /100;
-            pmdp.dstAddr = hdmi_va + hdmi_buffer_write_id * p->hdmi_width * p->hdmi_height * 3 + 
-                           (p->hdmi_height - pmdp.dstH) / 2 * p->hdmi_width * 3 +
-                           (p->hdmi_width - pmdp.dstW) / 2 * 3;
-            pmdp.dstFormat = MDPK_FORMAT_RGB_888;
-            pmdp.pitch = p->hdmi_width;
-            pmdp.dstBufferSize = p->hdmi_width*p->hdmi_height*3;
-            pmdp.dstMemType =  MDPK_MEMTYPE_VMALLOC;
-            break;
-        }
-    }
-#else
     if(temp_va != 0 && hdmi_va != 0)
     {
         DdpkBitbltConfig pddp;
         int dstOffset;
+        int scaling = (100 - p->scaling_factor);
+        int ovlReadBuffer = ((hdmi_buffer_lcdw_id+(hdmi_params->intermediat_buffer_num-1))%hdmi_params->intermediat_buffer_num);
         memset((void*)&pddp, 0, sizeof(DdpkBitbltConfig));
 
         pddp.srcX = pddp.srcY = 0;
@@ -645,121 +972,253 @@ void hdmi_update_impl(void)
         pddp.srcH   = p->lcm_height;
         pddp.srcWStride = p->lcm_width;
         pddp.srcHStride = p->lcm_height;
-        pddp.srcAddr[0] = temp_va;
-        pddp.srcFormat = eYUV_422_I_K;
-        pddp.srcBufferSize[0] = p->lcm_width*p->lcm_height*2;
+        pddp.srcAddr[0] = temp_va + p->lcm_width*p->lcm_height*3*ovlReadBuffer;
+
+        pddp.srcFormat = eRGB888_K;
+        pddp.srcBufferSize[0] = p->lcm_width * p->lcm_height * 3;
         pddp.srcPlaneNum = 1;
 
         pddp.dstX = 0;
         pddp.dstY = 0;
-        pddp.dstFormat = eARGB8888_K;
+        pddp.dstFormat = eRGB888_K;
         pddp.pitch = p->hdmi_width;
         pddp.dstWStride = p->hdmi_width;
         pddp.dstHStride = p->hdmi_height;
         pddp.dstPlaneNum = 1;
 
-#if 0
-        if (0 == strncmp(MTK_LCM_PHYSICAL_ROTATION, "90", 2))
+        if(p->lcm_height > p->lcm_width)
         {
-            lcm_physical_rotation = 90;
+            pddp.orientation = 270;
         }
-        else if(0 == strncmp(MTK_LCM_PHYSICAL_ROTATION, "180", 3))
+        else
         {
-            lcm_physical_rotation = 180;
-        }
-        else if(0 == strncmp(MTK_LCM_PHYSICAL_ROTATION, "270", 3))
-        {
-            lcm_physical_rotation = 270;
+            pddp.orientation = 0;
         }
 
-        pddp.orientation = (p->orientation + 360 - lcm_physical_rotation) % 360;
-#else
-        pddp.orientation = 0;
-#endif
+        pddp.dstW = ALIGN_TO(p->hdmi_width * scaling / 100, 4);
+        pddp.dstH = ALIGN_TO(p->hdmi_height * scaling / 100, 4);
 
-        switch(pddp.orientation)
-        {
-            case 90:
-            case 270:
-#if 0
-            {
-                pddp.dstW = ALIGN_TO(p->lcm_height * p->hdmi_height / p->lcm_width * 95 / 100, 4);
-                pddp.dstH = ALIGN_TO(p->hdmi_height * 95 /100, 4);
-                break;
-            }
-#endif // fall through now
-            case 0:
-            case 180:
-            {
-                pddp.dstW = ALIGN_TO(p->hdmi_width * 95 / 100, 4);
-                pddp.dstH = ALIGN_TO(p->hdmi_height * 95 /100, 4);
-                break;
-            }
-            default:
-                HDMI_LOG("Unknown orientation %d\n", pddp.orientation);
-                return;
-        }
         dstOffset = (p->hdmi_height - pddp.dstH ) / 2 * p->hdmi_width * hdmi_bpp +
                     (p->hdmi_width - pddp.dstW) / 2 * hdmi_bpp;
 
-        pddp.dstAddr[0] = hdmi_va + hdmi_buffer_write_id * p->hdmi_width * p->hdmi_height * hdmi_bpp + dstOffset;
-        pddp.dstBufferSize[0] = p->hdmi_width*p->hdmi_height*hdmi_bpp - dstOffset;
+        if(p->lcm_is_video_mode)
+        {
+            int dequeuedBuffer = hdmi_dequeue_buffer();
 
-        DDPK_Bitblt_Config(DDPK_CH_HDMI_0, &pddp);
-        DDPK_Bitblt(DDPK_CH_HDMI_0);
+            if(dequeuedBuffer != -1)
+            {
+                hdmi_buffer_write_id = dequeuedBuffer;
+
+                MMProfileLogEx(HDMI_MMP_Events.DDPKBitblt, MMProfileFlagStart, ovlReadBuffer, hdmi_buffer_write_id);
+
+                pddp.dstAddr[0] = hdmi_va + hdmi_buffer_write_id * p->hdmi_width * p->hdmi_height * hdmi_bpp + dstOffset;
+                pddp.dstBufferSize[0] = p->hdmi_width*p->hdmi_height*hdmi_bpp - dstOffset;
+
+                HDMI_BUFFER_LOG("[hdmi_buffer] hdmi_r:%d, hdmi_w: %d, hdmi_r_tmp:%d\n", hdmi_buffer_read_id, hdmi_buffer_write_id, hdmi_buffer_read_id_tmp);
+
+                DDPK_Bitblt_Config(DDPK_CH_HDMI_0, &pddp);
+                DDPK_Bitblt(DDPK_CH_HDMI_0);
+
+                hdmi_wdma0_done();
+
+                //HDMI_LOG("DDPK_Bitblit done\n");
+
+                hdmi_enqueue_buffer(hdmi_buffer_write_id);
+
+                MMProfileLogEx(HDMI_MMP_Events.DDPKBitblt, MMProfileFlagEnd, ovlReadBuffer, hdmi_buffer_write_id);
+            }
+        }
+        else
+        {
+            pddp.dstAddr[0] = hdmi_va + hdmi_buffer_write_id * p->hdmi_width * p->hdmi_height * hdmi_bpp + dstOffset;
+            pddp.dstBufferSize[0] = p->hdmi_width*p->hdmi_height*hdmi_bpp - dstOffset;
+
+            MMProfileLogEx(HDMI_MMP_Events.DDPKBitblt, MMProfileFlagStart, ovlReadBuffer, hdmi_buffer_write_id);
+
+            DDPK_Bitblt_Config(DDPK_CH_HDMI_0, &pddp);
+            DDPK_Bitblt(DDPK_CH_HDMI_0);
+
+            MMProfileLogEx(HDMI_MMP_Events.DDPKBitblt, MMProfileFlagEnd, ovlReadBuffer, hdmi_buffer_write_id);
+        }
     }
-#endif
 
     //HDMI_LOG("dstw=%d, dsth=%d, ori=%d\n", p.dstW, p.dstH, p.orientation);
-
-#if 0
-   //Factory mode
-   if (!p->is_factory_mode)
-   {
-       MDPK_Bitblt_Config(MDPK_BB_CH_HDMI_0, &pmdp);
-
-       //long int t = get_current_time_us();
-       ret = MDPK_Bitblt(0);
-       if(ret)
-       {
-           HDMI_LOG("MDPK_Bitblt fail!\n");
-       }
-   }
-   else
-#endif
 
     DBG_OnHDMIDone();
     //HDMI_LOG("cost %d us\n", get_current_time_us() - t);
 
-    hdmi_buffer_read_id = hdmi_buffer_write_id;
-
-    if(p->is_clock_on)
+    if(p->lcm_is_video_mode)
     {
-#ifndef NEW_HDMI_ARCH
-        //Wait for change buffer
-        DPI_CHECK_RET(DPI_FBSetAddress(DPI_FB_0, hdmi_mva + p->hdmi_width*p->hdmi_height*3*hdmi_buffer_read_id));
-//#else
-#elif 0
-        //config dst display path
-        HDMI_LOG("config destination display path\n");
+        if(hdmi_rdma_buffer_switch_mode == 1)
+        {
+            hdmi_rdma_buffer_switch();
+        }
+    }
+    else
+    {
+        hdmi_buffer_read_id = hdmi_buffer_write_id;
 
-        HDMI_LOG("hdmi_buffer_read_id: %d\n", hdmi_buffer_read_id);
-        disp_path_get_mutex_(dp_mutex_dst);
-        unsigned int hdmiSourceAddr = hdmi_mva_r + p->hdmi_width * p->hdmi_height * hdmi_bpp * hdmi_buffer_read_id;
-        DISP_REG_SET(0x1000 + DISP_REG_RDMA_MEM_START_ADDR, hdmiSourceAddr);
-        disp_path_release_mutex_(dp_mutex_dst);
-#endif //NEW_HDMI_ARCH
+        if(p->is_clock_on)
+        {
+            hdmi_set_rdma_address(hdmi_buffer_read_id);
+        }
+
+        hdmi_buffer_write_id = (hdmi_buffer_write_id+1) % hdmi_params->intermediat_buffer_num;
     }
 
-    //hdmi_buffer_write_id = (hdmi_buffer_write_id+1) % hdmi_params->intermediat_buffer_num;
-    hdmi_buffer_write_id = 0;
-
-    done:
+done:
     up(&hdmi_update_mutex);
 
     return;
 }
 
+//--------------------------FIXME-------------------------------
+DPI_STATUS hdmi_config_pll(HDMI_VIDEO_RESOLUTION resolution)
+{
+    unsigned int con1, con0;
+
+    switch(resolution)
+    {
+        case HDMI_VIDEO_720x480p_60Hz:
+#ifdef MTK_MT8193_HDMI_SUPPORT
+        case HDMI_VIDEO_720x576p_50Hz:
+#endif
+        {
+            con1 = 0x80109d89;
+            con0 = 0x80800081;
+            break;
+        }
+        case HDMI_VIDEO_1920x1080p_30Hz:
+#ifdef MTK_MT8193_HDMI_SUPPORT
+        case HDMI_VIDEO_1280x720p_50Hz:
+        case HDMI_VIDEO_1920x1080i_50Hz:
+        case HDMI_VIDEO_1920x1080p_25Hz:
+        case HDMI_VIDEO_1920x1080p_24Hz:
+        case HDMI_VIDEO_1920x1080p_50Hz:
+#endif
+        {
+            con1 = 0x800b6c4e;
+            con0 = 0x80000081;
+            break;
+        }
+
+        case HDMI_VIDEO_1280x720p_60Hz:
+    #ifdef MTK_MT8193_HDMI_SUPPORT
+        case HDMI_VIDEO_1920x1080i_60Hz:
+        case HDMI_VIDEO_1920x1080p_23Hz:
+        case HDMI_VIDEO_1920x1080p_29Hz:
+        case HDMI_VIDEO_1920x1080p_60Hz:
+    #endif
+        {
+            con1 = 0x800b6964;
+            con0 = 0x80000081;
+            break;
+        }
+
+        default:
+        {
+            printk("[hdmi] not supported format, %s, %d, format = %d\n", __func__, __LINE__, resolution);
+            return DPI_STATUS_ERROR;
+        }
+    }
+
+#if 0
+    //DPI1 PLL
+    DRV_SetReg32(TVDPLL_PWR_CON0, (0x1 << 0));  //PLL_PWR_ON
+    udelay(2);
+    DRV_ClrReg32(TVDPLL_PWR_CON0, (0x1 << 1));  //PLL_ISO_EN
+
+    OUTREG32(TVDPLL_CON1, con1);
+    OUTREG32(TVDPLL_CON0, con0);
+
+    udelay(20);
+#else
+    if(enable_pll(TVDPLL, "hdmi_dpi"))
+    {
+        printk("[hdmi] enable_pll fail\n");
+        return DPI_STATUS_ERROR;
+    }
+
+    //FIXME: TVDPLL_CON0 is always the same when use mt_clkmgr api
+    OUTREG32(TVDPLL_CON0, con0);
+
+    if(pll_fsel(TVDPLL, con1))
+    {
+        printk("[hdmi] pll_fsel fail\n");
+        return DPI_STATUS_ERROR;
+    }
+#endif
+
+	return DPI_STATUS_OK;
+}
+
+static void _rdma1_irq_handler(unsigned int param)
+{
+    RET_VOID_IF_NOLOG(!is_hdmi_active());
+    RET_VOID_IF_NOLOG(!p->lcm_is_video_mode);
+
+
+    if(param & 1) // rdma1 register updated
+    {
+        MMProfileLogEx(HDMI_MMP_Events.RDMA1RegisterUpdated, MMProfileFlagPulse, hdmi_buffer_read_id, hdmi_buffer_read_id_tmp);
+
+        if(hdmi_buffer_read_id != hdmi_buffer_read_id_tmp)
+        {
+            hdmi_release_buffer(hdmi_buffer_read_id);
+        }
+
+        hdmi_buffer_read_id = hdmi_buffer_read_id_tmp;
+        HDMI_BUFFER_LOG("rdma1 register updated (buffer: hdmi_r=%d)\n", hdmi_buffer_read_id);
+        hdmi_update_buffer_switch();
+
+        //MMProfileLogEx(HDMI_MMP_Events.RDMA1RegisterUpdated, MMProfileFlagEnd, hdmi_buffer_read_id, 0);
+    }
+}
+
+static void _register_updated_irq_handler(unsigned int param)
+{
+    RET_VOID_IF_NOLOG(!is_hdmi_active());
+
+    if(param & 1) // wdma1 register updated
+    {
+        atomic_set(&reg_update_event, 1);
+        wake_up_interruptible(&reg_update_wq);
+    }
+
+    if(dp_mutex_dst != -1 && (param & (1 << dp_mutex_dst))) // rdma1>dpi register updated
+    {
+        atomic_set(&dst_reg_update_event, 1);
+        wake_up_interruptible(&dst_reg_update_wq);
+    }
+
+    RET_VOID_IF_NOLOG(!p->lcm_is_video_mode);
+
+    if(param & 1) // wdma1 register updated
+    {
+        MMProfileLogEx(HDMI_MMP_Events.WDMA1RegisterUpdated, MMProfileFlagPulse, hdmi_buffer_lcdw_id, hdmi_buffer_lcdw_id_tmp);
+
+        if(hdmi_overlay_status == HDMI_OVERLAY_STATUS_STOPPING)
+        {
+            hdmi_overlay_status = HDMI_OVERLAY_STATUS_STOPPED;
+        }
+        else if(hdmi_overlay_status == HDMI_OVERLAY_STATUS_STARTING)
+        {
+            hdmi_overlay_status = HDMI_OVERLAY_STATUS_STARTED;
+
+        }
+
+        //if(hdmi_overlay_status == HDMI_OVERLAY_STATUS_STARTED)
+        {
+            hdmi_buffer_lcdw_id = hdmi_buffer_lcdw_id_tmp;
+            HDMI_BUFFER_LOG("wdma1 register updated (buffer: ovl_w=%d)\n", hdmi_buffer_lcdw_id);
+        }
+
+        hdmi_source_buffer_switch();
+
+        //MMProfileLogEx(HDMI_MMP_Events.WDMA1RegisterUpdated, MMProfileFlagEnd, hdmi_buffer_lcdw_id, 0);
+    }
+}
+ 
 /* Allocate memory, set M4U, LCD, MDP, DPI */
 /* LCD overlay to memory -> MDP resize and rotate to memory -> DPI read to HDMI */
 /* Will only be used in ioctl(MTK_HDMI_AUDIO_VIDEO_ENABLE) */
@@ -782,68 +1241,7 @@ static HDMI_STATUS hdmi_drv_init(void)
     //printk("[hdmi]%s, hdmi_width=%d, hdmi_height=%d\n", __func__, p->hdmi_width, p->hdmi_height);
     HDMI_LOG("lcm_width=%d, lcm_height=%d\n", lcm_width, lcm_height);
 
-#ifndef NEW_HDMI_ARCH
-    memset((void*) &m4uport, 0, sizeof(M4U_PORT_STRUCT));
-    m4uport.ePortID = M4U_PORT_DPI;
-    m4uport.Virtuality = 1;
-    m4uport.Security = 0;
-    m4uport.Distance = 1;
-    m4uport.Direction = 0;
-    m4u_config_port_stub(&m4uport);
-
-    memset((void*)&m4uport, 0, sizeof(M4U_PORT_STRUCT));
-    m4uport.ePortID = M4U_PORT_LCD_W;
-    m4uport.Virtuality = 1;
-    m4uport.Security = 0;
-    m4uport.Distance = 1;
-    m4uport.Direction = 0;
-    m4u_config_port_stub(&m4uport);
-
-    temp_va = (unsigned int)vmalloc(lcm_width*lcm_height*3*hdmi_params->intermediat_buffer_num);
-    if(((void*)temp_va) == NULL)
-    {
-        HDMI_LOG("vmalloc fail\n");
-        return -1;
-    }
-
-    ret = m4u_alloc_mva_stub(M4U_CLNTMOD_LCDC, temp_va, lcm_width*lcm_height*3*hdmi_params->intermediat_buffer_num, &temp_mva);
-    if(ret)
-    {
-        printk("[hdmi]allocate mva for dpi fail\n");
-        return -1;
-    }
-
-    printk("[hdmi]%s, temp_va=0x%08x, temp_mva=0x%08x\n", __func__, temp_va, temp_mva);
-
-    m4u_insert_tlb_range_stub(M4U_CLNTMOD_LCDC, temp_mva,temp_mva+lcm_width*lcm_height*3*hdmi_params->intermediat_buffer_num, RT_RANGE_HIGH_PRIORITY, 0);
-
-    LCD_CHECK_RET(LCD_FBSetFormat(LCD_FB_FORMAT_RGB888));
-    LCD_CHECK_RET(LCD_FBSetPitch(lcm_width*3));
-    LCD_CHECK_RET(LCD_FBSetStartCoord(0, 0));
-
-    LCD_CHECK_RET(LCD_FBSetAddress(LCD_FB_0, temp_mva));
-    LCD_CHECK_RET(LCD_FBEnable(LCD_FB_0, TRUE));
-
-    hdmi_va = (unsigned int)vmalloc(hdmi_default_width*hdmi_default_height*3*hdmi_params->intermediat_buffer_num);
-    if(((void*)hdmi_va) == NULL)
-    {
-        printk("[hdmi]kmalloc 0x%08x fail!!!\n", hdmi_default_width*hdmi_default_height*3*hdmi_params->intermediat_buffer_num);
-        return -1;
-    }
-
-    memset((void*)hdmi_va, 0, hdmi_default_width*hdmi_default_height*3*hdmi_params->intermediat_buffer_num);
-
-    ret = m4u_alloc_mva_stub(M4U_CLNTMOD_DPI, hdmi_va, hdmi_default_width*hdmi_default_height*3*hdmi_params->intermediat_buffer_num, &hdmi_mva);
-    if(ret)
-    {
-        printk("[hdmi]allocate mva for dpi fail\n");
-        return -1;
-    }
-
-    m4u_insert_tlb_range_stub(M4U_CLNTMOD_DPI, hdmi_mva, hdmi_mva+hdmi_default_width*hdmi_default_height*3*hdmi_params->intermediat_buffer_num, RT_RANGE_HIGH_PRIORITY, 0);
-    printk("[hdmi]%s, hdmi_va=0x%08x, hdmi_mva=0x%08x\n", __func__, hdmi_va, hdmi_mva);
-#else
-    tmpBufferSize = lcm_width * lcm_height * 2 * hdmi_params->intermediat_buffer_num;
+    tmpBufferSize = lcm_width * lcm_height * hdmi_bpp * hdmi_params->intermediat_buffer_num;
 
     temp_va = (unsigned int) vmalloc(tmpBufferSize);
     if (((void*) temp_va) == NULL)
@@ -853,48 +1251,58 @@ static HDMI_STATUS hdmi_drv_init(void)
     }
 
     // WDMA1
-    if (m4u_alloc_mva_stub(M4U_CLNTMOD_WDMA, temp_va, tmpBufferSize, &temp_mva_w))
+    if (m4u_alloc_mva(M4U_CLNTMOD_WDMA,
+                temp_va,
+                tmpBufferSize,
+                0,
+                0,
+                &temp_mva_w))
     {
         HDMI_LOG("m4u_alloc_mva for temp_mva_w fail\n");
         return -1;
     }
+    m4u_dma_cache_maint(M4U_CLNTMOD_WDMA,
+            (void const *)temp_va,
+            tmpBufferSize,
+            DMA_BIDIRECTIONAL);
 
-    if (m4u_insert_tlb_range_stub(M4U_CLNTMOD_WDMA, temp_mva_w, temp_mva_w + tmpBufferSize - 1, RT_RANGE_HIGH_PRIORITY, 1))
-    {
-        HDMI_LOG("m4u_insert_seq_range for temp_mva_w fail\n");
-        m4u_dealloc_mva(M4U_CLNTMOD_WDMA, temp_va, tmpBufferSize, temp_mva_w);
-        return -1;
-    }
-
-    memset((void*) &m4uport, 0, sizeof(M4U_PORT_STRUCT));
     m4uport.ePortID = M4U_PORT_WDMA1;
     m4uport.Virtuality = 1;
     m4uport.Security = 0;
+    m4uport.domain = 0;     //domain : 0 1 2 3
     m4uport.Distance = 1;
     m4uport.Direction = 0;
-    m4u_config_port_stub(&m4uport);
+    m4u_config_port(&m4uport);
 
-    HDMI_LOG("temp_va=0x%08x, temp_mva_r=0x%08x, temp_mva_w=0x%08x\n", temp_va, temp_mva_r, temp_mva_w);
-#endif
+    HDMI_LOG("temp_va=0x%08x, temp_mva_w=0x%08x\n", temp_va, temp_mva_w);
+
 
     p->lcm_width = lcm_width;
     p->lcm_height = lcm_height;
+    p->lcm_is_video_mode = DISP_IsVideoMode();
     p->output_video_resolution = hdmi_params->init_config.vformat;
     p->output_audio_format = hdmi_params->init_config.aformat;
+    p->scaling_factor = hdmi_params->scaling_factor < 10 ? hdmi_params->scaling_factor : 10;
 
-#ifdef NEW_HDMI_ARCH
-    hdmi_display_path_overlay_config(true);
-#endif
+    if(p->lcm_is_video_mode)
+        hdmi_buffer_init(hdmi_params->intermediat_buffer_num);
 
     hdmi_dpi_config_clock(); // configure dpi clock
 
     hdmi_dpi_power_switch(false);   // but dpi power is still off
-    //hdmi_drv->suspend();
 
-#if 0
-    LCD_WaitForNotBusy();
-    LCD_SetOutputMode(3); // LCD write to memory and LCM
-#endif
+    disp_register_irq(DISP_MODULE_MUTEX, _register_updated_irq_handler);
+
+    if(p->lcm_is_video_mode)
+    {
+        disp_register_irq(DISP_MODULE_RDMA1, _rdma1_irq_handler);
+
+        if(!hdmi_rdma_config_task)
+        {
+            hdmi_rdma_config_task = kthread_create(hdmi_rdma_config_kthread, NULL, "hdmi_rdma_config_kthread");
+            wake_up_process(hdmi_rdma_config_task);
+        }
+    }
 
     return HDMI_STATUS_OK;
 }
@@ -903,80 +1311,56 @@ static HDMI_STATUS hdmi_drv_init(void)
 /*static*/ void hdmi_dpi_free_irq(void)
 {
     RET_VOID_IF(p->output_mode == HDMI_OUTPUT_MODE_DPI_BYPASS);
-#if 0
-    DPI_CHECK_RET(DPI_FreeIRQ());
-#endif
+    DPI_CHECK_RET(HDMI_DPI(_FreeIRQ)());
 }
 
 /* Release memory */
 /* Will only be used in ioctl(MTK_HDMI_AUDIO_VIDEO_ENABLE) */
-/*static*/ HDMI_STATUS hdmi_drv_deinit(void)
+static  HDMI_STATUS hdmi_drv_deinit(void)
 {
-    //int ret = 0;
     int temp_va_size;
-//    int hdmi_va_size;
 
     HDMI_FUNC();
     RETIF(p->output_mode == HDMI_OUTPUT_MODE_DPI_BYPASS, 0);
 
-#if 0
-    LCD_WaitForNotBusy();
-    LCD_SetOutputMode(LCD_OUTPUT_TO_LCM);
-#endif 
+#ifdef MTK_MT8193_HDMI_SUPPORT
+    hdmi_display_path_overlay_config(false);
+#endif
+
+    disp_unregister_irq(DISP_MODULE_MUTEX, _register_updated_irq_handler);
+
+    if(p->lcm_is_video_mode)
+    {
+        disp_unregister_irq(DISP_MODULE_RDMA1, _rdma1_irq_handler);
+    }
 
     hdmi_dpi_power_switch(false);
 
-#ifndef NEW_HDMI_ARCH
-    //printk("[hdmi]%s, temp_va=0x%08x, temp_mva=0x%08x\n", __func__, temp_va, temp_mva);
-    //printk("[hdmi]%s, hdmi_va=0x%08x, hdmi_mva=0x%08x\n", __func__, hdmi_va, hdmi_mva);
+#ifndef MTK_MT8193_HDMI_SUPPORT
+    DISP_Config_Overlay_to_Memory(temp_mva_w, 0);
+#endif
 
-    //free temp_va & temp_mva
-    temp_va_size = p->lcm_width * p->lcm_height * 3 * hdmi_params->intermediat_buffer_num;
-    m4u_invalid_tlb_range_stub(M4U_CLNTMOD_LCDC, temp_mva, temp_mva + temp_va_size);
-    ret = m4u_dealloc_mva_stub(M4U_CLNTMOD_LCDC, temp_va, temp_va_size, temp_mva);
-    if(ret)
-    {
-        printk("[hdmi]allocate mva for dpi fail\n");
-        return -1;
-    }
-
-    vfree((void*)temp_va);
-    temp_va = 0;
-
-    printk("[hdmi]%s, temp_va=0x%08x, temp_mva=0x%08x\n", __func__, temp_va, temp_mva);
-    printk("[hdmi]%s, hdmi_va=0x%08x, hdmi_mva=0x%08x\n", __func__, hdmi_va, hdmi_mva);
-
-    //free hdmi_va & hdmi_mva
-    hdmi_va_size = hdmi_default_width * hdmi_default_height * 3 * hdmi_params->intermediat_buffer_num;
-    m4u_invalid_tlb_range_stub(M4U_CLNTMOD_DPI, hdmi_mva, hdmi_mva + hdmi_va_size);
-    ret = m4u_dealloc_mva_stub(M4U_CLNTMOD_DPI, hdmi_va, hdmi_va_size, hdmi_mva);
-    if(ret)
-    {
-       printk("[hdmi]allocate mva for dpi fail\n");
-       return -1;
-    }
-
-    vfree((void*)hdmi_va);
-    hdmi_va = 0;
-#else
-    hdmi_display_path_overlay_config(false);
-    hdmi_src_display_path_config(false);
-    hdmi_dst_display_path_config(false);
+    if(p->lcm_is_video_mode)
+        hdmi_buffer_deinit();
 
     //free temp_va & temp_mva
     HDMI_LOG("Free temp_va and temp_mva\n");
-    temp_va_size = p->lcm_width * p->lcm_height * 2 * hdmi_params->intermediat_buffer_num;
-    if (temp_mva_r)
-    {
-        m4u_invalid_tlb_range_stub(M4U_CLNTMOD_ROT, temp_mva_r, temp_mva_r + temp_va_size - 1);
-        m4u_dealloc_mva_stub(M4U_CLNTMOD_ROT, temp_va, temp_va_size, temp_mva_r);
-        temp_mva_r = 0;
-    }
-
+    temp_va_size = p->lcm_width * p->lcm_height * hdmi_bpp * hdmi_params->intermediat_buffer_num;
     if (temp_mva_w)
     {
-        m4u_invalid_tlb_range_stub(M4U_CLNTMOD_WDMA, temp_mva_w, temp_mva_w + temp_va_size - 1);
-        m4u_dealloc_mva_stub(M4U_CLNTMOD_WDMA, temp_va, temp_va_size, temp_mva_w);
+        M4U_PORT_STRUCT m4uport;
+        m4uport.ePortID =  M4U_PORT_WDMA1;
+        m4uport.Virtuality = 0;
+        m4uport.domain = 0;
+        m4uport.Security = 0;
+        m4uport.Distance = 1;
+        m4uport.Direction = 0;
+        m4u_config_port(&m4uport);
+
+        m4u_dealloc_mva(M4U_CLNTMOD_WDMA,
+                                temp_va,
+                                temp_va_size,
+                                temp_mva_w);
         temp_mva_w = 0;
     }
 
@@ -987,25 +1371,24 @@ static HDMI_STATUS hdmi_drv_init(void)
     }
 
     hdmi_free_hdmi_buffer();
-#endif
 
     hdmi_dpi_free_irq();
     return HDMI_STATUS_OK;
 }
 
-#ifdef NEW_HDMI_ARCH
 static void hdmi_dpi_config_update(void)
 {
-    DPI_CHECK_RET(DPI1_ConfigPixelClk(clk_pol, dpi_clk_div, dpi_clk_duty));
+    DPI_CHECK_RET(HDMI_DPI(_ConfigPixelClk)(clk_pol, dpi_clk_div, dpi_clk_duty));
 
-    DPI_CHECK_RET(DPI1_ConfigDataEnable(de_pol)); // maybe no used
+    DPI_CHECK_RET(HDMI_DPI(_ConfigDataEnable)(de_pol)); // maybe no used
 
-    DPI_CHECK_RET(DPI1_ConfigHsync(hsync_pol, hsync_pulse_width, hsync_back_porch, hsync_front_porch));
+    DPI_CHECK_RET(HDMI_DPI(_ConfigHsync)(hsync_pol, hsync_pulse_width, hsync_back_porch, hsync_front_porch));
 
-    DPI_CHECK_RET(DPI1_ConfigVsync(vsync_pol, vsync_pulse_width, vsync_back_porch, vsync_front_porch));
+    DPI_CHECK_RET(HDMI_DPI(_ConfigVsync)(vsync_pol, vsync_pulse_width, vsync_back_porch, vsync_front_porch));
 
-    DPI_CHECK_RET(DPI1_FBSetSize(p->hdmi_width, p->hdmi_height));
+    DPI_CHECK_RET(HDMI_DPI(_FBSetSize)(p->hdmi_width, p->hdmi_height));
 
+#ifdef MTK_MT8193_HDMI_SUPPORT
     //FIXME
     {
         // the following are sample codes
@@ -1014,33 +1397,32 @@ static void hdmi_dpi_config_update(void)
         DPI_CHECK_RET(DPI1_MatrixPreOffset(0, 0, 0));
         DPI_CHECK_RET(DPI1_MatrixPostOffset(0x0800, 0, 0x0800));
         DPI_CHECK_RET(DPI1_CLPFSetting(0, FALSE));
-        DPI_CHECK_RET(DPI1_SetChannelLimit(0x0100, 0x0F00, 0x0100, 0x0F00));
+        DPI_CHECK_RET(DPI1_SetChannelLimit(0x0010, 0x0FE0, 0x0010, 0x0FE0));
         DPI_CHECK_RET(DPI1_EmbeddedSyncSetting(TRUE, TRUE, TRUE, FALSE, FALSE, FALSE, FALSE));
         DPI_CHECK_RET(DPI1_OutputSetting(DPI_OUTPUT_BIT_NUM_8BITS, FALSE, DPI_OUTPUT_CHANNEL_SWAP_RGB, DPI_OUTPUT_YC_MAP_CY));
         //DPI_CHECK_RET(DPI1_EnableColorBar());
         //DPI_CHECK_RET(DPI1_EnableBlackScreen());
     }
-
+#endif
     {
         //DPI_CHECK_RET(DPI_FBSetAddress(DPI_FB_0, hdmi_mva));//??????????????????????
-        DPI_CHECK_RET(DPI1_FBSetPitch(DPI_FB_0, p->hdmi_width*3)); // do nothing
-        DPI_CHECK_RET(DPI1_FBEnable(DPI_FB_0, TRUE)); // do nothing
+        DPI_CHECK_RET(HDMI_DPI(_FBSetPitch)(DPI_FB_0, p->hdmi_width*3)); // do nothing
+        DPI_CHECK_RET(HDMI_DPI(_FBEnable)(DPI_FB_0, TRUE)); // do nothing
     }
 
     //OUTREG32(0xF208C090, 0x41);
-    DPI_CHECK_RET(DPI1_FBSetFormat(DPI_FB_FORMAT_RGB888)); // do nothing
+    DPI_CHECK_RET(HDMI_DPI(_FBSetFormat)(DPI_FB_FORMAT_RGB888)); // do nothing
 
-    //if (LCM_COLOR_ORDER_BGR == rgb_order)
     if (HDMI_COLOR_ORDER_BGR == rgb_order)
     {
-        DPI_CHECK_RET(DPI1_SetRGBOrder(DPI_RGB_ORDER_RGB, DPI_RGB_ORDER_BGR)); // do nothing
+        DPI_CHECK_RET(HDMI_DPI(_SetRGBOrder)(DPI_RGB_ORDER_RGB, DPI_RGB_ORDER_BGR)); // do nothing
     }
     else
     {
-        DPI_CHECK_RET(DPI1_SetRGBOrder(DPI_RGB_ORDER_RGB, DPI_RGB_ORDER_RGB)); // do nothing
+        DPI_CHECK_RET(HDMI_DPI(_SetRGBOrder)(DPI_RGB_ORDER_RGB, DPI_RGB_ORDER_RGB)); // do nothing
     }
 }
-#endif
+
 
 /* Will only be used in hdmi_drv_init(), this means that will only be use in ioctl(MTK_HDMI_AUDIO_VIDEO_ENABLE) */
 /*static*/ void hdmi_dpi_config_clock(void)
@@ -1050,6 +1432,7 @@ static void hdmi_dpi_config_update(void)
     RET_VOID_IF(p->output_mode == HDMI_OUTPUT_MODE_DPI_BYPASS);
 
     ret = enable_pll(TVDPLL, "HDMI");
+	p->is_clock_on = true;
     if(ret)
     {
         HDMI_LOG("enable_pll fail!!\n");
@@ -1066,8 +1449,6 @@ static void hdmi_dpi_config_update(void)
             dpi_clk_div = 2;
             dpi_clk_duty = 1;
 
-            //OUTREG32(0xF2080920, 1);
-            //OUTREG32(0xF2080900, 1);
             break;
         }
         case HDMI_VIDEO_1280x720p_60Hz:
@@ -1079,8 +1460,6 @@ static void hdmi_dpi_config_update(void)
             dpi_clk_div = 2;
             dpi_clk_duty = 1;
 
-            //OUTREG32(0xF2080920, 1);
-            //OUTREG32(0xF2080900, 1);
             break;
         }
 #ifdef MTK_MT8193_HDMI_SUPPORT
@@ -1092,8 +1471,6 @@ static void hdmi_dpi_config_update(void)
             dpi_clk_div = 2;
             dpi_clk_duty = 1;
 
-            //OUTREG32(0xF2080920, 1);
-            //OUTREG32(0xF2080900, 1);
             break;
         }
 #endif
@@ -1119,54 +1496,24 @@ static void hdmi_dpi_config_update(void)
     rgb_order           = hdmi_params->rgb_order;
     intermediat_buffer_num = hdmi_params->intermediat_buffer_num;
 
-    // dpi clock configuration using MIPITX
-#ifndef NEW_HDMI_ARCH
-    DPI_CHECK_RET(DPI_Init(FALSE));
-
-    DPI_CHECK_RET(DPI_ConfigPixelClk(clk_pol, dpi_clk_div, dpi_clk_duty));
-
-    DPI_CHECK_RET(DPI_ConfigDataEnable(de_pol));
-
-    DPI_CHECK_RET(DPI_ConfigHsync(hsync_pol, hsync_pulse_width, hsync_back_porch, hsync_front_porch));
-
-    DPI_CHECK_RET(DPI_ConfigVsync(vsync_pol, vsync_pulse_width, vsync_back_porch, vsync_front_porch));
-
-    DPI_CHECK_RET(DPI_FBSetSize(p->hdmi_width, p->hdmi_height));
-
-    {
-        //DPI_CHECK_RET(DPI_FBSetAddress(DPI_FB_0, hdmi_mva));//??????????????????????
-        DPI_CHECK_RET(DPI_FBSetPitch(DPI_FB_0, p->hdmi_width*3));
-        DPI_CHECK_RET(DPI_FBEnable(DPI_FB_0, TRUE));
-    }
-
-    //OUTREG32(0xF208C090, 0x41);
-    DPI_CHECK_RET(DPI_FBSetFormat(DPI_FB_FORMAT_RGB888));
-
-    //if (LCM_COLOR_ORDER_BGR == rgb_order)
-    if (HDMI_COLOR_ORDER_BGR == rgb_order)
-    {
-        DPI_CHECK_RET(DPI_SetRGBOrder(DPI_RGB_ORDER_RGB, DPI_RGB_ORDER_BGR));
-    }
-    else
-    {
-        DPI_CHECK_RET(DPI_SetRGBOrder(DPI_RGB_ORDER_RGB, DPI_RGB_ORDER_RGB));
-    }
-
-    DPI_CHECK_RET(DPI_EnableClk());
-
-    p->is_clock_on = true;
-#elif 0
-    DPI_CHECK_RET(DPI1_Init_PLL(hdmi_params->init_config.vformat));
-    DPI_CHECK_RET(DPI1_Init(FALSE));
-    DPI_CHECK_RET(DPI1_ConfigHDMI());
+#if 0
+    //DPI_CHECK_RET(HDMI_DPI(_Init_PLL)(hdmi_params->init_config.vformat));
+    hdmi_config_pll(hdmi_params->init_config.vformat);//FIXME
+    
+    DPI_CHECK_RET(HDMI_DPI(_Init)(FALSE));
+    DPI_CHECK_RET(HDMI_DPI(_ConfigHDMI)());
 
     hdmi_dpi_config_update();
 
-    DPI_CHECK_RET(DPI1_EnableClk());
+    DPI_CHECK_RET(HDMI_DPI(_EnableClk)());
+
+    p->is_clock_on = true;
+#else
+    DPI_CHECK_RET(HDMI_DPI(_Init)(FALSE));
 #endif
 }
 
-#ifdef NEW_HDMI_ARCH
+
 int hdmi_allocate_hdmi_buffer(void)
 {
     M4U_PORT_STRUCT m4uport;
@@ -1186,27 +1533,21 @@ int hdmi_allocate_hdmi_buffer(void)
     memset((void*) hdmi_va, 0, hdmiBufferSize);
 
     //RDMA1
-    if (m4u_alloc_mva_stub(M4U_CLNTMOD_RDMA, hdmi_va, hdmiBufferSize, &hdmi_mva_r))
+    if (m4u_alloc_mva(M4U_CLNTMOD_RDMA, hdmi_va, hdmiBufferSize, 0, 0, &hdmi_mva_r))
     {
         HDMI_LOG("m4u_alloc_mva for hdmi_mva_r fail\n");
         return -1;
     }
-    if (m4u_insert_tlb_range_stub(M4U_CLNTMOD_RDMA, hdmi_mva_r, hdmi_mva_r + hdmiBufferSize - 1, RT_RANGE_HIGH_PRIORITY, 1))
-    {
-        HDMI_LOG("m4u_insert_seq_range for hdmi_mva_r fail\n");
-        m4u_dealloc_mva(M4U_CLNTMOD_RDMA, hdmi_va, hdmiBufferSize, hdmi_mva_r);
-        return -1;
-    }
-
     memset((void*) &m4uport, 0, sizeof(M4U_PORT_STRUCT));
     m4uport.ePortID = M4U_PORT_RDMA1;
     m4uport.Virtuality = 1;
+    m4uport.domain = 0;
     m4uport.Security = 0;
     m4uport.Distance = 1;
     m4uport.Direction = 0;
-    m4u_config_port_stub(&m4uport);
+    m4u_config_port(&m4uport);
 
-    HDMI_LOG("hdmi_va=0x%08x, hdmi_mva_r=0x%08x, hdmi_mva_w=0x%08x\n", hdmi_va, hdmi_mva_r, hdmi_mva_w);
+    HDMI_LOG("hdmi_va=0x%08x, hdmi_mva_r=0x%08x\n", hdmi_va, hdmi_mva_r);
 
     return 0;
 }
@@ -1220,16 +1561,20 @@ int hdmi_free_hdmi_buffer(void)
 
     if (hdmi_mva_r)
     {
-        m4u_invalid_tlb_range_stub(M4U_CLNTMOD_RDMA, hdmi_mva_r, hdmi_mva_r + hdmi_va_size - 1);
-        m4u_dealloc_mva_stub(M4U_CLNTMOD_RDMA, hdmi_va, hdmi_va_size, hdmi_mva_r);
-        hdmi_mva_r = 0;
-    }
+        M4U_PORT_STRUCT m4uport;
+        m4uport.ePortID =  M4U_PORT_RDMA1;
+        m4uport.Virtuality = 0;
+        m4uport.domain = 0;
+        m4uport.Security = 0;
+        m4uport.Distance = 1;
+        m4uport.Direction = 0;
+        m4u_config_port(&m4uport);
 
-    if (hdmi_mva_w)
-    {
-        m4u_invalid_tlb_range_stub(M4U_CLNTMOD_WDMA, hdmi_mva_w, hdmi_mva_w + hdmi_va_size - 1);
-        m4u_dealloc_mva_stub(M4U_CLNTMOD_WDMA, hdmi_va, hdmi_va_size, hdmi_mva_w);
-        hdmi_mva_w = 0;
+        m4u_dealloc_mva(M4U_CLNTMOD_RDMA,
+                                hdmi_va,
+                                hdmi_va_size,
+                                hdmi_mva_r);
+        hdmi_mva_r = 0;
     }
 
     if (hdmi_va)
@@ -1241,19 +1586,15 @@ int hdmi_free_hdmi_buffer(void)
     return 0;
 }
 
-int hdmi_dst_display_path_config(bool enable)
+int hdmi_rdma_address_config(bool enable, void* hdmi_mva)
 {
     HDMI_FUNC();
     if(enable)
     {
-        //FIXME: now nothing can be seen on TV if output UYVY from WDMA0
-        int rdmaInputFormat = hdmi_bpp == 2 ? RDMA_INPUT_FORMAT_UYVY : RDMA_INPUT_FORMAT_ARGB;
-
-        unsigned int hdmiSourceAddr = hdmi_mva_r + p->hdmi_width * p->hdmi_height * hdmi_bpp * hdmi_buffer_read_id;
+        int rdmaInputFormat = hdmi_bpp == 2 ? RDMA_INPUT_FORMAT_UYVY : RDMA_INPUT_FORMAT_RGB888;
+        unsigned int hdmiSourceAddr = (unsigned int)hdmi_mva;
 
         struct disp_path_config_struct config = {0};
-
-        HDMI_LOG("hdmi_buffer_read_id: %d\n", hdmi_buffer_read_id);
 
         // Config RDMA->DPI1
         config.srcWidth = p->hdmi_width;
@@ -1265,7 +1606,7 @@ int hdmi_dst_display_path_config(bool enable)
         config.addr = hdmiSourceAddr;
         config.pitch = config.srcWidth * hdmi_bpp;
 
-        config.dstModule = DISP_MODULE_DPI1;
+        config.dstModule = HMID_DEST_DPI;
 
         //if(-1 == dp_mutex_dst)
         //    dp_mutex_dst = disp_lock_mutex();
@@ -1275,11 +1616,22 @@ int hdmi_dst_display_path_config(bool enable)
             HDMI_LOG("Lock mutex for RDMA1>DPI1 fail\n");
             return -1;
         }
-
+#if 0
+        disp_dump_reg(DISP_MODULE_RDMA0);
+        disp_dump_reg(DISP_MODULE_RDMA1);
+        disp_dump_reg(DISP_MODULE_CONFIG);
         HDMI_LOG("Get mutex ID %d for RDMA1>DPI1\n", dp_mutex_dst);
+#endif
+
         disp_path_get_mutex_(dp_mutex_dst);
         disp_path_config_(&config, dp_mutex_dst);
         disp_path_release_mutex_(dp_mutex_dst);
+
+#if 0
+        disp_dump_reg(DISP_MODULE_CONFIG);
+        disp_dump_reg(DISP_MODULE_RDMA0);
+        disp_dump_reg(DISP_MODULE_RDMA1);
+#endif
     }
     else
     {
@@ -1301,75 +1653,73 @@ int hdmi_dst_display_path_config(bool enable)
 
     return 0;
 }
-
-int hdmi_src_display_path_config(bool enable)
+int hdmi_dst_display_path_config(bool enable)
 {
     HDMI_FUNC();
     if(enable)
     {
-        unsigned int rotSourceAddr = temp_mva_r;
-
         //FIXME: now nothing can be seen on TV if output UYVY from WDMA0
-        int wdma0OutputFormat = hdmi_bpp == 2 ? WDMA_OUTPUT_FORMAT_UYVY : WDMA_OUTPUT_FORMAT_ARGB;
-        int wdma0OutputWidth = p->hdmi_width * 95 / 100;
-        int wdma0OutputHeight = p->hdmi_height * 95 /100;
-        unsigned int wdma0OutputAddr = hdmi_mva_w + p->hdmi_width * p->hdmi_height * hdmi_bpp * hdmi_buffer_write_id +
-                                       (p->hdmi_height - wdma0OutputHeight) / 2 * p->hdmi_width * hdmi_bpp +
-                                       (p->hdmi_width - wdma0OutputWidth) / 2 * hdmi_bpp;
-
-        int rotInputFormat = DISP_COLOR_FORMAT_YUV_422_I;
+        int rdmaInputFormat = hdmi_bpp == 2 ? RDMA_INPUT_FORMAT_UYVY : RDMA_INPUT_FORMAT_RGB888;
+        
+        unsigned int hdmiSourceAddr = hdmi_mva_r + p->hdmi_width * p->hdmi_height * hdmi_bpp * hdmi_buffer_read_id;
 
         struct disp_path_config_struct config = {0};
 
-        HDMI_LOG("hdmi_buffer_write_id: %d\n", hdmi_buffer_write_id);
+        HDMI_LOG("hdmi_buffer_read_id: %d\n", hdmi_buffer_read_id);
 
-        // source is from overlay
-        config.srcWidth = config.srcROI.width = p->lcm_width;
-        config.srcHeight = config.srcROI.height = p->lcm_height;
+        // Config RDMA->DPI1
+        config.srcWidth = p->hdmi_width;
+        config.srcHeight = p->hdmi_height;
 
-        // Config ROT->SCL->WDMA0
-        config.srcModule = DISP_MODULE_SCL;
-        config.inFormat = rotInputFormat;
-        config.addr = rotSourceAddr;
-        config.pitch = config.srcWidth; // dont multiply bpp here
+        config.srcModule = DISP_MODULE_RDMA1;
+        config.inFormat = rdmaInputFormat;
+        config.outFormat = RDMA_OUTPUT_FORMAT_ARGB;
+        config.addr = hdmiSourceAddr;
+        config.pitch = config.srcWidth * hdmi_bpp;
 
-        config.dstModule = DISP_MODULE_WDMA0;
-        config.outFormat = wdma0OutputFormat;
-        config.dstWidth = wdma0OutputWidth;
-        config.dstHeight = wdma0OutputHeight;
-        config.dstAddr = wdma0OutputAddr;
-        config.dstPitch = p->hdmi_width; // dont multiply bpp here
+        config.dstModule = HMID_DEST_DPI;
 
-        if(-1 == dp_mutex_src)
-            dp_mutex_src = disp_lock_mutex();
-        //dp_mutex_src=1;
-        if(-1 == dp_mutex_src)
+        //if(-1 == dp_mutex_dst)
+        //    dp_mutex_dst = disp_lock_mutex();
+        dp_mutex_dst = 2;
+        if(-1 == dp_mutex_dst)
         {
-            HDMI_LOG("Lock mutex for ROT>SCL>WDMA0 fail\n");
+            HDMI_LOG("Lock mutex for RDMA1>DPI1 fail\n");
             return -1;
         }
+#if 0
+        disp_dump_reg(DISP_MODULE_RDMA0);
+        disp_dump_reg(DISP_MODULE_RDMA1);
+        disp_dump_reg(DISP_MODULE_CONFIG);
+        HDMI_LOG("Get mutex ID %d for RDMA1>DPI1\n", dp_mutex_dst);
+#endif
 
-        HDMI_LOG("Get mutex %d for ROT>SCL>WDMA0\n", dp_mutex_src);
-        disp_path_get_mutex_(dp_mutex_src);
-        disp_path_config_(&config, dp_mutex_src);
-        disp_path_release_mutex_(dp_mutex_src);
+        disp_path_get_mutex_(dp_mutex_dst);
+        disp_path_config_(&config, dp_mutex_dst);
+        disp_path_release_mutex_(dp_mutex_dst);
+
+#if 0
+        disp_dump_reg(DISP_MODULE_CONFIG);
+        disp_dump_reg(DISP_MODULE_RDMA0);
+        disp_dump_reg(DISP_MODULE_RDMA1);
+#endif
     }
     else
     {
-        if(-1 != dp_mutex_src)
+        if(-1 != dp_mutex_dst)
         {
             //FIXME: release mutex timeout
-            HDMI_LOG("Stop ROT>SCL>WDMA0\n");
-            disp_path_get_mutex_(dp_mutex_src);
-
+            HDMI_LOG("Stop RDMA1>DPI1\n");
+            disp_path_get_mutex_(dp_mutex_dst);
+            atomic_set(&dst_reg_update_event, 0);
             DISP_REG_SET_FIELD(1 << dp_mutex_src , DISP_REG_CONFIG_MUTEX_INTEN,  1);
-            ROTStop(); ROTReset();
-            SCLStop(); SCLReset();
-            WDMAStop(0); WDMAReset(0);
-            disp_path_release_mutex_(dp_mutex_src);
+            RDMAStop(1);
+            disp_path_release_mutex_(dp_mutex_dst);
 
-            disp_unlock_mutex(dp_mutex_src);
-            dp_mutex_src = -1;
+            wait_event_interruptible_timeout(dst_reg_update_wq, atomic_read(&dst_reg_update_event), HZ);
+
+            //disp_unlock_mutex(dp_mutex_dst);
+            dp_mutex_dst = -1;
         }
     }
 
@@ -1381,12 +1731,11 @@ int hdmi_display_path_overlay_config(bool enable)
     HDMI_FUNC();
     if(enable)
     {
-        int wdma1OutputFormat = WDMA_OUTPUT_FORMAT_UYVY;
-        unsigned int wdma1OutputAddr = temp_mva_w;
+        int wdma1OutputFormat = WDMA_OUTPUT_FORMAT_RGB888;
+
+        unsigned int wdma1OutputAddr = temp_mva_w + p->lcm_width * p->lcm_height * 3 * hdmi_buffer_lcdw_id;
 
         struct disp_path_config_mem_out_struct wdma1Config = {0};
-
-        HDMI_LOG("hdmi_buffer_write_id: %d\n", hdmi_buffer_write_id);
 
         // Config OVL->WDMA1
         wdma1Config.enable = 1;
@@ -1400,6 +1749,7 @@ int hdmi_display_path_overlay_config(bool enable)
 
         disp_path_get_mutex();
         disp_path_config_mem_out(&wdma1Config);
+        hdmi_overlay_status = HDMI_OVERLAY_STATUS_STARTING;
         disp_path_release_mutex();
     }
     else
@@ -1409,15 +1759,16 @@ int hdmi_display_path_overlay_config(bool enable)
         HDMI_LOG("Stop WDMA1 memory out\n");
 
         disp_path_get_mutex();
+        atomic_set(&reg_update_event, 0);
         disp_path_config_mem_out(&wdma1Config);
+        hdmi_overlay_status = HDMI_OVERLAY_STATUS_STOPPING;
         disp_path_release_mutex();
 
-        msleep(100);
+        wait_event_interruptible_timeout(reg_update_wq, atomic_read(&reg_update_event), HZ);
     }
 
     return 0;
 }
-#endif //NEW_HDMI_ARCH
 
 /* Switch DPI Power for HDMI Driver */
 /*static*/ void hdmi_dpi_power_switch(bool enable)
@@ -1442,18 +1793,9 @@ int hdmi_display_path_overlay_config(bool enable)
             HDMI_LOG("enable_pll fail!!\n");
             return;
         }
-#ifndef NEW_HDMI_ARCH
-        DPI_PowerOn();
-        DPI_EnableIrq();
-
-        //OUTREG32(0xF2080920, 1);
-        //OUTREG32(0xF2080900, 1);
-        DPI_CHECK_RET(DPI_EnableClk());
-#else
-        DPI1_PowerOn();
-        DPI1_EnableIrq();
-        DPI_CHECK_RET(DPI1_EnableClk());
-#endif
+        HDMI_DPI(_PowerOn)();
+        HDMI_DPI(_EnableIrq)();
+        DPI_CHECK_RET(HDMI_DPI(_EnableClk)());
 
         p->is_clock_on = true;
     }
@@ -1467,17 +1809,9 @@ int hdmi_display_path_overlay_config(bool enable)
 
         p->is_clock_on = false;
 
-#ifndef NEW_HDMI_ARCH
-        DPI_DisableIrq();
-
-        DPI_DisableClk();
-        DPI_PowerOff();
-#else
-        DPI1_DisableIrq();
-
-        DPI1_DisableClk();
-        DPI1_PowerOff();
-#endif
+        HDMI_DPI(_DisableIrq)();
+        HDMI_DPI(_DisableClk)();
+        HDMI_DPI(_PowerOff)();
 
         ret = disable_pll(TVDPLL, "HDMI");
         if(ret)
@@ -1486,12 +1820,14 @@ int hdmi_display_path_overlay_config(bool enable)
             //return;
         }
 
+#if 0
         if (IS_HDMI_VIDEO_MODE_DPI_IN_CHANGING_ADDRESS())
         {
             SET_HDMI_VIDEO_MODE_DPI_CHANGE_ADDRESS_DONE();
             atomic_set(&hdmi_video_mode_event, 1);
             wake_up_interruptible(&hdmi_video_mode_wq);
         }
+#endif
     }
 }
 
@@ -1501,11 +1837,12 @@ static int hdmi_video_config(HDMI_VIDEO_RESOLUTION vformat, HDMI_VIDEO_INPUT_FOR
 	HDMI_FUNC();
 	RETIF(IS_HDMI_NOT_ON(), 0);
 
-#ifdef NEW_HDMI_ARCH
-	hdmi_allocate_hdmi_buffer();
+    hdmi_allocate_hdmi_buffer();
     //hdmi_src_display_path_config(true);
     hdmi_dst_display_path_config(true);
-#endif
+
+    hdmi_fps_control_overlay = 0;
+    hdmi_fps_control_dpi = 0;
 
     return hdmi_drv->video_config(vformat, vin, vout);
 }
@@ -1598,8 +1935,6 @@ static void hdmi_state_reset(void)
 /* HDMI Driver state callback function */
 void hdmi_state_callback(HDMI_STATE state)
 {
-    //int ret, i;
-    //static int is_first_time = 1;
 
     printk("[hdmi]%s, state = %d\n", __func__, state);
 
@@ -1683,6 +2018,7 @@ void hdmi_state_callback(HDMI_STATE state)
 	// When we suspend the phone, and then plug out hdmi cable, the hdmi chip status will change immediately
 	// But when we resume the phone and check hdmi status, the irq will never come again
 	// So we have to reset hdmi state manually, to ensure the status is the same between the host and hdmi chip.
+	#ifndef MTK_MT8193_HDMI_SUPPORT
     if(p->is_force_disable == false)
     {
         if (IS_HDMI_FAKE_PLUG_IN())
@@ -1700,7 +2036,7 @@ void hdmi_state_callback(HDMI_STATE state)
             //	hdmi_resume();
         }
     }
-
+    #endif
     up(&hdmi_update_mutex);
 
     return;
@@ -1735,9 +2071,23 @@ void hdmi_state_callback(HDMI_STATE state)
         printk("[hdmi][HDMI] can't get semaphore in %s()\n", __func__);
         return;
     }
+		
+#ifdef MTK_MT8193_HDMI_SUPPORT
+				hdmi_display_path_overlay_config(false);
+				//hdmi_src_display_path_config(false);
+#else
+				DISP_Config_Overlay_to_Memory(temp_mva_w, 0);
+#endif
     hdmi_dpi_power_switch(false);
+
+	hdmi_dst_display_path_config(false);
+
     hdmi_drv->suspend();
     SET_HDMI_STANDBY();
+
+	disp_module_clock_off(DISP_MODULE_RDMA1, "HDMI");
+	disp_module_clock_off(DISP_MODULE_GAMMA, "HDMI");		
+	disp_module_clock_off(DISP_MODULE_WDMA1, "HDMI");		
     up(&hdmi_update_mutex);
 }
 
@@ -1752,12 +2102,23 @@ void hdmi_state_callback(HDMI_STATE state)
         printk("[hdmi][HDMI] can't get semaphore in %s()\n", __func__);
         return;
     }
+		disp_module_clock_on(DISP_MODULE_RDMA1, "HDMI");
+		disp_module_clock_on(DISP_MODULE_GAMMA, "HDMI"); 	
+		disp_module_clock_on(DISP_MODULE_WDMA1, "HDMI"); 	
+		
+#ifdef MTK_MT8193_HDMI_SUPPORT
+				hdmi_display_path_overlay_config(true);
+#else
+				DISP_Config_Overlay_to_Memory(temp_mva_w, 1);
+#endif
+
+	hdmi_dst_display_path_config(true);
     hdmi_dpi_power_switch(true);
     hdmi_drv->resume();
-    #ifndef MTK_MT8193_HDMI_SUPPORT
+#if 0 // !defined(MTK_MT8193_HDMI_SUPPORT)
     hdmi_video_config(p->output_video_resolution, HDMI_VIN_FORMAT_RGB888, HDMI_VOUT_FORMAT_RGB888);
     hdmi_audio_config(44100);
-    #endif
+#endif
     up(&hdmi_update_mutex);
 }
 
@@ -1792,7 +2153,6 @@ static int hdmi_open(struct inode *inode, struct file *file)
 
 static BOOL hdmi_drv_init_context(void);
 
-#ifdef MTK_MT8193_HDMI_SUPPORT
 static void dpi_setting_res(u8 arg)
 {
 	switch(arg)
@@ -1820,6 +2180,7 @@ static void dpi_setting_res(u8 arg)
 		 p->output_video_resolution = HDMI_VIDEO_720x480p_60Hz;
 		 break;
 	  }
+#ifdef MTK_MT8193_HDMI_SUPPORT
 	  case HDMI_VIDEO_720x576p_50Hz:
 	  {
 	
@@ -1843,12 +2204,17 @@ static void dpi_setting_res(u8 arg)
 		 p->output_video_resolution = HDMI_VIDEO_720x576p_50Hz;
 		 break;
 	  }
+#endif
 	  case HDMI_VIDEO_1280x720p_60Hz:
 	  {
 	
 		 clk_pol	 = HDMI_POLARITY_FALLING;
 		 de_pol 	 = HDMI_POLARITY_RISING;
+#if defined(HDMI_TDA19989)
+         hsync_pol	 = HDMI_POLARITY_FALLING;
+#else
 		 hsync_pol	 = HDMI_POLARITY_RISING;
+#endif
 		 vsync_pol	 = HDMI_POLARITY_RISING;;
 		 
 		 dpi_clk_div = 2;
@@ -1866,6 +2232,7 @@ static void dpi_setting_res(u8 arg)
 		 p->output_video_resolution = HDMI_VIDEO_1280x720p_60Hz;
 		 break;
 	  }
+#ifdef MTK_MT8193_HDMI_SUPPORT
 	  case HDMI_VIDEO_1280x720p_50Hz:
 	  {
 	
@@ -1935,6 +2302,7 @@ static void dpi_setting_res(u8 arg)
 		 p->output_video_resolution = HDMI_VIDEO_1920x1080p_25Hz;
 		 break;
 	  }
+#endif
 	  case HDMI_VIDEO_1920x1080p_30Hz:
 	  {
 	
@@ -1958,6 +2326,7 @@ static void dpi_setting_res(u8 arg)
 		 p->output_video_resolution = HDMI_VIDEO_1920x1080p_30Hz;
 		 break;
 	  }
+#ifdef MTK_MT8193_HDMI_SUPPORT
 	  case HDMI_VIDEO_1920x1080p_29Hz:
 	  {
 	
@@ -2004,100 +2373,13 @@ static void dpi_setting_res(u8 arg)
 		 p->output_video_resolution = HDMI_VIDEO_1920x1080p_23Hz;
 		 break;
 	  }
-	
+#endif
 	  default:
 	  	break;
 	 }
 
 }
-#endif
 
-static char* _hdmi_ioctl_spy(unsigned int cmd)
-{
-	switch(cmd)
-	{
-		case MTK_HDMI_AUDIO_VIDEO_ENABLE:
-			return "MTK_HDMI_AUDIO_VIDEO_ENABLE";
-		case MTK_HDMI_AUDIO_ENABLE:
-			return "MTK_HDMI_AUDIO_ENABLE";
-		case MTK_HDMI_VIDEO_ENABLE:
-			return "MTK_HDMI_VIDEO_ENABLE";
-		case MTK_HDMI_GET_CAPABILITY:
-			return "MTK_HDMI_GET_CAPABILITY";
-		case MTK_HDMI_GET_DEVICE_STATUS:
-			return "MTK_HDMI_GET_DEVICE_STATUS";
-		case MTK_HDMI_VIDEO_CONFIG:
-			return "MTK_HDMI_VIDEO_CONFIG";
-		case MTK_HDMI_AUDIO_CONFIG:
-			return "MTK_HDMI_AUDIO_CONFIG";
-		case MTK_HDMI_FORCE_FULLSCREEN_ON:
-			return "MTK_HDMI_FORCE_FULLSCREEN_ON";
-		case MTK_HDMI_FORCE_FULLSCREEN_OFF:
-			return "MTK_HDMI_FORCE_FULLSCREEN_OFF";
-		case MTK_HDMI_IPO_POWEROFF:
-			return "MTK_HDMI_IPO_POWEROFF";
-		case MTK_HDMI_IPO_POWERON:
-			return "MTK_HDMI_IPO_POWERON";
-		case MTK_HDMI_POWER_ENABLE:
-			return "MTK_HDMI_POWER_ENABLE";
-		case MTK_HDMI_PORTRAIT_ENABLE:
-			return "MTK_HDMI_PORTRAIT_ENABLE";
-		case MTK_HDMI_FORCE_OPEN:
-			return "MTK_HDMI_FORCE_OPEN";
-		case MTK_HDMI_FORCE_CLOSE:
-			return "MTK_HDMI_FORCE_CLOSE";
-        case MTK_HDMI_IS_FORCE_AWAKE:
-            return "MTK_HDMI_IS_FORCE_AWAKE";
-        case MTK_HDMI_ENTER_VIDEO_MODE:
-            return "MTK_HDMI_ENTER_VIDEO_MODE";
-        case MTK_HDMI_LEAVE_VIDEO_MODE:
-            return "MTK_HDMI_LEAVE_VIDEO_MODE";
-        case MTK_HDMI_REGISTER_VIDEO_BUFFER:
-            return "MTK_HDMI_REGISTER_VIDEO_BUFFER";
-        case MTK_HDMI_POST_VIDEO_BUFFER:
-            return "MTK_HDMI_POST_VIDEO_BUFFER";
-        case MTK_HDMI_FACTORY_MODE_ENABLE:
-            return "MTK_HDMI_FACTORY_MODE_ENABLE";
-		#ifdef MTK_MT8193_HDMI_SUPPORT
-		case MTK_HDMI_WRITE_DEV:
-			return "MTK_HDMI_WRITE_DEV";
-		case MTK_HDMI_READ_DEV:
-			return "MTK_HDMI_READ_DEV";
-		case MTK_HDMI_ENABLE_LOG:
-			return "MTK_HDMI_ENABLE_LOG";
-        case MTK_HDMI_CHECK_EDID:
-            return "MTK_HDMI_CHECK_EDID";
-        case MTK_HDMI_INFOFRAME_SETTING:
-            return "MTK_HDMI_INFOFRAME_SETTING";
-        case MTK_HDMI_ENABLE_HDCP:
-            return "MTK_HDMI_ENABLE_HDCP";
-        case MTK_HDMI_STATUS:
-            return "MTK_HDMI_STATUS";
-        case MTK_HDMI_HDCP_KEY:
-            return "MTK_HDMI_HDCP_KEY";
-        case MTK_HDMI_GET_EDID:
-            return "MTK_HDMI_GET_EDID";
-		case MTK_HDMI_SETLA:
-			return "MTK_HDMI_SETLA";
-		case MTK_HDMI_GET_CECCMD:
-			return "MTK_HDMI_GET_CECCMD";
-		case MTK_HDMI_SET_CECCMD:
-			return "MTK_HDMI_SET_CECCMD";
-		case MTK_HDMI_CEC_ENABLE:
-			return "MTK_HDMI_CEC_ENABLE";
-		case MTK_HDMI_GET_CECADDR:
-			return "MTK_HDMI_GET_CECADDR";
-		case MTK_HDMI_CECRX_MODE:
-			return "MTK_HDMI_CECRX_MODE";
-		case MTK_HDMI_SENDSLTDATA:
-			return "MTK_HDMI_SENDSLTDATA";
-		case MTK_HDMI_GET_SLTDATA:
-			return "MTK_HDMI_GET_SLTDATA";			
-		#endif
-		default:
-			return "unknown ioctl command";
-	}
-}
 
 static long hdmi_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 {
@@ -2118,7 +2400,7 @@ static long hdmi_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 	READ_REG_VALUE regval;
     #endif
 	
-	HDMI_LOG("[HDMI] hdmi ioctl= %s(%d)\n", _hdmi_ioctl_spy(cmd),cmd&0xff);
+	HDMI_LOG("[HDMI] hdmi ioctl= %s(%d), arg = %lu\n", _hdmi_ioctl_spy(cmd),cmd&0xff, arg);
 
     switch(cmd)
     {
@@ -2253,7 +2535,7 @@ static long hdmi_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
            HDMI_LOG("copy_from_user failed! line:%d \n", __LINE__);
            r = -EFAULT;
            } else {
-              hdmi_drv->read(regval.u1adress & 0xFFFF, regval.pu1Data);    
+              hdmi_drv->read(regval.u1adress & 0xFFFF, &regval.pu1Data);    
            }
 		   
            if (copy_to_user((void __user *)arg, &regval, sizeof(regval))) {
@@ -2305,7 +2587,6 @@ static long hdmi_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
                 if(hdmi_drv->enter) hdmi_drv->enter();
                 hdmi_power_on();
                 p->is_enabled = true;
-                p->is_factory_mode = false;
             }
             else
             {
@@ -2314,6 +2595,8 @@ static long hdmi_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 
                 //when disable hdmi, HPD is disabled
                 switch_set_state(&hdmi_switch_data, HDMI_STATE_NO_DEVICE);
+
+                hdmi_dst_display_path_config(false);
 
                 hdmi_power_off();
 
@@ -2399,9 +2682,10 @@ static long hdmi_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
             }
             else
             {
+                #ifdef MTK_MT8193_HDMI_SUPPORT
+                switch_set_state(&hdmi_switch_data, HDMI_STATE_NO_DEVICE);
+				#endif
                 hdmi_power_off();
-				//why add this?
-                //memset((void*)hdmi_va, 0, hdmi_default_width*hdmi_default_height*3*hdmi_params->intermediat_buffer_num);
             }
             break;
         }
@@ -2428,6 +2712,13 @@ static long hdmi_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
         case MTK_HDMI_VIDEO_CONFIG:
         {
             HDMI_LOG("video resolution configuration, arg=%ld\n", arg);
+
+#ifndef MTK_MT8193_HDMI_SUPPORT
+            if (arg > 1)
+            {
+                arg = 1;
+            }
+#endif
             RETIF(!p->is_enabled, 0);
 
             RETIF(IS_HDMI_NOT_ON(),0);
@@ -2438,115 +2729,23 @@ static long hdmi_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
                 return EAGAIN;
             }
 
-#ifdef NEW_HDMI_ARCH
             hdmi_dst_display_path_config(false);
-            hdmi_src_display_path_config(false);
+            //hdmi_src_display_path_config(false);
             hdmi_free_hdmi_buffer();
-#endif
 
-#ifndef MTK_MT8193_HDMI_SUPPORT
-            if (HDMI_OUTPUT_MODE_DPI_BYPASS == p->output_mode)
-            {
-                if (1 == arg || 0 == arg) // 720p or 480p
-                {
-                    p->output_video_resolution = arg;
-                }
-                else
-                {
-                    p->output_video_resolution = HDMI_VIDEO_1920x1080p_30Hz;
-                }
-                hdmi_video_config(p->output_video_resolution, HDMI_VIN_FORMAT_RGB888, HDMI_VOUT_FORMAT_RGB888);
-                up(&hdmi_update_mutex);
-                break;
-            }
+			//FIXME, arg => vin format
+            hdmi_config_pll(arg);
 
-            if(arg == 2 || arg == 3 || arg == 1) // auto or 720p
-            {
-                HDMI_LOG("video reso: auto\n");
-                if(p->hdmi_width == 1280)
-                {
-                    HDMI_LOG("reso is the same\n");
-                    up(&hdmi_update_mutex);
-                    break;
-                }
-
-				//pll_fsel(TVDPLL, 0xDBCD0119);
-			    clk_pol     = HDMI_POLARITY_FALLING;
-			    de_pol      = HDMI_POLARITY_RISING;
-			    hsync_pol   = HDMI_POLARITY_RISING;
-			    vsync_pol   = HDMI_POLARITY_RISING;;
-
-                dpi_clk_div = 2;
-
-                hsync_front_porch   = 110;
-                hsync_pulse_width   = 40;
-                hsync_back_porch    = 220;
-                vsync_front_porch   = 5;
-                vsync_pulse_width   = 5;
-                vsync_back_porch    = 20;
-                p->hdmi_width = 1280;
-                p->hdmi_height = 720;
-                p->output_video_resolution = HDMI_VIDEO_1280x720p_60Hz;
-            }
-            else if(arg == 0) // 480p
-            {
-                HDMI_LOG("video reso: 480p\n");
-                if(p->hdmi_width == 720)
-                {
-                    HDMI_LOG("reso is the same\n");
-                    up(&hdmi_update_mutex);
-                    break;
-                }
-                //pll_fsel(TVDPLL, 0x1C7204C7);
-			    clk_pol     = HDMI_POLARITY_FALLING;
-			    de_pol      = HDMI_POLARITY_RISING;
-			    hsync_pol   = HDMI_POLARITY_FALLING;
-			    vsync_pol   = HDMI_POLARITY_FALLING;;
-                dpi_clk_div = 2;
-
-                hsync_front_porch   = 16;
-                hsync_pulse_width   = 62;
-                hsync_back_porch    = 60;
-                vsync_front_porch   = 9;
-                vsync_pulse_width   = 6;
-                vsync_back_porch    = 30;
-                p->hdmi_width = 720;
-                p->hdmi_height = 480;
-                p->output_video_resolution = HDMI_VIDEO_720x480p_60Hz;
-            }
-
-#endif
-			
-#ifndef NEW_HDMI_ARCH
+            dpi_setting_res((u8)arg);
             hdmi_video_config(p->output_video_resolution, HDMI_VIN_FORMAT_RGB888, HDMI_VOUT_FORMAT_RGB888);
 
-			DPI_CHECK_RET(DPI_DisableClk());
-            DPI_CHECK_RET(DPI_ConfigPixelClk(clk_pol, dpi_clk_div, dpi_clk_duty));
+            DPI_CHECK_RET(HDMI_DPI(_DisableClk)());
+    	    DPI_CHECK_RET(HDMI_DPI(_ConfigHDMI)());
+            hdmi_dpi_config_update();
+            DPI_CHECK_RET(HDMI_DPI(_EnableClk)());
 
-            DPI_CHECK_RET(DPI_ConfigHsync(hsync_pol, hsync_pulse_width, hsync_back_porch, hsync_front_porch));
-
-            DPI_CHECK_RET(DPI_ConfigVsync(vsync_pol, vsync_pulse_width, vsync_back_porch, vsync_front_porch));
-
-            DPI_CHECK_RET(DPI_FBSetSize(p->hdmi_width, p->hdmi_height));
-
-            DPI_CHECK_RET(DPI_FBSetPitch(DPI_FB_0, p->hdmi_width*3));
-            DPI_CHECK_RET(DPI_EnableClk());
-#else
-            DPI_CHECK_RET(DPI1_Init_PLL(arg));
-            DPI_CHECK_RET(DPI1_Init(FALSE));
-            DPI_CHECK_RET(DPI1_ConfigHDMI());
-            DPI_CHECK_RET(DPI1_EnableClk());
             p->is_clock_on = true;
 
-#ifdef MTK_MT8193_HDMI_SUPPORT
-            dpi_setting_res((u8)arg);
-#endif
-            hdmi_video_config(p->output_video_resolution, HDMI_VIN_FORMAT_RGB888, HDMI_VOUT_FORMAT_RGB888);
-
-            DPI_CHECK_RET(DPI1_DisableClk());
-            hdmi_dpi_config_update();
-            DPI_CHECK_RET(DPI1_EnableClk());
-#endif
             up(&hdmi_update_mutex);
             break;
         }
@@ -2566,6 +2765,147 @@ static long hdmi_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
             r = copy_to_user(argp, &hdmi_params->is_force_awake, sizeof(hdmi_params->is_force_awake)) ? -EFAULT : 0;
             break;
         }
+#if 1
+        case MTK_HDMI_ENTER_VIDEO_MODE:
+        {
+			RETIF(!p->is_enabled, 0);
+			RETIF(HDMI_OUTPUT_MODE_VIDEO_MODE != p->output_mode, 0);
+            //FIXME
+            //hdmi_dst_display_path_config(true, NULL);
+            break;
+        }
+        case MTK_HDMI_REGISTER_VIDEO_BUFFER:
+        {
+            struct hdmi_video_buffer_info video_buffer_info;
+			RETIF(!p->is_enabled, 0);
+			RETIF(HDMI_OUTPUT_MODE_VIDEO_MODE != p->output_mode, 0);
+            if(copy_from_user(&video_buffer_info, (void __user *)argp, sizeof(video_buffer_info)))
+            {
+                HDMI_LOG("copy_from_user failed! line\n");
+                r = -EFAULT;
+                break;
+            }
+			if(video_buffer_info.src_vir_addr == 0)
+			{
+                HDMI_LOG("[Error]HDMI_REGISTER_VIDEO_BUFFER VA should not be NULL\n");
+                break;
+			}
+            if(down_interruptible(&hdmi_video_mode_mutex))
+            {
+                HDMI_LOG("[HDMI] can't get semaphore in\n");
+                break;
+            }
+            if(hdmi_add_video_buffer(&video_buffer_info, file) < 0)
+            {
+                r = -ENOMEM;
+            }
+            up(&hdmi_video_mode_mutex);
+
+            break;
+
+        }
+        case MTK_HDMI_POST_VIDEO_BUFFER:
+        {
+            struct hdmi_video_buffer_info video_buffer_info;
+            struct hdmi_video_buffer_list* buffer_list;
+			RETIF(!p->is_enabled, 0);
+			RETIF(HDMI_OUTPUT_MODE_VIDEO_MODE != p->output_mode, 0);
+            RETIF(IS_HDMI_NOT_ON(),0);
+            if(copy_from_user(&video_buffer_info, (void __user *)argp, sizeof(video_buffer_info)))
+            {
+                HDMI_LOG("copy_from_user failed! line\n");
+                r = -EFAULT;
+                break;
+            }
+            if(down_interruptible(&hdmi_update_mutex))
+            {
+                HDMI_LOG("[HDMI] can't get semaphore in\n");
+                break;
+            }
+            if(down_interruptible(&hdmi_video_mode_mutex))
+            {
+                HDMI_LOG("[HDMI] can't get semaphore in\n");
+                up(&hdmi_update_mutex);
+                break;
+            }
+
+            if(NULL == (buffer_list = hdmi_search_video_buffer(&video_buffer_info, file)))
+            {
+                up(&hdmi_video_mode_mutex);
+                up(&hdmi_update_mutex);
+                break;
+            }
+
+            if(IS_HDMI_IN_VIDEO_MODE())
+            {
+                //FIXME
+            }
+            else //Enter video mode the first time
+            {
+                SET_HDMI_TO_VIDEO_MODE();
+            }
+            up(&hdmi_update_mutex);
+
+            DBG_OnTriggerHDMI();
+            if(p->is_clock_on)
+            {
+#if 0
+                //Wait for change buffer
+                DPI_CHECK_RET(DPI_FBSetAddress(DPI_FB_0, buffer_list->buffer_mva));
+                *((volatile unsigned int*)(0xF208C020)) = 1;
+                SET_HDMI_VIDEO_MODE_DPI_CHANGE_ADDRESS();
+
+                wait_event_interruptible(hdmi_video_mode_wq, atomic_read(&hdmi_video_mode_event));
+                atomic_set(&hdmi_video_mode_event, 0);
+#else
+                //hdmi_dst_display_path_config(true, buffer_list->buffer_mva);
+                hdmi_rdma_address_config(true, (void*)buffer_list->buffer_mva);
+#endif
+            }
+            DBG_OnHDMIDone();
+
+            up(&hdmi_video_mode_mutex);
+            break;
+        }
+        case MTK_HDMI_LEAVE_VIDEO_MODE:
+        {
+			RETIF(!p->is_enabled, 0);
+			RETIF(HDMI_OUTPUT_MODE_VIDEO_MODE != p->output_mode, 0);
+            if(down_interruptible(&hdmi_update_mutex))
+            {
+                HDMI_LOG("[HDMI] can't get semaphore in\n");
+                break;
+            }
+
+            if(down_interruptible(&hdmi_video_mode_mutex))
+            {
+                HDMI_LOG("[HDMI] can't get semaphore in\n");
+                up(&hdmi_update_mutex);
+                break;
+            }
+            if(p->is_clock_on)
+            {
+#if 0
+                //Wait for change buffer
+                DPI_CHECK_RET(DPI_FBSetAddress(DPI_FB_0, hdmi_mva + p->hdmi_width*p->hdmi_height*3*hdmi_buffer_read_id));
+                *((volatile unsigned int*)(0xF208C020)) = 1;
+                SET_HDMI_VIDEO_MODE_DPI_CHANGE_ADDRESS();
+
+                wait_event_interruptible(hdmi_video_mode_wq, atomic_read(&hdmi_video_mode_event));
+                atomic_set(&hdmi_video_mode_event, 0);
+#endif
+            }
+
+            //hdmi_dst_display_path_config(false, NULL);
+            hdmi_rdma_address_config(false, NULL);
+            SET_HDMI_LEAVE_VIDEO_MODE();
+            //Destory video buffer mva
+            hdmi_destory_video_buffer();
+            up(&hdmi_video_mode_mutex);
+            up(&hdmi_update_mutex);
+            break;
+        }
+#endif
         case MTK_HDMI_FACTORY_MODE_ENABLE:
         {
 			if (hdmi_drv->power_on())
@@ -2591,6 +2931,124 @@ static long hdmi_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 	return r;
 }
 
+
+//VIDEO MODE
+#if 1
+void dump_video_buffer(char* banner)
+{
+#if 0
+    struct hdmi_video_buffer_list *buffer_list;
+    struct list_head *temp;
+    HDMI_LOG("before add a node,list node Addr:\n");
+    list_for_each(temp, hdmi_video_buffer_list_head)
+    {
+        buffer_list = list_entry(temp, struct hdmi_video_buffer_list, list);
+        HDMI_LOG("0x%08x,    ", (unsigned int)temp);
+    }
+    HDMI_LOG("\n");
+#else
+    struct hdmi_video_buffer_list *temp;
+    HDMI_LOG("%s\n", banner);
+    list_for_each_entry(temp, hdmi_video_buffer_list_head, list)
+    {
+        HDMI_LOG("0x%x,    ", (unsigned int)temp);
+    }
+    HDMI_LOG("\n");
+#endif
+}
+static int hdmi_add_video_buffer(struct hdmi_video_buffer_info *buffer_info, struct file *file)
+{
+    struct hdmi_video_buffer_list *buffer_list;
+    int ret;
+    M4U_PORT_STRUCT m4uport;
+    int r = 0;
+
+    dump_video_buffer("++++++++before add video buffer");
+    buffer_list = (struct hdmi_video_buffer_list*)kmalloc(sizeof(struct hdmi_video_buffer_list), GFP_KERNEL);
+    if(!buffer_list)
+    {
+        HDMI_LOG("kmalloc failed\n");
+        r = -1;
+        goto EXIT;
+    }
+    
+    ret = m4u_alloc_mva(M4U_CLNTMOD_RDMA,
+            (unsigned int)(buffer_info->src_vir_addr),
+            buffer_info->src_size,
+            0, 0,
+            &buffer_list->buffer_mva);
+    if(ret)
+    {
+        HDMI_LOG("allocate mva for dpi fail\n");
+        r = -2;
+        goto EXIT;
+    }
+
+    m4uport.ePortID = M4U_PORT_RDMA1;
+    m4uport.Virtuality = 1;
+    m4uport.domain = 0;
+    m4uport.Security = 0;
+    m4uport.Distance = 1;
+    m4uport.Direction = 0;
+    m4u_config_port(&m4uport);
+    HDMI_LOG("hdmi_va=0x%08x, hdmi_mva=0x%08x\n", (unsigned int)(buffer_info->src_vir_addr), buffer_list->buffer_mva);
+
+    buffer_list->buffer_info = *buffer_info;
+    buffer_list->pid = current->tgid;
+    buffer_list->file_addr = (void*)file;
+    //HDMI_LOG("[current process ID = %d, current process name:%s]\n", current->tgid, current->comm);
+    list_add_tail(&buffer_list->list, hdmi_video_buffer_list_head);
+ 
+    dump_video_buffer("-----after add video buffer");
+EXIT:
+    return r;
+}
+static struct hdmi_video_buffer_list* hdmi_search_video_buffer(struct hdmi_video_buffer_info *buffer_info, struct file *file)
+{
+    struct hdmi_video_buffer_list *temp;
+    list_for_each_entry(temp, hdmi_video_buffer_list_head, list)
+    {
+        if(temp->buffer_info.src_vir_addr == buffer_info->src_vir_addr && \
+           temp->pid == current->tgid \
+          )
+        {
+            return temp;
+        }
+    }
+    HDMI_LOG("Error: Cannot find matched VA:0x%08x in buffer list\n", (unsigned int)(buffer_info->src_vir_addr));
+    return NULL;
+}
+
+static void hdmi_destory_video_buffer(void)
+{
+    struct hdmi_video_buffer_list *temp, *next;
+    int ret;
+    list_for_each_entry_safe(temp, next, hdmi_video_buffer_list_head, list)
+    {
+        M4U_PORT_STRUCT m4uport;
+        m4uport.ePortID = M4U_PORT_RDMA1;
+        m4uport.Virtuality = 0;
+        m4uport.domain = 0;
+        m4uport.Security = 0;
+        m4uport.Distance = 1;
+        m4uport.Direction = 0;
+        m4u_config_port(&m4uport);
+
+        ret = m4u_dealloc_mva(M4U_CLNTMOD_RDMA,
+                                (unsigned int)temp->buffer_info.src_vir_addr, 
+                                temp->buffer_info.src_size,
+                                temp->buffer_mva);
+        if (ret < 0)
+        {
+            HDMI_LOG("Invlid M4U Error, vir_addr = 0x%08x, mva = 0x%08x\n", 
+                    (unsigned int)(temp->buffer_info.src_vir_addr), temp->buffer_mva);
+        }
+
+        list_del(&temp->list);
+        kfree(temp);
+    }
+}
+#endif
 
 static int hdmi_remove(struct platform_device *pdev)
 {
@@ -2660,7 +3118,7 @@ static int hdmi_probe(struct platform_device *pdev)
 	/* For device number binded to device name(hdmitx), one class is corresponeded to one node */
 	hdmi_class = class_create(THIS_MODULE, HDMI_DEVNAME);
 	/* mknod /dev/hdmitx */
-	class_dev = (struct class_device *)device_create(hdmi_class, NULL, hdmi_devno,	NULL, HDMI_DEVNAME);
+	class_dev = (struct class_device *)device_create(hdmi_class, NULL, hdmi_devno, NULL, HDMI_DEVNAME);
 
 	printk("[hdmi][%s] current=0x%08x\n", __func__, (unsigned int)current);
 
@@ -2670,13 +3128,20 @@ static int hdmi_probe(struct platform_device *pdev)
 		return HDMI_STATUS_NOT_IMPLEMENTED;
 	}
 
-    init_waitqueue_head(&hdmi_update_wq);
-
     init_waitqueue_head(&hdmi_video_mode_wq);
     INIT_LIST_HEAD(&hdmi_video_mode_buffer_list);
 
+    init_waitqueue_head(&hdmi_update_wq);
     hdmi_update_task = kthread_create(hdmi_update_kthread, NULL, "hdmi_update_kthread");
     wake_up_process(hdmi_update_task);
+
+    init_waitqueue_head(&hdmi_overlay_config_wq);
+    hdmi_overlay_config_task = kthread_create(hdmi_overlay_config_kthread, NULL, "hdmi_overlay_config_kthread");
+    wake_up_process(hdmi_overlay_config_task);
+
+    init_waitqueue_head(&hdmi_rdma_config_wq);
+    init_waitqueue_head(&reg_update_wq);
+    init_waitqueue_head(&dst_reg_update_wq);
 
     return 0;
 }
@@ -2689,8 +3154,8 @@ static struct platform_driver hdmi_driver = {
 
 static int __init hdmi_init(void)
 {
-	int ret = 0;
-	printk("[hdmi]%s\n", __func__);
+    int ret = 0;
+    printk("[hdmi]%s\n", __func__);
 
 
     if (platform_driver_register(&hdmi_driver))
@@ -2699,44 +3164,41 @@ static int __init hdmi_init(void)
         return -1;
     }
 
-	memset((void*)&hdmi_context, 0, sizeof(_t_hdmi_context));
-	SET_HDMI_OFF();
+    memset((void*)&hdmi_context, 0, sizeof(_t_hdmi_context));
+    SET_HDMI_OFF();
 
+    init_hdmi_mmp_events();
 
     if (!hdmi_drv_init_context())
-	{
-	    printk("[hdmi]%s, hdmi_drv_init_context fail\n", __func__);
-		return HDMI_STATUS_NOT_IMPLEMENTED;
-	}
+    {
+        printk("[hdmi]%s, hdmi_drv_init_context fail\n", __func__);
+        return HDMI_STATUS_NOT_IMPLEMENTED;
+    }
 
     p->output_mode = hdmi_params->output_mode;
     hdmi_drv->init();
     HDMI_LOG("Output mode is %s\n", (hdmi_params->output_mode==HDMI_OUTPUT_MODE_DPI_BYPASS)?"HDMI_OUTPUT_MODE_DPI_BYPASS":"HDMI_OUTPUT_MODE_LCD_MIRROR");
 
-    if(hdmi_params->output_mode == HDMI_OUTPUT_MODE_DPI_BYPASS) 
+    if(hdmi_params->output_mode == HDMI_OUTPUT_MODE_DPI_BYPASS)
     {
         p->output_video_resolution = HDMI_VIDEO_RESOLUTION_NUM;
     }
-    
-        HDMI_DBG_Init();
 
-    if (hdmi_params->is_force_landscape) {
-        hdmi_switch_data.name = "hdmi";
-    } else {
-        hdmi_switch_data.name = "mtk_hdmi";
-    }
-	hdmi_switch_data.index = 0;
-	hdmi_switch_data.state = NO_DEVICE;
+    HDMI_DBG_Init();
+
+    hdmi_switch_data.name = "hdmi";
+    hdmi_switch_data.index = 0;
+    hdmi_switch_data.state = NO_DEVICE;
 
     // for support hdmi hotplug, inform AP the event
-	ret = switch_dev_register(&hdmi_switch_data);
-	if(ret)
-	{
-		printk("[hdmi][HDMI]switch_dev_register returned:%d!\n", ret);
-		return 1;
-	}
+    ret = switch_dev_register(&hdmi_switch_data);
+    if(ret)
+    {
+        printk("[hdmi][HDMI]switch_dev_register returned:%d!\n", ret);
+        return 1;
+    }
 
-	return 0;
+    return 0;
 }
 
 module_init(hdmi_init);

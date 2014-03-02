@@ -53,6 +53,14 @@ extern PFUNC_GETLENSDEFAULT pFM50AF_getDefaultData;
 extern PFUNC_GETLENSDEFAULT pOV8825AF_getDefaultData;
 #endif
 
+#if defined(OV8826AF)
+extern PFUNC_GETLENSDEFAULT pOV8826AF_getDefaultData;
+#endif
+
+#if defined(OV8827AF)
+extern PFUNC_GETLENSDEFAULT pOV8827AF_getDefaultData;
+#endif
+
 MSDK_LENS_INIT_FUNCTION_STRUCT LensList[MAX_NUM_OF_SUPPORT_LENS] =
 {
 	{DUMMY_SENSOR_ID, DUMMY_LENS_ID, "Dummy", pDummy_getDefaultData},
@@ -67,6 +75,15 @@ MSDK_LENS_INIT_FUNCTION_STRUCT LensList[MAX_NUM_OF_SUPPORT_LENS] =
 #if defined(OV8825AF)
 		{OV8825_SENSOR_ID, OV8825AF_LENS_ID, "OV8825AF", pOV8825AF_getDefaultData},
 #endif
+
+#if defined(OV8826AF)
+		{OV8826_SENSOR_ID, OV8826AF_LENS_ID, "OV8826AF", pOV8826AF_getDefaultData},
+#endif
+
+#if defined(OV8827AF)
+		{OV8827_SENSOR_ID, OV8827AF_LENS_ID, "OV8827AF", pOV8827AF_getDefaultData},
+#endif
+
 #if defined(FM50AF)
 	{DUMMY_SENSOR_ID, FM50AF_LENS_ID, "FM50AF", pFM50AF_getDefaultData},
 #endif

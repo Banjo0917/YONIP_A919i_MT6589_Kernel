@@ -740,6 +740,54 @@ rsnSearchSupportedCipher (
     return FALSE;
 }   /* rsnSearchSupportedCipher */
 
+/*----------------------------------------------------------------------------*/
+/*!
+* \brief Whether BSS RSN is matched from upper layer set.
+*
+* \param[in] prAdapter Pointer to the Adapter structure, BSS RSN Information
+*
+* \retval BOOLEAN
+*/
+/*----------------------------------------------------------------------------*/
+BOOLEAN
+rsnIsSuitableBSS (
+    IN P_ADAPTER_T          prAdapter,
+    IN P_RSN_INFO_T         prBssRsnInfo
+    )
+{
+    UINT_8 i = 0;
+
+    DEBUGFUNC("rsnIsSuitableBSS");
+
+    do{
+
+        if((prAdapter->rWifiVar.rConnSettings.rRsnInfo.u4GroupKeyCipherSuite & 0x000000FF) != \
+            GET_SELECTOR_TYPE(prBssRsnInfo->u4GroupKeyCipherSuite)){
+            DBGLOG(RSN, TRACE, ("Break by GroupKeyCipherSuite\n"));
+            break;
+        }
+        for(i = 0; i < prBssRsnInfo->u4PairwiseKeyCipherSuiteCount; i++){
+            if(((prAdapter->rWifiVar.rConnSettings.rRsnInfo.au4PairwiseKeyCipherSuite[0] & 0x000000FF) != \
+                GET_SELECTOR_TYPE(prBssRsnInfo->au4PairwiseKeyCipherSuite[i]))
+                && (i == prBssRsnInfo->u4PairwiseKeyCipherSuiteCount - 1) ){
+                DBGLOG(RSN, TRACE, ("Break by PairwiseKeyCipherSuite\n"));
+                break;
+            }
+        }
+        for(i = 0; i < prBssRsnInfo->u4AuthKeyMgtSuiteCount; i++){
+            if(((prAdapter->rWifiVar.rConnSettings.rRsnInfo.au4AuthKeyMgtSuite[0] & 0x000000FF) != \
+                GET_SELECTOR_TYPE(prBssRsnInfo->au4AuthKeyMgtSuite[0]))
+                && (i == prBssRsnInfo->u4AuthKeyMgtSuiteCount - 1)){
+                DBGLOG(RSN, TRACE, ("Break by AuthKeyMgtSuite \n"));
+                break;
+            }
+        }
+            return TRUE;
+        }while(FALSE);
+    return FALSE;
+}
+
+
 
 /*----------------------------------------------------------------------------*/
 /*!
@@ -899,6 +947,12 @@ rsnPerformPolicySelection (
         DBGLOG(RSN, TRACE, ("-- WEP-only legacy BSS\n"));
         return TRUE;
     }
+
+    if(!rsnIsSuitableBSS(prAdapter, prBssRsnInfo))
+     {
+        DBGLOG(RSN, TRACE, ("RSN info check no matched\n"));
+        return FALSE;
+     }
 
     if (prBssRsnInfo->u4PairwiseKeyCipherSuiteCount == 1 &&
         GET_SELECTOR_TYPE(prBssRsnInfo->au4PairwiseKeyCipherSuite[0]) ==

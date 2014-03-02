@@ -140,7 +140,8 @@ typedef void (*PF_WMT_CB)(
 
 typedef enum _SDIO_PS_OP{
     OWN_SET = 0,
-    OWN_CLR = 1
+    OWN_CLR = 1,
+    OWN_STATE = 2,
 } SDIO_PS_OP;
 
 
@@ -194,6 +195,10 @@ extern MTK_WCN_BOOL mtk_wcn_wmt_dsns_ctrl (
     ENUM_WMTDSNS_TYPE_T eType
     );
 
+extern MTK_WCN_BOOL mtk_wcn_wmt_assert (
+    VOID
+    );
+
 extern INT32 mtk_wcn_wmt_msgcb_reg (
     ENUM_WMTDRV_TYPE_T eType,
     PF_WMT_CB pCb
@@ -212,16 +217,11 @@ extern INT32
 mtk_wcn_stp_wmt_sdio_host_awake(
     VOID
     );
-
-extern INT32 
-mtk_wcn_wmt_tra_uart_update(
-    VOID
-);
-
 /*
 return value:
 enable/disable thermal sensor function: true(1)/false(0)
 read thermal sensor function: thermal value
+
 */
 extern INT8
 mtk_wcn_wmt_therm_ctrl (
@@ -230,6 +230,10 @@ mtk_wcn_wmt_therm_ctrl (
 
 extern ENUM_WMTHWVER_TYPE_T
 mtk_wcn_wmt_hwver_get (VOID);
+
+extern INT32
+mtk_wcn_wmt_chipid_query (VOID);
+
 
 extern INT32 wmt_lib_set_aif (
     CMB_STUB_AIF_X aif,

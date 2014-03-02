@@ -12,17 +12,24 @@ enum OVL_LAYER_SOURCE {
     OVL_LAYER_SOURCE_PQ     = 3,
 };
 
+#define OVL_COLOR_BASE 30
 enum OVL_INPUT_FORMAT {
     OVL_INPUT_FORMAT_RGB888     = 0,
     OVL_INPUT_FORMAT_RGB565     = 1,
     OVL_INPUT_FORMAT_ARGB8888   = 2,
     OVL_INPUT_FORMAT_PARGB8888  = 3,
-    OVL_INPUT_FORMAT_xARGB8888  = 4,
+    OVL_INPUT_FORMAT_xRGB8888   = 4,
     OVL_INPUT_FORMAT_YUYV       = 8,
     OVL_INPUT_FORMAT_UYVY       = 9,
     OVL_INPUT_FORMAT_YVYU       = 10,
     OVL_INPUT_FORMAT_VYUY       = 11,
     OVL_INPUT_FORMAT_YUV444     = 15,
+    
+    OVL_INPUT_FORMAT_ABGR8888   = OVL_INPUT_FORMAT_ARGB8888 +OVL_COLOR_BASE,
+    OVL_INPUT_FORMAT_BGR888     = OVL_INPUT_FORMAT_RGB888   +OVL_COLOR_BASE,
+    OVL_INPUT_FORMAT_BGR565     = OVL_INPUT_FORMAT_RGB565   +OVL_COLOR_BASE,
+    OVL_INPUT_FORMAT_PABGR8888  = OVL_INPUT_FORMAT_PARGB8888+OVL_COLOR_BASE,
+    OVL_INPUT_FORMAT_xBGR8888   = OVL_INPUT_FORMAT_xRGB8888 +OVL_COLOR_BASE,
 };
 
 typedef struct _OVL_CONFIG_STRUCT
@@ -32,11 +39,16 @@ typedef struct _OVL_CONFIG_STRUCT
     enum OVL_LAYER_SOURCE source;
     enum OVL_INPUT_FORMAT fmt;
     unsigned int addr; 
-    unsigned int x; 
-    unsigned int y; 
-    unsigned int w; 
-    unsigned int h;                  // clip region
-    unsigned int pitch;
+    unsigned int vaddr;
+    unsigned int src_x;
+    unsigned int src_y;
+    unsigned int src_w;
+    unsigned int src_h;
+    unsigned int src_pitch;
+    unsigned int dst_x;
+    unsigned int dst_y;
+    unsigned int dst_w;
+    unsigned int dst_h;                  // clip region
     unsigned int keyEn;
     unsigned int key; 
     unsigned int aen; 
@@ -46,6 +58,8 @@ typedef struct _OVL_CONFIG_STRUCT
     unsigned int isDirty;
 
     int buff_idx;
+    int identity;
+    int connected_type;
 }OVL_CONFIG_STRUCT;
 
 
@@ -71,11 +85,13 @@ int OVLLayerConfig(unsigned layer,
                    enum OVL_LAYER_SOURCE source, 
                    unsigned int fmt, 
                    unsigned int addr, 
-                   unsigned int x, 
-                   unsigned int y, 
-                   unsigned int w, 
-                   unsigned int h,                  // clip region
-                   unsigned int pitch,
+                   unsigned int src_x,     // ROI x offset
+                   unsigned int src_y,     // ROI y offset
+                   unsigned int src_pitch,
+                   unsigned int dst_x,     // ROI x offset
+                   unsigned int dst_y,     // ROI y offset
+                   unsigned int dst_w,     // ROT width
+                   unsigned int dst_h,     // ROI height
                    bool keyEn,
                    unsigned int key, 
                    bool aen, 

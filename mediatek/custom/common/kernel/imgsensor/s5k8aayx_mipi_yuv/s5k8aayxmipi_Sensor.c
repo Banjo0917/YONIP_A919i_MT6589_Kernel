@@ -7547,6 +7547,13 @@ BOOL S5K8AAYX_MIPI_set_param_effect(UINT16 para)
 	   return ret;
 } 
 
+void S5K8AAYX_MIPIGetAEAWBLock(UINT32 *pAElockRet32,UINT32 *pAWBlockRet32)
+{
+    *pAElockRet32 = 1;
+	*pAWBlockRet32 = 1;
+    SENSORDB("S5K8AAYX_MIPIGetAEAWBLock,AE=%d ,AWB=%d\n,",*pAElockRet32,*pAWBlockRet32);
+}
+
 
 BOOL S5K8AAYX_MIPI_set_param_banding(UINT16 para)
 {
@@ -7881,7 +7888,7 @@ void S5K8AAYX_MIPIGetDelayInfo(UINT32 delayAddr)
     SENSOR_DELAY_INFO_STRUCT* pDelayInfo = (SENSOR_DELAY_INFO_STRUCT*)delayAddr;
     pDelayInfo->InitDelay = 3;
     pDelayInfo->EffectDelay = 0;
-    pDelayInfo->AwbDelay = 0;
+    pDelayInfo->AwbDelay = 4;
 }
 
 
@@ -8086,6 +8093,9 @@ UINT32 S5K8AAYX_MIPIFeatureControl(MSDK_SENSOR_FEATURE_ENUM FeatureId,
 			break;
 		case SENSOR_FEATURE_GET_DEFAULT_FRAME_RATE_BY_SCENARIO:
 			S5K8AAYXMIPIGetDefaultFramerateByScenario((MSDK_SCENARIO_ID_ENUM)*pFeatureData32, (MUINT32 *)(*(pFeatureData32+1)));
+			break;
+		case SENSOR_FEATURE_GET_AE_AWB_LOCK_INFO:
+			S5K8AAYX_MIPIGetAEAWBLock((*pFeatureData32),*(pFeatureData32+1));
 			break;
 		default:
 			break;			

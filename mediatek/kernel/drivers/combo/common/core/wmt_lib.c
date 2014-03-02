@@ -35,6 +35,7 @@
 #include "wmt_conf.h"
 #include "wmt_core.h"
 #include "wmt_plat.h"
+#include "wmt_plat_stub.h"
 
 #include "stp_core.h"
 #include "btm_core.h"
@@ -79,8 +80,6 @@ static PF_WMT_SDIO_PSOP sdio_own_ctrl = NULL;
 
 DEV_WMT gDevWmt;
 
-UINT32 gWmtDbgLvl = WMT_LOG_INFO;
-
 /*******************************************************************************
 *                  F U N C T I O N   D E C L A R A T I O N S
 ********************************************************************************
@@ -124,10 +123,9 @@ MTK_WCN_BOOL wmt_lib_hw_state_show(VOID);
 ********************************************************************************
 */
 
-
-void wmt_lib_psm_lock_aquire(void)
+INT32 wmt_lib_psm_lock_aquire(void)
 {
-    osal_lock_sleepable_lock(&gDevWmt.psm_lock);
+    return osal_lock_sleepable_lock(&gDevWmt.psm_lock);
 }
 
 void wmt_lib_psm_lock_release(void)
@@ -135,13 +133,22 @@ void wmt_lib_psm_lock_release(void)
     osal_unlock_sleepable_lock(&gDevWmt.psm_lock);
 }
 
-void DISABLE_PSM_MONITOR(void)
+INT32 DISABLE_PSM_MONITOR(void)
 {
+    INT32 ret = 0;
+    
     //osal_lock_sleepable_lock(&gDevWmt.psm_lock);
-    wmt_lib_psm_lock_aquire();
+    ret = wmt_lib_psm_lock_aquire();
+    if (ret) {
+        WMT_ERR_FUNC("--->lock psm_lock failed, ret=%d\n", ret);
+        return ret;
+    }
+    
 #if CFG_WMT_PS_SUPPORT
-    wmt_lib_ps_disable();
+    ret = wmt_lib_ps_disable();
 #endif
+
+    return ret;
 }
 
 void ENABLE_PSM_MONITOR(void)
@@ -152,7 +159,6 @@ void ENABLE_PSM_MONITOR(void)
     //osal_unlock_sleepable_lock(&gDevWmt.psm_lock);
     wmt_lib_psm_lock_release();
 }
-
 
 
 INT32
@@ -168,11 +174,13 @@ wmt_lib_init (VOID)
     pDevWmt = &gDevWmt;
     osal_memset(&gDevWmt, 0, sizeof(gDevWmt));
 
+#if 0
     iRet = wmt_conf_read_file();
     if (iRet) {
         WMT_ERR_FUNC("read wmt config file fail(%d)\n", iRet);
         return -1;
     }
+#endif
 
     pThraed = &gDevWmt.thread;
 
@@ -252,6 +260,7 @@ wmt_lib_init (VOID)
         WMT_ERR_FUNC("wmt_plat_init() fail(%d)\n", iRet);
         return -3;
     }
+	wmt_plat_stub_init();
 
 #if CFG_WMT_PS_SUPPORT
     iRet = wmt_lib_ps_init();
@@ -268,8 +277,13 @@ wmt_lib_init (VOID)
         return -5;
     }
 
-    /*4. register whole chip reset callback to stp_psm*/
+    /*4. register irq callback to WMT-PLAT*/
+    wmt_lib_plat_irq_cb_reg(wmt_lib_ps_irq_cb);
 
+	/*5. register audio if control callback to WMT-PLAT*/
+	wmt_lib_plat_aif_cb_reg(wmt_lib_set_aif);
+
+	
     WMT_DBG_FUNC("init success\n");
     return 0;
 }
@@ -378,6 +392,20 @@ wmt_lib_set_patch_name (
     return 0;
 }
 
+extern char *wmt_uart_port_desc; // defined in mtk_wcn_cmb_stub_alps.cpp
+
+INT32
+wmt_lib_set_uart_name(
+    CHAR *cUartName
+)
+{
+    WMT_INFO_FUNC("orig uart: %s\n", wmt_uart_port_desc);
+    osal_strncpy(gDevWmt.cUartName, cUartName, NAME_MAX);
+    wmt_uart_port_desc = gDevWmt.cUartName;
+    WMT_INFO_FUNC("new uart: %s\n", wmt_uart_port_desc);
+    return 0;
+}
+
 INT32
 wmt_lib_set_hif (
     ULONG hifconf
@@ -451,6 +479,21 @@ INT32 wmt_lib_ps_set_idle_time(UINT32 psIdleTime)
 {
     gPsIdleTime = psIdleTime;
     return gPsIdleTime;
+}
+
+INT32 wmt_lib_ps_ctrl(UINT32 state)
+{
+    if (0 == state)
+    {
+        wmt_lib_ps_disable();
+        gPsEnable = 0;        
+    }
+    else
+    {
+        gPsEnable = 1;
+        wmt_lib_ps_enable();
+    }
+    return 0;
 }
 
 
@@ -530,7 +573,7 @@ wmt_lib_ps_handler (
 
     ret = 0; // TODO:[FixMe][George] initial value or compile warning?
     //if(g_block_tx && (action == SLEEP))
-    if ((0 != mtk_wcn_stp_assert_flag()) && (action == SLEEP))
+    if ((0 != mtk_wcn_stp_coredump_start_get()) && (action == SLEEP))
     {
         mtk_wcn_stp_psm_notify_stp(SLEEP);
         return ret;   
@@ -538,7 +581,7 @@ wmt_lib_ps_handler (
     
     /*MT662x Not Ready*/
     if (!mtk_wcn_stp_is_ready()) {
-        WMT_INFO_FUNC("MT6620 Not Ready, Dont Send Sleep/Wakeup Command\n");
+        WMT_DBG_FUNC("MT662x Not Ready, Dont Send Sleep/Wakeup Command\n");
         mtk_wcn_stp_psm_notify_stp(ROLL_BACK);
         return 0;
     }
@@ -619,7 +662,7 @@ wmt_lib_ps_handler (
             WMT_DBG_FUNC("[SDIO-PS] SDIO host awake! ####\n");
 
             //ret = mtk_wcn_stp_sdio_do_own_clr();
-            /*
+            
             if (sdio_own_ctrl) {
                 ret = (*sdio_own_ctrl)(OWN_CLR);
             }
@@ -627,7 +670,7 @@ wmt_lib_ps_handler (
                 WMT_ERR_FUNC("sdio_own_ctrl is not registered\n");
                 ret = -1;
             }
-            */
+            
             //Here we set ret to 0 directly
             ret = 0;
             if (!ret) {
@@ -675,13 +718,19 @@ wmt_lib_ps_stp_cb (
 #endif
 }
 
+
+MTK_WCN_BOOL wmt_lib_is_quick_ps_support (VOID)
+{
+    return wmt_core_is_quick_ps_support();
+}
+
 VOID
 wmt_lib_ps_irq_cb (VOID)
 {
 #if CFG_WMT_PS_SUPPORT
     wmt_lib_ps_handler(EIRQ);
 #else
-    WMT_WARN_FUNC("CFG_WMT_PS_SUPPORT is not set\n");
+    WMT_DBG_FUNC("CFG_WMT_PS_SUPPORT is not set\n");
     return ;
 #endif
 }
@@ -752,7 +801,22 @@ static INT32 wmtd_thread (void *pvData)
             goto handlerDone;
         }
 #endif
+
+        if (osal_test_bit(WMT_STAT_RST_ON, &pWmtDev->state)) {
+            /* when whole chip reset, only HW RST and SW RST cmd can execute*/
+            if ((pOp->op.opId == WMT_OPID_HW_RST) 
+                || (pOp->op.opId == WMT_OPID_SW_RST) 
+                || (pOp->op.opId == WMT_OPID_GPIO_STATE)) {
+                iResult = wmt_core_opid(&pOp->op);
+            } else {
+                iResult = -2;
+                WMT_WARN_FUNC("Whole chip resetting, opid (0x%x) failed, iRet(%d)\n",  pOp->op.opId,iResult);
+            }
+        } else {
+            wmt_lib_set_current_op(pWmtDev, pOp);
         iResult = wmt_core_opid(&pOp->op);
+            wmt_lib_set_current_op(pWmtDev, NULL);
+        }
 
         if (iResult) {
             WMT_WARN_FUNC("opid (0x%x) failed, iRet(%d)\n",  pOp->op.opId,iResult);
@@ -850,6 +914,18 @@ static P_OSAL_OP wmt_lib_get_op (
 }
 
 
+INT32 wmt_lib_put_op_to_free_queue(P_OSAL_OP pOp)
+{
+    P_DEV_WMT pWmtDev = &gDevWmt;
+    
+    if (MTK_WCN_BOOL_FALSE == wmt_lib_put_op(&pWmtDev->rFreeOpQ, pOp)) {
+        return -1;
+    } else {
+        return 0;
+    }
+}
+
+
 P_OSAL_OP wmt_lib_get_free_op (VOID)
 {
     P_OSAL_OP pOp = NULL;
@@ -885,7 +961,7 @@ MTK_WCN_BOOL wmt_lib_put_act_op (P_OSAL_OP pOp)
             WMT_ERR_FUNC("pWmtDev(0x%p), pOp(0x%p)\n", pWmtDev, pOp);
             break;
         }
-        if(0 != mtk_wcn_stp_assert_flag())
+        if(0 != mtk_wcn_stp_coredump_start_get())
         {
             bCleanup = MTK_WCN_BOOL_TRUE;
             WMT_WARN_FUNC("block tx flag is set\n");
@@ -1039,20 +1115,20 @@ wmt_lib_get_icinfo (ENUM_WMT_CHIPINFO_TYPE_T index)
     {
         return gDevWmt.chip_id;
     }
-	else if (WMTCHIN_HWVER == index)
-	{
-	    return gDevWmt.hw_ver;
-	}
-	else if (WMTCHIN_MAPPINGHWVER == index)
-	{
-	    return gDevWmt.eWmtHwVer;
-	}
+    else if (WMTCHIN_HWVER == index)
+    {
+        return gDevWmt.hw_ver;
+    }
+    else if (WMTCHIN_MAPPINGHWVER == index)
+    {
+        return gDevWmt.eWmtHwVer;
+    }
 	else if (WMTCHIN_FWVER == index)
 	{
 	    return gDevWmt.fw_ver;
 	}
-	return 0;
-	
+    return 0;
+    
 }
 
 
@@ -1068,7 +1144,7 @@ wmt_lib_is_therm_ctrl_support (VOID)
 {
     MTK_WCN_BOOL bIsSupportTherm = MTK_WCN_BOOL_TRUE;
     // TODO:[FixMe][GeorgeKuo]: move IC-dependent checking to ic-implementation file
-    if ( (WMTHWVER_MT6620_E3 > gDevWmt.eWmtHwVer)
+    if ( ((0x6620 == gDevWmt.chip_id) && (WMTHWVER_MT6620_E3 > gDevWmt.eWmtHwVer))
         || (WMTHWVER_INVALID == gDevWmt.eWmtHwVer) ) {
         WMT_ERR_FUNC("thermal command fail: chip version(WMTHWVER_TYPE:%d) is not valid\n", gDevWmt.eWmtHwVer);
         bIsSupportTherm = MTK_WCN_BOOL_FALSE;
@@ -1143,7 +1219,12 @@ static INT32 wmt_lib_pin_ctrl (WMT_IC_PIN_ID id, WMT_IC_PIN_STATE stat, UINT32 f
     pSignal->timeoutValue= MAX_EACH_WMT_CMD;
 
     /*wake up chip first*/
-    DISABLE_PSM_MONITOR();
+    if (DISABLE_PSM_MONITOR()) {
+        WMT_ERR_FUNC("wake up failed\n");
+        wmt_lib_put_op_to_free_queue(pOp);
+        return -1;
+    }
+    
     bRet = wmt_lib_put_act_op(pOp);
     ENABLE_PSM_MONITOR();
     if (MTK_WCN_BOOL_FALSE == bRet) {
@@ -1191,7 +1272,12 @@ INT32 wmt_lib_reg_rw (
     pOp->op.au4OpData[1] = offset;
     pOp->op.au4OpData[2] = (UINT32)&value;
     pOp->op.au4OpData[3] = mask;
-    DISABLE_PSM_MONITOR();
+    if (DISABLE_PSM_MONITOR()) {
+        WMT_ERR_FUNC("wake up failed\n");
+        wmt_lib_put_op_to_free_queue(pOp);
+        return -1;
+    }
+    
     bRet = wmt_lib_put_act_op(pOp);
     ENABLE_PSM_MONITOR();
 
@@ -1243,7 +1329,12 @@ INT32 wmt_lib_efuse_rw (
     pOp->op.au4OpData[1] = offset;
     pOp->op.au4OpData[2] = (UINT32)&value;
     pOp->op.au4OpData[3] = mask;
-    DISABLE_PSM_MONITOR();
+    if (DISABLE_PSM_MONITOR()) {
+        WMT_ERR_FUNC("wake up failed\n");
+        wmt_lib_put_op_to_free_queue(pOp);
+        return -1;
+    }
+    
     bRet = wmt_lib_put_act_op(pOp);
     ENABLE_PSM_MONITOR();
 
@@ -1302,16 +1393,22 @@ INT32 wmt_lib_host_awake_put(VOID)
 
 MTK_WCN_BOOL wmt_lib_btm_cb (MTKSTP_BTM_WMT_OP_T op)
 {
+    MTK_WCN_BOOL bRet = MTK_WCN_BOOL_FALSE;
 
     if(op == BTM_RST_OP){
         //high priority, not to enqueue into the queue of wmtd
         WMT_INFO_FUNC("Invoke whole chip reset from stp_btm!!!\n");
         wmt_lib_cmb_rst(WMTRSTSRC_RESET_STP);
+		bRet = MTK_WCN_BOOL_TRUE;
     } else if(op == BTM_DMP_OP){
         
         WMT_WARN_FUNC("TBD!!!\n");
     }
-    return 0;
+	else if (op == BTM_GET_AEE_SUPPORT_FLAG)
+	{
+	    bRet = wmt_core_get_aee_dump_flag();
+	}
+    return bRet;
 }
 
 MTK_WCN_BOOL wmt_cdev_rstmsg_snd(ENUM_WMTRSTMSG_TYPE_T msg){
@@ -1342,16 +1439,25 @@ MTK_WCN_BOOL wmt_cdev_rstmsg_snd(ENUM_WMTRSTMSG_TYPE_T msg){
 
 VOID wmt_lib_state_init(VOID)
 {
-    UINT32 i = 0;
+    //UINT32 i = 0;
     P_DEV_WMT pDevWmt = &gDevWmt;
+    P_OSAL_OP pOp;
+    
     /* Initialize op queue */
-    RB_INIT(&pDevWmt->rFreeOpQ, WMT_OP_BUF_SIZE);
-    RB_INIT(&pDevWmt->rActiveOpQ, WMT_OP_BUF_SIZE);
+    //RB_INIT(&pDevWmt->rFreeOpQ, WMT_OP_BUF_SIZE);
+    //RB_INIT(&pDevWmt->rActiveOpQ, WMT_OP_BUF_SIZE);
+
+    while ((pOp = wmt_lib_get_op(&pDevWmt->rActiveOpQ))) {
+        osal_signal_init(&(pOp->signal));
+        wmt_lib_put_op(&pDevWmt->rFreeOpQ, pOp);
+    }
+        
     /* Put all to free Q */
+    /*
     for (i = 0; i < WMT_OP_BUF_SIZE; i++) {
          osal_signal_init(&(pDevWmt->arQue[i].signal));
          wmt_lib_put_op(&pDevWmt->rFreeOpQ, &(pDevWmt->arQue[i]));
-    }
+    }*/
     return;
 }
 
@@ -1437,7 +1543,6 @@ MTK_WCN_BOOL wmt_lib_hw_rst(VOID){
 
     /*Before do hardware reset, we show GPIO state to check if others modified our pin state accidentially*/
     wmt_lib_hw_state_show();
-	
     pOp = wmt_lib_get_free_op();
     if (!pOp) {
         WMT_WARN_FUNC("get_free_lxop fail\n");
@@ -1514,6 +1619,7 @@ ENUM_WMTRSTRET_TYPE_T wmt_lib_cmb_rst(ENUM_WMTRSTSRC_TYPE_T src){
     ENUM_WMTRSTRET_TYPE_T retval = WMTRSTRET_MAX;
     INT32 retries = RETRYTIMES;
     P_DEV_WMT pDevWmt = &gDevWmt;
+    P_OSAL_OP pOp;
     UCHAR *srcName[]={"WMTRSTSRC_RESET_BT",
                 "WMTRSTSRC_RESET_FM",
                 "WMTRSTSRC_RESET_GPS",
@@ -1523,6 +1629,15 @@ ENUM_WMTRSTRET_TYPE_T wmt_lib_cmb_rst(ENUM_WMTRSTSRC_TYPE_T src){
 
     if(src < WMTRSTSRC_RESET_MAX){
         WMT_INFO_FUNC("reset source = %s\n", srcName[src]);
+    }
+
+    if (WMTRSTSRC_RESET_TEST == src) {
+        pOp = wmt_lib_get_current_op(pDevWmt);
+        if (pOp && ((WMT_OPID_FUNC_ON == pOp->op.opId) 
+            || (WMT_OPID_FUNC_OFF == pOp->op.opId))) {
+            WMT_INFO_FUNC("can't do reset by test src when func on/off\n");
+            return -1;
+        }
     }
 
     //<1> Consider the multi-context combo_rst case.
@@ -1541,6 +1656,15 @@ ENUM_WMTRSTRET_TYPE_T wmt_lib_cmb_rst(ENUM_WMTRSTSRC_TYPE_T src){
         goto rstDone;
     }
 
+    // wakeup blocked opid
+    pOp = wmt_lib_get_current_op(pDevWmt);
+    if (osal_op_is_wait_for_signal(pOp)) {
+        osal_op_raise_signal(pOp, -1);
+    }
+
+    // wakeup blocked cmd
+    wmt_dev_rx_event_cb();
+    
     //<4> retry until reset flow successful
     while(retries > 0){
          //<4.1> reset combo hw
@@ -1630,27 +1754,77 @@ UINT32 wmt_lib_dbg_level_set(UINT32 level)
     return 0;
 }
 
+
+INT32 wmt_lib_set_stp_wmt_last_close(UINT32 value)
+{
+    return mtk_wcn_stp_set_wmt_last_close(value);
+}
+
+
 INT32 wmt_lib_notify_stp_sleep()
 {
     INT32 iRet = 0x0;
 	
-	wmt_lib_psm_lock_aquire();
+    iRet = wmt_lib_psm_lock_aquire();
+    if (iRet) {
+        WMT_ERR_FUNC("--->lock psm_lock failed, iRet=%d\n", iRet);
+        return iRet;
+    }
+    
     iRet = mtk_wcn_stp_notify_sleep_for_thermal();
 	wmt_lib_psm_lock_release();
 	
 	return iRet;
 }
+
+
 VOID wmt_lib_set_patch_num(ULONG num)
 {
 	P_DEV_WMT pWmtDev = &gDevWmt;
 	pWmtDev->patchNum = num;
 }
 
+
 VOID wmt_lib_set_patch_info(P_WMT_PATCH_INFO pPatchinfo)
 {
 	P_DEV_WMT pWmtDev = &gDevWmt;
-	if(pPatchinfo)
-	{
+	if (pPatchinfo) {
 		pWmtDev->pWmtPatchInfo = pPatchinfo;
 	}
 }
+
+
+INT32 wmt_lib_set_current_op(P_DEV_WMT pWmtDev, P_OSAL_OP pOp)
+{
+    if (pWmtDev) {
+        pWmtDev->pCurOP = pOp;
+        WMT_DBG_FUNC("pOp=0x%p\n", pOp);
+        return 0;
+    } else {
+        WMT_ERR_FUNC("Invalid pointer\n");
+        return -1;
+    }
+}
+
+
+P_OSAL_OP wmt_lib_get_current_op(P_DEV_WMT pWmtDev)
+	{
+    if (pWmtDev) {
+        return pWmtDev->pCurOP;
+    } else {
+        WMT_ERR_FUNC("Invalid pointer\n");
+        return NULL;
+	}
+}
+
+INT32 wmt_lib_merge_if_flag_ctrl(UINT32 enable)
+{
+    return wmt_plat_merge_if_flag_ctrl(enable);
+}
+
+
+INT32 wmt_lib_merge_if_flag_get(UINT32 enable)
+{
+    return wmt_plat_merge_if_flag_get();
+}
+

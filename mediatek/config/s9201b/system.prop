@@ -29,11 +29,15 @@ wifi.tethering.interface=ap0
 ro.opengles.version=131072
 
 wifi.direct.interface=p2p0
-dalvik.vm.heapgrowthlimit=96m
-dalvik.vm.heapsize=128m
+dalvik.vm.heapgrowthlimit=128m
+dalvik.vm.heapsize=256m
 
 # USB MTP WHQL
 ro.sys.usb.mtp.whql.enable=0
+
+#bobo change russian name
+persist.service.adb.enable=0
+net.tinno.bt.name=Fly IQ450 Quattro
 
 # Power off opt in IPO
 sys.ipo.pwrdncap=2
@@ -41,7 +45,7 @@ sys.ipo.pwrdncap=2
 ro.sys.usb.storage.type=mtp,mass_storage
 
 # USB BICR function
-ro.sys.usb.bicr=no
+ro.sys.usb.bicr=yes
 
 # USB Charge only function
 ro.sys.usb.charging.only=yes

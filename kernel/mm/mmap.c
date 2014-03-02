@@ -948,6 +948,7 @@ static inline unsigned long round_hint_to_min(unsigned long hint)
 		return PAGE_ALIGN(mmap_min_addr);
 	return hint;
 }
+
 /*
  * The caller must hold down_write(&current->mm->mmap_sem).
  */
@@ -1230,6 +1231,7 @@ static inline int accountable_mapping(struct file *file, vm_flags_t vm_flags)
 
 	return (vm_flags & (VM_NORESERVE | VM_SHARED | VM_WRITE)) == VM_WRITE;
 }
+
 unsigned long mmap_region(struct file *file, unsigned long addr,
 			  unsigned long len, unsigned long flags,
 			  vm_flags_t vm_flags, unsigned long pgoff)
@@ -1311,6 +1313,7 @@ munmap_back:
 	vma->vm_start = addr;
 	vma->vm_end = addr + len;
 	vma->vm_flags = vm_flags;
+	//vma->vm_page_prot = vm_get_page_prot(vm_flags);
 	//Add User-Space MMAP No-Cache support
 	if(vm_flags&VM_SAO)
         {

@@ -52,8 +52,9 @@
 #define CFG_SET_OPT_REG_MCUCLK (0)
 #define CFG_SET_OPT_REG_MCUIRQ (0)
 
+#define CFG_WMT_COREDUMP_ENABLE 0
+
 #define CFG_WMT_MULTI_PATCH (1)
-#define CFG_WMT_COREDUMP_ENABLE 1
 /*******************************************************************************
 *                             D A T A   T Y P E S
 ********************************************************************************
@@ -132,7 +133,6 @@ static UCHAR WMT_SET_OSC32K_BYPASS_CMD[]= {0x01, 0x0A, 0x01, 0x00, 0x05};
 static UCHAR WMT_SET_OSC32K_BYPASS_EVT[]= {0x02, 0x0A, 0x01, 0x00, 0x00};
 #endif
 
-//to get full dump when f/w assert
 static UCHAR  WMT_CORE_DUMP_LEVEL_04_CMD[] = {0x1, 0x0F, 0x07, 0x00, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
 static UCHAR  WMT_CORE_DUMP_LEVEL_04_EVT[] = {0x2, 0x0F, 0x01, 0x00, 0x00};
 
@@ -339,7 +339,6 @@ static struct init_script init_table_5_1[] = {
      INIT_CMD(WMT_STRAP_CONF_CMD_FM_COMM, WMT_STRAP_CONF_EVT, "configure FM comm"),
 };
 
-
 static struct init_script init_table_6[] =
 {
 #if 0
@@ -347,7 +346,6 @@ static struct init_script init_table_6[] =
 #endif
 	INIT_CMD(WMT_CORE_DUMP_LEVEL_04_CMD,WMT_CORE_DUMP_LEVEL_04_EVT,"setup core dump level"),
 };
-
 
 #if defined(CFG_SET_OPT_REG) && CFG_SET_OPT_REG
 static struct init_script set_registers[] =
@@ -485,6 +483,7 @@ mt6620_update_patch_name (VOID);
 static INT32
 mt6620_patch_dwn (VOID);
 #endif
+static MTK_WCN_BOOL mt6620_quick_sleep_flag_get(VOID);
 
 /*******************************************************************************
 *                            P U B L I C   D A T A
@@ -498,6 +497,9 @@ const WMT_IC_OPS wmt_ic_ops_mt6620 = {
     .sw_deinit = mt6620_sw_deinit,
     .ic_pin_ctrl = mt6620_pin_ctrl,
     .ic_ver_check = mt6620_ver_check,
+    .co_clock_ctrl = NULL,
+    .is_quick_sleep  = mt6620_quick_sleep_flag_get,
+    .is_aee_dump_support = NULL,
 };
 
 /*******************************************************************************
@@ -1145,6 +1147,13 @@ mt6620_pin_ctrl (
 }
 
 
+static MTK_WCN_BOOL mt6620_quick_sleep_flag_get(VOID)
+{
+    return MTK_WCN_BOOL_FALSE;
+}
+
+
+
 static INT32
 mt6620_ver_check (VOID)
 {
@@ -1709,6 +1718,7 @@ mt6620_patch_dwn (VOID)
     u2SwVer = patchHdr->u2SwVer;
     u4PatchVer = patchHdr->u4PatchVer;
     /*cPlat = &patchHdr->ucPLat[0];*/
+
     cDataTime[15] = '\0';
 
     /* remove patch header:
@@ -1716,7 +1726,6 @@ mt6620_patch_dwn (VOID)
     */
     patchSize -= sizeof(WMT_PATCH);
     pbuf += sizeof(WMT_PATCH);
-
     WMT_INFO_FUNC("===========================================\n");
     WMT_INFO_FUNC("[Combo Patch] Built Time = %s\n", cDataTime);
     WMT_INFO_FUNC("[Combo Patch] Hw Ver = 0x%x\n", ((u2HwVer & 0x00ff) << 8) | ((u2HwVer & 0xff00) >> 8));

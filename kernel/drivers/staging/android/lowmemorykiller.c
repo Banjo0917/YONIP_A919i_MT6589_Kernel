@@ -40,7 +40,7 @@
 #include <linux/sched.h>
 #include <linux/notifier.h>
 
-#ifdef CONFIG_MTK_AEE_FEATURE
+#if defined (CONFIG_MTK_AEE_FEATURE) && defined (CONFIG_MT_ENG_BUILD)
 #include <linux/aee.h>
 #include <linux/disp_assert_layer.h>
 int lowmem_indicator = 1;
@@ -164,7 +164,7 @@ static int lowmem_shrink(struct shrinker *s, struct shrink_control *sc)
     /*
      * disable indication if low memory
      */
-#ifdef CONFIG_MTK_AEE_FEATURE
+#if defined (CONFIG_MTK_AEE_FEATURE) && defined (CONFIG_MT_ENG_BUILD)
 		if (in_lowmem) {
 			in_lowmem = 0;
 			lowmem_indicator = 1;
@@ -263,7 +263,7 @@ static int lowmem_shrink(struct shrinker *s, struct shrink_control *sc)
 		/*
 		 * show an indication if low memory
 		 */
-#ifdef CONFIG_MTK_AEE_FEATURE
+#if defined (CONFIG_MTK_AEE_FEATURE) && defined (CONFIG_MT_ENG_BUILD)
 		if (lowmem_indicator && selected_oom_score_adj <= 1) {
 			lowmem_print(5, "low memory: raise aee warning\n");
 			in_lowmem = 1;
@@ -378,7 +378,7 @@ module_param_array_named(adj, lowmem_adj, int, &lowmem_adj_size,
 module_param_array_named(minfree, lowmem_minfree, uint, &lowmem_minfree_size,
 			 S_IRUGO | S_IWUSR);
 module_param_named(debug_level, lowmem_debug_level, uint, S_IRUGO | S_IWUSR);
-#ifdef CONFIG_MTK_AEE_FEATURE
+#if defined (CONFIG_MTK_AEE_FEATURE) && defined (CONFIG_MT_ENG_BUILD)
 module_param_named(lowmem_indicator, lowmem_indicator, uint, S_IRUGO | S_IWUSR);
 #endif
 #ifdef CONFIG_MT_ENG_BUILD

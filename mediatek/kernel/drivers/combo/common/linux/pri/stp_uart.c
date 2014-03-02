@@ -26,7 +26,6 @@
 
 
 #include "stp_exp.h"
-#include "wmt_exp.h"
 
 #define N_MTKSTP              (15 + 1) /* refer to linux tty.h use N_HCI. */
 
@@ -47,31 +46,25 @@
 
 unsigned int gDbgLevel = UART_LOG_INFO;
 
-#define UART_DBG_FUNC(fmt, arg...)    if(gDbgLevel >= UART_LOG_DBG){  printk(PFX "%s: "  fmt, __FUNCTION__ ,##arg);}
+#define UART_DBG_FUNC(fmt, arg...)    if(gDbgLevel >= UART_LOG_DBG){  printk(KERN_DEBUG PFX "%s: "  fmt, __FUNCTION__ ,##arg);}
 #define UART_INFO_FUNC(fmt, arg...)   if(gDbgLevel >= UART_LOG_INFO){ printk(PFX "%s: "  fmt, __FUNCTION__ ,##arg);}
 #define UART_WARN_FUNC(fmt, arg...)   if(gDbgLevel >= UART_LOG_WARN){ printk(PFX "%s: "  fmt, __FUNCTION__ ,##arg);}
 #define UART_ERR_FUNC(fmt, arg...)    if(gDbgLevel >= UART_LOG_ERR){  printk(PFX "%s: "   fmt, __FUNCTION__ ,##arg);}
-#define UART_TRC_FUNC(f)              if(gDbgLevel >= UART_LOG_DBG){  printk(PFX "<%s> <%d>\n", __FUNCTION__, __LINE__);}
+#define UART_TRC_FUNC(f)              if(gDbgLevel >= UART_LOG_DBG){  printk(KERN_DEBUG PFX "<%s> <%d>\n", __FUNCTION__, __LINE__);}
 
 
 #include <linux/kfifo.h>
 #define LDISC_RX_TASKLET
 
 #ifdef  LDISC_RX_TASKLET
-#define LDISC_RX_FIFO_SIZE (0x200000) /*8192 bytes*/
+#define LDISC_RX_FIFO_SIZE (0x20000) /*8192 bytes*/
 struct kfifo *g_stp_uart_rx_fifo = NULL;
 spinlock_t    g_stp_uart_rx_fifo_spinlock;
 struct tasklet_struct g_stp_uart_rx_fifo_tasklet;
+#define RX_BUFFER_LEN 1024
+unsigned char g_rx_data[RX_BUFFER_LEN];
 
-#if defined(CONFIG_ARCH_MT6575)    
-static DEFINE_RWLOCK(g_stp_uart_rx_handling_lock);
-#endif
-
-#if 0   
-spinlock_t g_stp_uart_rx_handling_lock;
-#endif
-
-
+//static DEFINE_RWLOCK(g_stp_uart_rx_handling_lock);
 #endif
 
 struct tty_struct *stp_tty = 0x0;
@@ -81,9 +74,6 @@ int rd_idx = 0;
 int wr_idx = 0;
 //struct semaphore buf_mtx;
 spinlock_t         buf_lock;
-
-#define RX_BUFFER_LEN 1024
-unsigned char g_rx_data[RX_BUFFER_LEN];
 static INT32  mtk_wcn_uart_tx(const UINT8 *data, const UINT32 size, UINT32 *written_size);
 
 
@@ -122,7 +112,6 @@ static inline int stp_uart_tx_wakeup(struct tty_struct *tty)
          *    number of characters actually accepted for writing.
         */
         set_bit(TTY_DO_WRITE_WAKEUP, &tty->flags);
-        mtk_wcn_wmt_tra_uart_update();
         written = tty->ops->write(tty, &tx_buf[rd_idx], len);
         if(written != len) {
            UART_ERR_FUNC("Error(i-%d):[pid(%d)(%s)]tty-ops->write FAIL!len(%d)wr(%d)wr_i(%d)rd_i(%d)\n\r", i, current->pid, current->comm, len, written, wr_idx, rd_idx);
@@ -302,9 +291,6 @@ static int stp_uart_fifo_init(void)
     {
         UART_ERR_FUNC("stp_uart_fifo_init() failed.\n");
     }
-#if 0    
-	spin_lock_init(&g_stp_uart_rx_handling_lock);
-#endif
     return err;
 }
 
@@ -322,21 +308,13 @@ static int stp_uart_fifo_deinit(void)
     }    
     return 0;
 }
+
 static void stp_uart_rx_handling(unsigned long func_data){
     unsigned int how_much_get = 0;
     unsigned int how_much_to_get = 0;
     unsigned int flag = 0;
-#if 0
-	unsigned int flags;
-#endif
-#if defined(CONFIG_ARCH_MT6575)    
-    read_lock(&g_stp_uart_rx_handling_lock);
-#endif
-
-#if 0   
-	spin_lock_irqsave(&g_stp_uart_rx_handling_lock,flags);
-#endif
-
+    
+//    read_lock(&g_stp_uart_rx_handling_lock);
     how_much_to_get = kfifo_len(g_stp_uart_rx_fifo);
     
     if (how_much_to_get >= RX_BUFFER_LEN)
@@ -355,15 +333,8 @@ static void stp_uart_rx_handling(unsigned long func_data){
         mtk_wcn_stp_parser_data((UINT8 *)g_rx_data, how_much_get);
         how_much_to_get = kfifo_len(g_stp_uart_rx_fifo);
     }while(how_much_to_get > 0);
-	
-#if defined(CONFIG_ARCH_MT6575)    
-    read_unlock(&g_stp_uart_rx_handling_lock);
-#endif
-
-#if 0    
-	spin_unlock_irqrestore(&g_stp_uart_rx_handling_lock,flags);
-#endif
-
+    
+//    read_unlock(&g_stp_uart_rx_handling_lock);
     if (1 == flag)
     {
         UART_INFO_FUNC ("finish, fifolen(%d)\n", kfifo_len(g_stp_uart_rx_fifo));
@@ -382,15 +353,7 @@ static void stp_uart_tty_receive(struct tty_struct *tty, const u8 *data, char *f
             count, now.tv_sec, now.tv_usec);
     }
 #endif
-
-#if defined(CONFIG_ARCH_MT6575)
-    write_lock(&g_stp_uart_rx_handling_lock);
-#endif
-
-#if 0
-	spin_lock(&g_stp_uart_rx_handling_lock);
-#endif
-
+//    write_lock(&g_stp_uart_rx_handling_lock);
     if(count > 2000){
         /*this is abnormal*/
         UART_ERR_FUNC("abnormal: buffer count = %d\n", count);
@@ -419,13 +382,7 @@ static void stp_uart_tty_receive(struct tty_struct *tty, const u8 *data, char *f
     }
 #endif
 
-#if defined(CONFIG_ARCH_MT6575)
-    write_unlock(&g_stp_uart_rx_handling_lock);
-#endif
-
-#if 0    
-	spin_unlock(&g_stp_uart_rx_handling_lock);
-#endif
+//    write_unlock(&g_stp_uart_rx_handling_lock);
 
 }
 #else

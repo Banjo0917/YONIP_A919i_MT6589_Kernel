@@ -9,7 +9,6 @@
 #include <mach/mt_boot.h>
 #include <mach/sync_write.h>
 //#include <mach/mt6577_sc.h>
-//#include <mach/sec_osal.h>
 
 #include <linux/sched.h>
 #include <asm/memory.h>
@@ -60,14 +59,14 @@
 #define IMG_CNT 1
 
 // For MD1
-#define MOEDM_IMAGE_NAME 		 	"modem.img"
-#define DSP_IMAGE_NAME 			 	"DSP_ROM"
+#define MOEDM_IMAGE_NAME "modem.img"
+#define DSP_IMAGE_NAME "DSP_ROM"
 
-#define MOEDM_IMAGE_E1_NAME 	 	"modem_E1.img"
-#define DSP_IMAGE_E1_NAME 		 	"DSP_ROM_E1"
+#define MOEDM_IMAGE_E1_NAME "modem_E1.img"
+#define DSP_IMAGE_E1_NAME "DSP_ROM_E1"
 
-#define MOEDM_IMAGE_E2_NAME 	 	"modem_E2.img"
-#define DSP_IMAGE_E2_NAME 		 	"DSP_ROM_E2"
+#define MOEDM_IMAGE_E2_NAME "modem_E2.img"
+#define DSP_IMAGE_E2_NAME "DSP_ROM_E2"
 
 // For MD2
 #define MOEDM_SYS2_IMAGE_NAME 	 	"modem_sys2.img"
@@ -79,16 +78,16 @@
 
 
 #ifndef CONFIG_MODEM_FIRMWARE_PATH
-#define CONFIG_MODEM_FIRMWARE_PATH 	"/etc/firmware/"
+#define CONFIG_MODEM_FIRMWARE_PATH "/etc/firmware/"
 
-#define MOEDM_IMAGE_PATH 		   	"/etc/firmware/modem.img"
-#define DSP_IMAGE_PATH 				"/etc/firmware/DSP_ROM"
+#define MOEDM_IMAGE_PATH "/etc/firmware/modem.img"
+#define DSP_IMAGE_PATH "/etc/firmware/DSP_ROM"
 
-#define MOEDM_IMAGE_E1_PATH 		"/etc/firmware/modem_E1.img"
-#define DSP_IMAGE_E1_PATH 			"/etc/firmware/DSP_ROM_E1"
+#define MOEDM_IMAGE_E1_PATH "/etc/firmware/modem_E1.img"
+#define DSP_IMAGE_E1_PATH "/etc/firmware/DSP_ROM_E1"
 
-#define MOEDM_IMAGE_E2_PATH 		"/etc/firmware/modem_E2.img"
-#define DSP_IMAGE_E2_PATH 			"/etc/firmware/DSP_ROM_E2"
+#define MOEDM_IMAGE_E2_PATH "/etc/firmware/modem_E2.img"
+#define DSP_IMAGE_E2_PATH "/etc/firmware/DSP_ROM_E2"
 
 #endif
 
@@ -271,12 +270,12 @@ typedef struct {
 } GFH_FILE_INFO_v1;
 
 typedef struct {
-    GFH_HEADER m_gfh_hdr;     /* m_type=0x104, m_size=0xc8*/
+    GFH_HEADER m_gfh_hdr;      /* m_type=0x104, m_size=0xc8*/
     U32 m_product_ver;        /* 0x0:invalid; 0x1:debug version; 0x2:release version */
-    U32 m_image_type;         /* 0x0:invalid; 0x1:2G modem; 0x2: 3G modem */
-    U8 m_platform_id[16];	  /* chip version, ex:MT6573_S01 */
-    U8 m_project_id[64];	  /* build version, ex: MAUI.11A_MD.W11.31 */
-    U8 m_build_time[64];	  /* build time, ex: 2011/8/4 04:19:30 */
+    U32 m_image_type;          /* 0x0:invalid; 0x1:2G modem; 0x2: 3G modem */
+    U8 m_platform_id[16];	   /* chip version, ex:MT6573_S01 */
+    U8 m_project_id[64];	   /* build version, ex: MAUI.11A_MD.W11.31 */
+    U8 m_build_time[64];	   /* build time, ex: 2011/8/4 04:19:30 */
     U8 reserved[64];
 }GFH_CHECK_CFG_v1;
 

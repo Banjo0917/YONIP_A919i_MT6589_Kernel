@@ -68,6 +68,11 @@
 #include <mach/mt_clkmgr.h>
 #else
 //#include <mach/mt_clock_manager.h>
+
+#include "mach/mt_clkmgr.h"
+
+extern int get_gpu_power_src(void);
+
 //----------------------------------------------------------------------test
 #define MT65XX_UPLL 3
 static void enable_pll(int id, char *mod_name)
@@ -119,6 +124,7 @@ extern int g_R_CHARGER_2;
 extern int bat_thread_kthread(void *x);
 extern void charger_hv_detect_sw_workaround_init(void);
 extern int accdet_irq_handler(void);
+extern void accdet_auxadc_switch(int enable);
 
 #if defined (MTK_KERNEL_POWER_OFF_CHARGING)
 extern void mt_power_off(void);
@@ -138,6 +144,7 @@ void pmic_unlock(void)
 {
 }
 
+
 kal_uint32 upmu_get_reg_value(kal_uint32 reg)
 {
     U32 ret=0;
@@ -148,6 +155,7 @@ kal_uint32 upmu_get_reg_value(kal_uint32 reg)
     
     return reg_val;
 }
+EXPORT_SYMBOL(upmu_get_reg_value);
 
 void upmu_set_reg_value(kal_uint32 reg, kal_uint32 reg_val)
 {
@@ -190,7 +198,7 @@ int PMIC_IMM_GetOneChannelValue(int dwChannel, int deCount, int trimd)
     kal_int32 r_val_temp=0;    
     kal_int32 count=0;
     kal_int32 count_time_out=1000;
-    kal_int32 ret_data=0;    
+    kal_int32 ret_data=0;
 
     mutex_lock(&pmic_adc_mutex);
 
@@ -221,24 +229,29 @@ int PMIC_IMM_GetOneChannelValue(int dwChannel, int deCount, int trimd)
     }
 
     if(dwChannel==4)
-    {   
+    {
         upmu_set_rg_vbuf_en(1);
         upmu_set_rg_vbuf_byp(0);
     
         if(trimd==2)
         {            
-            upmu_set_rg_vbuf_calen(0); /* For T_PMIC*/            
+            upmu_set_rg_vbuf_calen(0); /* For T_PMIC*/
             upmu_set_rg_spl_num(0x1E);            
             trimd=1;
         }
         else
-        {
+        {            
             upmu_set_rg_vbuf_calen(1); /* For T_BAT*/
         }
 
         //Duo to HW limitation
         msleep(1);
-    }    
+    }
+
+    if(dwChannel==5)
+    {
+        accdet_auxadc_switch(1);
+    }
 
     u4Sample_times=0;
     
@@ -248,7 +261,7 @@ int PMIC_IMM_GetOneChannelValue(int dwChannel, int deCount, int trimd)
         upmu_set_rg_auxadc_start(1);
 
         //Duo to HW limitation
-        msleep(1);
+        udelay(50);
 
         count=0;
         ret_data=0;
@@ -467,6 +480,11 @@ int PMIC_IMM_GetOneChannelValue(int dwChannel, int deCount, int trimd)
         upmu_set_rg_vbuf_calen(0);
     }
 
+    if(dwChannel==5)
+    {
+        accdet_auxadc_switch(0);
+    }
+
     upmu_set_rg_spl_num(0x1);
 
     mutex_unlock(&pmic_adc_mutex);
@@ -572,7 +590,8 @@ CHARGER_TYPE hw_charger_type_detection(void)
         ret_val=pmic_config_interface(CHR_CON19,0x2,PMIC_RG_BC11_IPU_EN_MASK,PMIC_RG_BC11_IPU_EN_SHIFT);        
 
         mdelay(80);
-        
+        mdelay(80);	//Ivan
+	
         bLineState_B = INREG16(USBPHYRegs+0x76);
         //xlog_printk(ANDROID_LOG_INFO, "Power/PMIC", "mt_charger_type_detection : step B : bLineState_B=%x\r\n", bLineState_B);
         if(bLineState_B & 0x80)
@@ -1317,7 +1336,7 @@ void PMIC_DUMP_ALL_Register(void)
 //==============================================================================
 #define CONFIG_PMIC_HW_ACCESS_EN
 
-static spinlock_t pmic_access_lock;
+static DEFINE_SPINLOCK(pmic_access_lock);
 
 U32 pmic_read_interface (U32 RegNum, U32 *val, U32 MASK, U32 SHIFT)
 {
@@ -3843,7 +3862,7 @@ void PMIC_INIT_SETTING_V1(void)
         ret = pmic_config_interface(0x37C,0x4,0x7,0); // [2:0]: RG_VRF18_2_RZSEL; 
         ret = pmic_config_interface(0x37E,0x1,0x1,8); // [8:8]: RG_VRF18_2_MODESET; 
         ret = pmic_config_interface(0x380,0x3,0x3,0); // [1:0]: RG_VRF18_2_SLP; 
-        ret = pmic_config_interface(0x38C,0x4,0x1F,0); // [4:0]: VRF18_2_VOSEL; 
+        //ret = pmic_config_interface(0x38C,0x4,0x1F,0); // [4:0]: VRF18_2_VOSEL; 
         ret = pmic_config_interface(0x45C,0x0,0x7,5); // [7:5]: RG_VSIM1_VOSEL; PD team advice
         ret = pmic_config_interface(0x45E,0x0,0x7,5); // [7:5]: RG_VSIM2_VOSEL; PD team advice
         ret = pmic_config_interface(0x464,0xE,0xF,8); // [11:8]: RG_VEMC_1V8_CAL; 
@@ -3868,7 +3887,7 @@ void PMIC_INIT_SETTING_V1(void)
         ret = pmic_config_interface(0x714,0x1,0x1,4); // [4:4]: RG_LCLDO_REMOTE_SENSE_VA33; 
         ret = pmic_config_interface(0x714,0x1,0x1,1); // [1:1]: RG_HCLDO_REMOTE_SENSE_VA33; 
         ret = pmic_config_interface(0x71A,0x1,0x1,15); // [15:15]: RG_NCP_REMOTE_SENSE_VA18; 
- 
+        
         #if 0
         //dump register
         xlog_printk(ANDROID_LOG_INFO, "Power/PMIC", "[pmic_low_power_setting] Reg[0x%x]=0x%x\n", 0x254, upmu_get_reg_value(0x254));
@@ -3989,7 +4008,7 @@ void PMIC_INIT_SETTING_V1(void)
         ret = pmic_config_interface(0x23C,0x23,0x7F,0); // [6:0]: VSRAM_SFCHG_FRATE; 
         ret = pmic_config_interface(0x250,0x1,0x1,8); // [8:8]: VSRAM_VSLEEP_EN; 
         ret = pmic_config_interface(0x250,0x1,0x3,4); // [5:4]: VSRAM_VOSEL_TRANS_EN; 
-        ret = pmic_config_interface(0x250,0x3,0x3,0); // [1:0]: VSRAM_TRANSTD;
+        ret = pmic_config_interface(0x250,0x3,0x3,0); // [1:0]: VSRAM_TRANSTD; 
         
         //ret = pmic_config_interface(0x260,0xF2,0xFF,0); // [7:0]: RG_VCORE_RSV; 
         ret = pmic_config_interface(0x260,0x2,0xF,0); // [3:0]: RG_VCORE_RSV;
@@ -4191,7 +4210,8 @@ void pmic_vrf18_2_usage_protection(void)
 
     //1:VCORE, 0:VRF18_2
     //g_gpu_status_bit = get_spm_gpu_status();
-    g_gpu_status_bit = test_spm_gpu_power_on();
+    //g_gpu_status_bit = test_spm_gpu_power_on();
+    g_gpu_status_bit = get_gpu_power_src();
 
     if(g_gpu_status_bit == 1)
     {
@@ -4214,7 +4234,8 @@ void pmic_vrf18_2_usage_protection(void)
 
 void pmic_gpu_power_enable(int power_en)
 {
-    if(g_gpu_status_bit == 1)
+    //if(g_gpu_status_bit == 1)
+    if(get_gpu_power_src() == 1)
     {
         xlog_printk(ANDROID_LOG_INFO, "Power/PMIC", "[pmic_gpu_power_enable] gpu is not powered by VRF18_2\n");
     }
@@ -4235,6 +4256,7 @@ void pmic_gpu_power_enable(int power_en)
 EXPORT_SYMBOL(pmic_gpu_power_enable);
 
 int g_pmic_cid=0;
+EXPORT_SYMBOL(g_pmic_cid);
 
 static int pmic_mt6320_probe(struct platform_device *dev)
 {
@@ -4252,7 +4274,7 @@ static int pmic_mt6320_probe(struct platform_device *dev)
     xlog_printk(ANDROID_LOG_INFO, "Power/PMIC", "MT6320 PMIC CID=0x%x\n", ret_val );
 
     //VRF18_2 usage protection
-    //pmic_vrf18_2_usage_protection();
+    pmic_vrf18_2_usage_protection();
 
     //enable rtc 32k to pmic
     rtc_gpio_enable_32k(RTC_GPIO_USER_PMIC);
@@ -4267,7 +4289,7 @@ static int pmic_mt6320_probe(struct platform_device *dev)
     pmic_low_power_setting();
 
     //pmic setting with RTC
-    //pmic_setting_depends_rtc();
+    pmic_setting_depends_rtc();
     
     upmu_set_rg_pwrkey_int_sel(1);
     upmu_set_rg_homekey_int_sel(1);
@@ -4288,6 +4310,20 @@ static int pmic_mt6320_probe(struct platform_device *dev)
     #if defined(CONFIG_POWER_EXT)
     ret_val = pmic_config_interface(0x002E,0x0010,0x00FF,0);
     xlog_printk(ANDROID_LOG_INFO, "Power/PMIC", "[pmic_thread_kthread] add for EVB\n");
+    #endif
+
+    #if defined(MTK_ENABLE_MD2) && defined(MODEM2_3G)
+    //keep VAST setting
+    xlog_printk(ANDROID_LOG_INFO, "Power/PMIC", "[PMIC] keep VAST due to MTK_ENABLE_MD2 && MODEM2_3G\n");
+    #else
+        #if defined(MTK_MT8193_SUPPORT)
+        //keep VAST setting
+        xlog_printk(ANDROID_LOG_INFO, "Power/PMIC", "[PMIC] keep VAST due to MTK_MT8193_SUPPORT\n");
+        #else
+        ret_val=pmic_config_interface(DIGLDO_CON20, 0x0, PMIC_RG_VAST_EN_MASK, PMIC_RG_VAST_EN_SHIFT);
+        xlog_printk(ANDROID_LOG_INFO, "Power/PMIC", "[CONFIG_FORCE_OFF_VAST] Reg[0x%x]=%x\n", 
+                DIGLDO_CON20, upmu_get_reg_value(DIGLDO_CON20));
+        #endif
     #endif
 
     return 0;
@@ -4315,6 +4351,11 @@ static int pmic_mt6320_suspend(struct platform_device *dev, pm_message_t state)
     ret = pmic_config_interface(0x22A,0x0,0x3,4);
     xlog_printk(ANDROID_LOG_INFO, "Power/PMIC", "Suspend: Reg[0x%x]=0x%x\n",0x22A, upmu_get_reg_value(0x22A));
 
+    ret = pmic_config_interface(0x0102,0x1,0x1,3);
+    ret = pmic_config_interface(0x0102,0x1,0x1,4);
+    ret = pmic_config_interface(0x0102,0x1,0x1,15);
+    xlog_printk(ANDROID_LOG_INFO, "Power/PMIC", "Suspend: Reg[0x%x]=0x%x\n",0x0102, upmu_get_reg_value(0x0102));
+
     return 0;
 }
 
@@ -4327,6 +4368,11 @@ static int pmic_mt6320_resume(struct platform_device *dev)
     //Set PMIC register 0x022A bit[5:4] =01 after system resume.
     ret = pmic_config_interface(0x22A,0x1,0x3,4);
     xlog_printk(ANDROID_LOG_INFO, "Power/PMIC", "Resume: Reg[0x%x]=0x%x\n",0x22A, upmu_get_reg_value(0x22A));
+
+    ret = pmic_config_interface(0x0102,0x0,0x1,3);
+    ret = pmic_config_interface(0x0102,0x0,0x1,4);
+    ret = pmic_config_interface(0x0102,0x0,0x1,15);
+    xlog_printk(ANDROID_LOG_INFO, "Power/PMIC", "Resume: Reg[0x%x]=0x%x\n",0x0102, upmu_get_reg_value(0x0102));
 
     return 0;
 }
@@ -4448,8 +4494,6 @@ static struct platform_driver mt_pmic_driver = {
 static int __init pmic_mt6320_init(void)
 {
     int ret;
-
-    spin_lock_init(&pmic_access_lock);
 
     // PMIC device driver register
     ret = platform_device_register(&pmic_mt6320_device);

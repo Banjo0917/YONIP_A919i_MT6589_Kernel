@@ -94,10 +94,15 @@ int disp_get_hist(unsigned int * pHist);
 void disp_update_hist(void);
 
 DISP_PQ_PARAM * get_Color_config(void);
+DISP_PQ_PARAM * get_Color_Cam_config(void);
+DISP_PQ_PARAM * get_Color_Gal_config(void);
 DISPLAY_PQ_T * get_Color_index(void);
 
 //Called by tasklet to config registers
 void disp_onConfig_luma(unsigned long *luma);
+
+void disp_color_set_window(unsigned int sat_upper, unsigned int sat_lower, 
+			   unsigned int hue_upper, unsigned int hue_lower);
 
 #endif
 

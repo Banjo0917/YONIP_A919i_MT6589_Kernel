@@ -26,6 +26,7 @@
 
 #define CONFIG_POWER_SAVING_SUPPORT
 
+
 #define PFX                         "[STP] "
 #define STP_LOG_DBG                  4
 #define STP_LOG_PKHEAD               3
@@ -190,18 +191,20 @@ typedef struct
     UINT8 f_enable; /* default disabled */
     UINT8 f_ready; /* default non-ready */
     UINT8 f_pending_type;
-	  UINT8 f_fw_assert; /*block tx flag, for now, only when f/w assert happens, we will set this bit on*/
+    UINT8 f_coredump; /*block tx flag, for now, only when f/w assert happens, we will set this bit on*/
     UINT8 en_coredump;
     /* Flag to identify Blueztooth is Bluez/or MTK Stack*/
     MTK_WCN_BOOL f_bluez;
     MTK_WCN_BOOL f_dbg_en;
     MTK_WCN_BOOL f_autorst_en;
 
-	
+    
 
     /* Flag to identify STP by SDIO or UART */
     UINT32 f_mode;
     
+    /* Flag to indicate the last WMT CLOSE*/
+    UINT32 f_wmt_last_close;
 }mtkstp_context_struct;
 
 /*******************************************************************************
@@ -273,7 +276,7 @@ extern INT32 mtk_wcn_stp_ready(INT32 value);
 
 /*****************************************************************************
 * FUNCTION
-*  mtk_wcn_stp_assert
+*  mtk_wcn_stp_coredump_start_ctrl
 * DESCRIPTION
 *  set f/w assert flag in STP context
 * PARAMETERS
@@ -281,11 +284,11 @@ extern INT32 mtk_wcn_stp_ready(INT32 value);
 * RETURNS
 *  INT32    0=success, others=error
 *****************************************************************************/
-extern INT32 mtk_wcn_stp_assert(INT32 value);
+extern INT32 mtk_wcn_stp_coredump_start_ctrl(UINT32 value);
 
 /*****************************************************************************
 * FUNCTION
-*  mtk_wcn_stp_assert_flag
+*  mtk_wcn_stp_coredump_start_get
 * DESCRIPTION
 *  get f/w assert flag in STP context
 * PARAMETERS
@@ -293,7 +296,7 @@ extern INT32 mtk_wcn_stp_assert(INT32 value);
 * RETURNS
 *  INT32    0= f/w assert flag is not set, others=f/w assert flag is set
 *****************************************************************************/
-extern INT32 mtk_wcn_stp_assert_flag(VOID);
+extern INT32 mtk_wcn_stp_coredump_start_get(VOID);
 
 
 /*****************************************************************************
@@ -523,12 +526,17 @@ extern INT32 mtk_wcn_stp_dbg_dump_package(VOID);
 extern int  stp_drv_init(void);
 
 extern void stp_drv_exit(void);
+
 extern INT32 mtk_wcn_stp_dbg_log_ctrl(UINT32 on);
-extern INT32 mtk_wcn_stp_notify_sleep_for_thermal(void);
 
 extern INT32 mtk_wcn_stp_coredump_flag_ctrl(UINT32 on);
 
 extern INT32 mtk_wcn_stp_coredump_flag_get(VOID);
+extern INT32 mtk_wcn_stp_notify_sleep_for_thermal(void);
+
+
+extern INT32 mtk_wcn_stp_set_wmt_last_close(UINT32 value);
+
 /*******************************************************************************
 *                              F U N C T I O N S
 ********************************************************************************

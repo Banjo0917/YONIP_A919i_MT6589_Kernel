@@ -14091,6 +14091,8 @@ void upmu_set_rg_vrf18_2_modeset(U32 val)
 	                         );
   pmic_unlock();
 }
+EXPORT_SYMBOL(upmu_set_rg_vrf18_2_modeset);
+
 
 void upmu_set_rg_vrf18_2_avp_en(U32 val)
 {

@@ -12,7 +12,7 @@
 #include <linux/mm.h>
 #include <linux/slab.h>
 #include <linux/sched.h>   //wake_up_process()
-#include <linux/kthread.h> //kthread_create()¡¢kthread_run()
+#include <linux/kthread.h> //kthread_create()kthread_run()
 #include <mach/irqs.h>
 #include <asm/io.h>
 
@@ -89,7 +89,8 @@ static irqreturn_t mau_isr(int irq, void *dev_id)
             regval = M4U_ReadReg32(larb_base, SMI_MAU_ENTR_END(i));
             SMIMSG("end_addr=0x%x, virtual=%d\n", F_MAU_END_ADDR_VAL(regval), 
                 F_MAU_END_IS_VIR(regval));
-            smi_aee_print("violation by %s\n",smi_port_name[larb][port]);
+            //smi_aee_print("violation by %s\n",smi_port_name[larb][port]);
+            SMIMSG("violation by %s\n",smi_port_name[larb][port]);
         }
 
         //clear interrupt status

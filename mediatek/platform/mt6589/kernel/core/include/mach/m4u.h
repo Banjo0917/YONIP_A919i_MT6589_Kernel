@@ -1,3 +1,38 @@
+/* Copyright Statement:
+ *
+ * This software/firmware and related documentation ("MediaTek Software") are
+ * protected under relevant copyright laws. The information contained herein
+ * is confidential and proprietary to MediaTek Inc. and/or its licensors.
+ * Without the prior written permission of MediaTek inc. and/or its licensors,
+ * any reproduction, modification, use or disclosure of MediaTek Software,
+ * and information contained herein, in whole or in part, shall be strictly prohibited.
+ */
+/* MediaTek Inc. (C) 2010. All rights reserved.
+ *
+ * BY OPENING THIS FILE, RECEIVER HEREBY UNEQUIVOCALLY ACKNOWLEDGES AND AGREES
+ * THAT THE SOFTWARE/FIRMWARE AND ITS DOCUMENTATIONS ("MEDIATEK SOFTWARE")
+ * RECEIVED FROM MEDIATEK AND/OR ITS REPRESENTATIVES ARE PROVIDED TO RECEIVER ON
+ * AN "AS-IS" BASIS ONLY. MEDIATEK EXPRESSLY DISCLAIMS ANY AND ALL WARRANTIES,
+ * EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE IMPLIED WARRANTIES OF
+ * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE OR NONINFRINGEMENT.
+ * NEITHER DOES MEDIATEK PROVIDE ANY WARRANTY WHATSOEVER WITH RESPECT TO THE
+ * SOFTWARE OF ANY THIRD PARTY WHICH MAY BE USED BY, INCORPORATED IN, OR
+ * SUPPLIED WITH THE MEDIATEK SOFTWARE, AND RECEIVER AGREES TO LOOK ONLY TO SUCH
+ * THIRD PARTY FOR ANY WARRANTY CLAIM RELATING THERETO. RECEIVER EXPRESSLY ACKNOWLEDGES
+ * THAT IT IS RECEIVER'S SOLE RESPONSIBILITY TO OBTAIN FROM ANY THIRD PARTY ALL PROPER LICENSES
+ * CONTAINED IN MEDIATEK SOFTWARE. MEDIATEK SHALL ALSO NOT BE RESPONSIBLE FOR ANY MEDIATEK
+ * SOFTWARE RELEASES MADE TO RECEIVER'S SPECIFICATION OR TO CONFORM TO A PARTICULAR
+ * STANDARD OR OPEN FORUM. RECEIVER'S SOLE AND EXCLUSIVE REMEDY AND MEDIATEK'S ENTIRE AND
+ * CUMULATIVE LIABILITY WITH RESPECT TO THE MEDIATEK SOFTWARE RELEASED HEREUNDER WILL BE,
+ * AT MEDIATEK'S OPTION, TO REVISE OR REPLACE THE MEDIATEK SOFTWARE AT ISSUE,
+ * OR REFUND ANY SOFTWARE LICENSE FEES OR SERVICE CHARGE PAID BY RECEIVER TO
+ * MEDIATEK FOR SUCH MEDIATEK SOFTWARE AT ISSUE.
+ *
+ * The following software/firmware and/or related documentation ("MediaTek Software")
+ * have been modified by MediaTek Inc. All revisions are subject to any receiver's
+ * applicable license agreements with MediaTek Inc.
+ */
+
 #ifndef __M4U_H__
 #define __M4U_H__
 #include <linux/ioctl.h>
@@ -220,10 +255,10 @@ typedef enum
                            
     M4U_CLNTMOD_AUDIO      ,
     
+    M4U_CLNTMOD_LCDC_UI,
     M4U_CLNTMOD_UNKNOWN,   
 
     M4U_CLNTMOD_MAX,
-    M4U_CLNTMOD_LCDC_UI,
 
 
 
@@ -248,7 +283,7 @@ typedef enum
 #define    M4U_CLNTMOD_SZ_DISP        (200*0x00100000)
 #define    M4U_CLNTMOD_SZ_VID         (200*0x00100000)
 #define    M4U_CLNTMOD_SZ_GDMA        (200*0x00100000)
-#define    M4U_CLNTMOD_SZ_IMG         (200*0x00100000)
+#define    M4U_CLNTMOD_SZ_IMG         (350*0x00100000)
 #define    M4U_CLNTMOD_SZ_LSCI        (200*0x00100000)
 #define    M4U_CLNTMOD_SZ_FLKI        (200*0x00100000)
 #define    M4U_CLNTMOD_SZ_LCEI        (200*0x00100000)
@@ -256,6 +291,7 @@ typedef enum
 #define    M4U_CLNTMOD_SZ_ESFKO       (200*0x00100000)
 #define    M4U_CLNTMOD_SZ_AAO         (200*0x00100000)
 #define    M4U_CLNTMOD_SZ_AUDIO       (200*0x00100000)
+#define    M4U_CLNTMOD_SZ_LCDC_UI     (200*0x00100000)
 #define    M4U_CLNTMOD_SZ_RESERVED    (200*0x00100000)
 
 typedef enum
@@ -492,6 +528,10 @@ int m4u_query_mva(M4U_MODULE_ID_ENUM eModuleID,
 int m4u_log_on(void);
 int m4u_log_off(void);
 int m4u_debug_command(unsigned int command);
+int m4u_mva_map_kernel(unsigned int mva, unsigned int size, int sec,
+                        unsigned int* map_va, unsigned int* map_size);
+int m4u_mva_unmap_kernel(unsigned int mva, unsigned int size, unsigned int va);
+
 // m4u driver internal use ---------------------------------------------------
 //
 

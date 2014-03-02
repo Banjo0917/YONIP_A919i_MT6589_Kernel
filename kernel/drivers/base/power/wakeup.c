@@ -31,6 +31,7 @@ int wakelock_debug_mask = 0;
  * if wakeup events are registered during or immediately before the transition.
  */
 bool events_check_enabled __read_mostly;
+EXPORT_SYMBOL_GPL(events_check_enabled);
 
 /*
  * Combined counters of registered wakeup events and wakeup events in progress.
@@ -553,6 +554,8 @@ static void wakeup_source_deactivate(struct wakeup_source *ws)
 	 * Increment the counter of registered wakeup events and decrement the
 	 * couter of wakeup events in progress simultaneously.
 	 */
+    // FIXME: CHECK BUG here ??? if combined_event_count = 0x????0000, then atomic_add_return(...) --> 0x????ffff
+    //        , which is not the expected result !!!
 	cec = atomic_add_return(MAX_IN_PROGRESS, &combined_event_count);
 	trace_wakeup_source_deactivate(ws->name, cec);
 
@@ -725,6 +728,7 @@ bool pm_wakeup_pending(void)
 
 	return ret;
 }
+EXPORT_SYMBOL_GPL(pm_wakeup_pending);
 
 /**
  * pm_get_wakeup_count - Read the number of registered wakeup events.

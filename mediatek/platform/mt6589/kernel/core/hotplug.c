@@ -4,6 +4,7 @@
 #ifdef CONFIG_HOTPLUG_WITH_POWER_CTRL
 #include <mach/mt_spm_mtcmos.h>
 #endif
+#include <mach/mt_spm_idle.h>
 
 
 
@@ -35,6 +36,10 @@ atomic_t hotplug_cpu_count = ATOMIC_INIT(1);
 static inline void cpu_enter_lowpower(unsigned int cpu)
 {
     //HOTPLUG_INFO("cpu_enter_lowpower\n");
+
+#ifdef SPM_MCDI_FUNC
+    spm_hot_plug_out_after(cpu);
+#endif
     
     /* Clear the SCTLR C bit to prevent further data cache allocation */
     __disable_dcache();
@@ -46,7 +51,7 @@ static inline void cpu_enter_lowpower(unsigned int cpu)
     
     /* Clean all data from the L2 data cache */
     __inner_clean_dcache_L2();
-        
+    
     /* Execute a CLREX instruction */
     __asm__ __volatile__("clrex");
     

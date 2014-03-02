@@ -104,9 +104,7 @@ void DpEngine_SHARPonConfig(unsigned int srcWidth,unsigned int srcHeight)
     DISP_REG_SET(DISPSYS_TDSHP_BASE+0x020 , TDSHP_Param[ sharpGain][17]<< 24
                                        | TDSHP_Param[ sharpGain][18]<< 16);
     DISP_REG_SET(DISPSYS_TDSHP_BASE+0x02C , TDSHP_Param[ sharpGain][19]<< 28
-                                       | TDSHP_Param[ sharpGain][20]<< 24
-                                       | TDSHP_Param[ sharpGain][21]<< 24
-                                       | TDSHP_Param[ sharpGain][22]<< 16 );
+                                       | TDSHP_Param[ sharpGain][20]<< 24);
     DISP_REG_SET(DISPSYS_TDSHP_BASE+0x040 , TDSHP_Param[ sharpGain][23]<< 24
                                        | TDSHP_Param[ sharpGain][24]<< 16 );
     DISP_REG_SET(DISPSYS_TDSHP_BASE+0x04C , TDSHP_Param[ sharpGain][25]<< 24

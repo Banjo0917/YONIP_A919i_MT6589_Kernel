@@ -444,13 +444,9 @@
                                                  0: Disable */
 
 #define CFG_TX_STOP_NETIF_QUEUE_THRESHOLD   256 /* packets */
-#if 0
-#define CFG_TX_STOP_NETIF_PER_QUEUE_THRESHOLD   64  /* packets */
-#define CFG_TX_START_NETIF_PER_QUEUE_THRESHOLD  32  /* packets */
-#else
-#define CFG_TX_STOP_NETIF_PER_QUEUE_THRESHOLD   256  /* packets */
+
+#define CFG_TX_STOP_NETIF_PER_QUEUE_THRESHOLD   512  /* packets */
 #define CFG_TX_START_NETIF_PER_QUEUE_THRESHOLD  128  /* packets */
-#endif
 
 
 #define ETH_P_1X                            0x888E

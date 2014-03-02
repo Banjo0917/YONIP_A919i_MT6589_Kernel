@@ -45,10 +45,14 @@ struct ipanic_header {
 
 	u32 userspace_info_offset;
 	u32 userspace_info_length;
+
+	u32 mmprofile_offset;
+	u32 mmprofile_length;
 };
 
 #define IPANIC_OOPS_HEADER_PROCESS_NAME_LENGTH 256
 #define IPANIC_OOPS_HEADER_BACKTRACE_LENGTH 3840
+#define IPANIC_OOPS_MMPROFILE_LENGTH_LIMIT 3000000
 
 struct ipanic_oops_header 
 {

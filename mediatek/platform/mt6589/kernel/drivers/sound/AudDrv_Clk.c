@@ -57,6 +57,7 @@
 #include "AudDrv_Common.h"
 #include "AudDrv_Clk.h"
 #include "AudDrv_Afe.h"
+#include "AudDrv_Ana.h"
 #include <linux/spinlock.h>
 #include <linux/delay.h>
 
@@ -219,6 +220,28 @@ void AudDrv_Suspend_Clk_Off(void)
    }
 }
 
+
+
+/*****************************************************************************
+ * FUNCTION
+ *	AudDrv_ANA_Top_On / AudDrv_ANA_Top_Off
+ *
+ * DESCRIPTION
+ *	Enable/Disable analog part clock
+ *
+ *****************************************************************************/
+
+void AudDrv_ANA_Top_On(void)
+{
+    Ana_Set_Reg(TOP_CKPDN,0x0000 ,0x00000003);
+}
+
+void AudDrv_ANA_Top_Off(void)
+{
+    Ana_Set_Reg(TOP_CKPDN,0x0003 ,0x00000003);
+}
+
+
  /*****************************************************************************
   * FUNCTION
   *  AudDrv_ANA_Clk_On / AudDrv_ANA_Clk_Off
@@ -234,6 +257,7 @@ void AudDrv_Suspend_Clk_Off(void)
      {
          PRINTK_AUD_CLK("+AudDrv_ANA_Clk_On, Aud_ANA_Clk_cntr:%d \n", Aud_ANA_Clk_cntr);
          upmu_set_rg_clksq_en(1);
+         AudDrv_ANA_Top_On();
      }
      Aud_ANA_Clk_cntr++;
      mutex_unlock(&auddrv_pmic_mutex);
@@ -251,6 +275,7 @@ void AudDrv_Suspend_Clk_Off(void)
          // Disable ADC clock
          #ifdef PM_MANAGER_API
          upmu_set_rg_clksq_en(0);
+         AudDrv_ANA_Top_Off();
          #else
          // TODO:: open ADC clock....
          #endif

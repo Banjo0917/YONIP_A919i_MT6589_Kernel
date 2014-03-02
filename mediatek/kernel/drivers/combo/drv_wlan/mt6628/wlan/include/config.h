@@ -1480,9 +1480,20 @@
 
 #define CFG_STRICT_CHECK_CAPINFO_PRIVACY    0
 
-#define CFG_SUPPORT_WFD             1
+#define CFG_SUPPORT_WFD                     1
 
-#define CFG_SUPPORT_WFD_COMPOSE_IE     0
+#define CFG_SUPPORT_WFD_COMPOSE_IE          1
+
+/*------------------------------------------------------------------------------
+ * Flags of Packet Lifetime Profiling Mechanism
+ *------------------------------------------------------------------------------
+ */
+#define CFG_ENABLE_PKT_LIFETIME_PROFILE     1
+
+#define CFG_ENABLE_PER_STA_STATISTICS       1
+
+#define CFG_PRINT_RTP_PROFILE               0
+#define CFG_PRINT_RTP_SN_SKIP               0
 
 /*------------------------------------------------------------------------------
  * Flags of bus error tolerance

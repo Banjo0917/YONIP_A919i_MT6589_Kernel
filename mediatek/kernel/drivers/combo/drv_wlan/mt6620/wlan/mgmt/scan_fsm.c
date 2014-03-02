@@ -436,7 +436,9 @@ scnSendScanReq (
     }
 
 #if CFG_ENABLE_WIFI_DIRECT
+    if(prScanParam->eNetTypeIndex == NETWORK_TYPE_P2P_INDEX) {
         rCmdScanReq.u2ChannelDwellTime = prScanParam->u2PassiveListenInterval;
+    }
 #endif
 
     if(prScanParam->u2IELen <= MAX_IE_LENGTH) {
@@ -761,7 +763,9 @@ scnFsmHandleScanMsg (
     }
 
 #if CFG_ENABLE_WIFI_DIRECT
+    if(prScanParam->eNetTypeIndex == NETWORK_TYPE_P2P_INDEX) {
         prScanParam->u2PassiveListenInterval = prScanReqMsg->u2ChannelDwellTime;
+    }
 #endif
     prScanParam->ucSeqNum       = prScanReqMsg->ucSeqNum;
 
@@ -843,7 +847,9 @@ scnFsmHandleScanMsgV2 (
     }
 
 #if CFG_ENABLE_WIFI_DIRECT
+    if(prScanParam->eNetTypeIndex == NETWORK_TYPE_P2P_INDEX) {
         prScanParam->u2PassiveListenInterval = prScanReqMsg->u2ChannelDwellTime;
+    }
 #endif
     prScanParam->ucSeqNum       = prScanReqMsg->ucSeqNum;
 

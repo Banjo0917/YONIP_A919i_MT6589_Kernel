@@ -1080,8 +1080,6 @@ kal_int32 fgauge_compensate_battery_voltage_recursion(kal_int32 ori_voltage, kal
             temp_voltage_1, temp_voltage_2, gFG_resistance_bat, ret_compensate_value);
     }
 
-    //xlog_printk(ANDROID_LOG_DEBUG, "Power/Battery", "[CompensateVoltage] Ori_voltage:%d, compensate_value:%d, gFG_resistance_bat:%d, gFG_current:%d\r\n", 
-    //    ori_voltage, ret_compensate_value, gFG_resistance_bat, gFG_current);
 
     return ret_compensate_value;
 }
@@ -1725,23 +1723,28 @@ kal_int32 fgauge_read_r_bat_by_v(kal_int32 voltage)
     int i = 0, saddles = 0;
     R_PROFILE_STRUC_P profile_p;
     kal_int32 ret_r = 0;
+    //add by yangyan
+    kal_int32 compensate_r = 50;                         //modify by yangyan
 
     profile_p = fgauge_get_profile_r_table(TEMPERATURE_T);
     if (profile_p == NULL)
     {
         xlog_printk(ANDROID_LOG_WARN, "Power/Battery", "[FGADC] fgauge get R-Table profile : fail !\r\n");
-        return (profile_p+0)->resistance;
+   //     return (profile_p+0)->resistance;                              //modify by yangyan
+	 return (((profile_p+0)->resistance)+compensate_r);     //modify by yangyan
     }
 
     saddles = fgauge_get_saddles_r_table();
 
     if (voltage > (profile_p+0)->voltage)
     {
-        return (profile_p+0)->resistance; 
+     //   return (profile_p+0)->resistance;                              //modify by yangyan
+	 return (((profile_p+0)->resistance)+compensate_r);     //modify by yangyan
     }    
     if (voltage < (profile_p+saddles-1)->voltage)
     {
-        return (profile_p+saddles-1)->resistance; 
+     //   return (profile_p+saddles-1)->resistance;                               //modify by yangyan
+	 return (((profile_p+saddles-1)->resistance)+compensate_r);     //modify by yangyan
     }
 
     for (i = 0; i < saddles - 1; i++)
@@ -1760,7 +1763,7 @@ kal_int32 fgauge_read_r_bat_by_v(kal_int32 voltage)
         }
     }
 
-    return ret_r;
+    return (ret_r+compensate_r);                        //modify by yangyan
 }
 
 kal_int32 fgauge_read_v_by_capacity(int bat_capacity)
@@ -2303,7 +2306,7 @@ void fgauge_Normal_Mode_Work(void)
 //2. Calculate battery capacity by VBAT    
     gFG_capacity_by_v = fgauge_read_capacity_by_v();
 
-	if(gFG_booting_counter_I_FLAG == 0) {
+	if(gFG_booting_counter_I_FLAG == 1) { 
 		gFG_capacity_by_v_init = gFG_capacity_by_v;
 	}
 //3. Calculate battery capacity by Coulomb Counter
@@ -2320,9 +2323,19 @@ void fgauge_Normal_Mode_Work(void)
         gFG_capacity_by_v = fgauge_read_capacity_by_v();
 		xlog_printk(ANDROID_LOG_INFO, "Power/Battery", "[FGADC] get_hw_ocv=%d, HW_SOC=%d, SW_SOC = %d\n", 
 			gFG_voltage, gFG_capacity_by_v, gFG_capacity_by_v_init);
-		// compare with hw_ocv & sw_ocv, check if less than or equal to 5% tolerance 
-		if (abs(gFG_capacity_by_v_init - gFG_capacity_by_v) > 5) {
-			gFG_capacity_by_v = gFG_capacity_by_v_init;
+		if (upmu_is_chr_det() == KAL_TRUE) {
+			// compare with hw_ocv & sw_ocv, check if less than or equal to 5% tolerance 
+			if (abs(gFG_capacity_by_v_init - gFG_capacity_by_v) > 5) {
+				gFG_capacity_by_v = gFG_capacity_by_v_init;
+			}
+		}
+//Ivan added		
+		else
+		{
+			if (abs(gFG_capacity_by_v_init - gFG_capacity_by_v) > 10 && (gFG_capacity_by_v_init > 5)) {
+				gFG_capacity_by_v = gFG_capacity_by_v_init;
+				xlog_printk(ANDROID_LOG_INFO, "Power/Battery", "[FGADC] Reload gFG_capacity_by_v...\n");
+			}
 		}
         //-------------------------------------------------------------------------------
         g_rtc_fg_soc = get_rtc_spare_fg_value();
@@ -2594,10 +2607,13 @@ void fgauge_initialization(void)
     ret=pmic_config_interface(FGADC_CON0, 0x0028, 0x00FF, 0x0);
     //(4)    Enable FGADC
     ret=pmic_config_interface(FGADC_CON0, 0x0029, 0x00FF, 0x0);
-
+//Ivan added wait for stablize
+    msleep(20);
     //reset HW FG
     ret=pmic_config_interface(FGADC_CON0, 0x7100, 0xFF00, 0x0);
     xlog_printk(ANDROID_LOG_INFO, "Power/Battery", "******** [fgauge_initialization] reset HW FG!\n" );
+//Ivan added wait for stablize
+    msleep(20);
     
 // 2. SW algorithm initialization
     //gFG_voltage = fgauge_read_voltage();            

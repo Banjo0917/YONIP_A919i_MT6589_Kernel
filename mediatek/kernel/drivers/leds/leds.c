@@ -22,17 +22,17 @@
 
 #include <cust_leds.h>
 
-#if defined (CONFIG_ARCH_MT6577)
-#include <mach/mt6577_pwm.h>
-#include <mach/mt6577_gpio.h>
+#if defined (CONFIG_ARCH_MT6577) || defined (CONFIG_ARCH_MT6575) || defined (CONFIG_ARCH_MT6575T)
+#include <mach/mt_pwm.h>
+#include <mach/mt_gpio.h>
 #include <mach/pmic_mt6329_hw_bank1.h> 
 #include <mach/pmic_mt6329_sw_bank1.h> 
 #include <mach/pmic_mt6329_hw.h>
 #include <mach/pmic_mt6329_sw.h>
 #include <mach/upmu_common_sw.h>
 #include <mach/upmu_hw.h>
-#include <mach/mt6577_pmic_feature_api.h>
-#include <mach/mt6577_boot.h>
+#include <mach/mt_pmic_feature_api.h>
+#include <mach/mt_boot.h>
 
 #elif defined (CONFIG_ARCH_MT6589)
 #include <mach/mt_pwm.h>
@@ -51,6 +51,8 @@
 #ifndef CONTROL_BL_TEMPERATURE
 #define CONTROL_BL_TEMPERATURE
 #endif
+//add for sync led work schedule
+static DEFINE_MUTEX(leds_mutex);
 
 //#define ISINK_CHOP_CLK
 
@@ -75,13 +77,13 @@ unsigned int bl_brightness = 102;
 unsigned int bl_duty = 21;
 unsigned int bl_div = CLK_DIV1;
 unsigned int bl_frequency = 32000;
-
+#if defined CONFIG_ARCH_MT6589
 typedef enum{  
     PMIC_PWM_0 = 0,  
     PMIC_PWM_1 = 1,  
     PMIC_PWM_2 = 2
 } MT65XX_PMIC_PWM_NUMBER;
-
+#endif
 
 /*****************PWM *************************************************/
 int time_array[PWM_DIV_NUM]={256,512,1024,2048,4096,8192,16384,32768};
@@ -117,10 +119,12 @@ struct mt65xx_led_data {
  * function prototypes
  ***************************************************************************/
 
-
-//extern void mt_pwm_power_off (U32 pwm_no);
-//extern S32 mt_set_pwm_disable ( U32 pwm_no ) ;
+#if defined (CONFIG_ARCH_MT6575) || defined (CONFIG_ARCH_MT6575T)|| defined (CONFIG_ARCH_MT6577)
+extern void mt_pwm_power_off (U32 pwm_no);
+extern S32 mt_set_pwm_disable ( U32 pwm_no ) ;
+#elif defined CONFIG_ARCH_MT6589
 extern void mt_pwm_disable(U32 pwm_no, BOOL pmic_pad);
+#endif
 extern unsigned int brightness_mapping(unsigned int level);
 extern int mtkfb_get_backlight_pwm(unsigned int divider, unsigned int *freq);
 
@@ -161,7 +165,7 @@ static unsigned  int limit_flag = 0;
 static unsigned  int last_level = 0; 
 static unsigned  int current_level = 0; 
 static DEFINE_MUTEX(bl_level_limit_mutex);
-
+extern int disp_bls_set_max_backlight(unsigned int level);
 
 //this API add for control the power and temperature
 //if enabe=1, the value of brightness will smaller  than max_level, whatever lightservice transfers to driver
@@ -169,21 +173,22 @@ int setMaxbrightness(int max_level, int enable)
 {
 
 	struct cust_mt65xx_led *cust_led_list = get_cust_led_list();
+ #if !defined (MTK_AAL_SUPPORT)    
 	mutex_lock(&bl_level_limit_mutex);
 	if (1 == enable)
 	{
 		limit_flag = 1;
 		limit = max_level;
 		mutex_unlock(&bl_level_limit_mutex);
-		LEDS_DEBUG("[LED] setMaxbrightness limit happen and release lock!!\n");
+		//LEDS_DEBUG("[LED] setMaxbrightness limit happen and release lock!!\n");
 		printk("setMaxbrightness enable:last_level=%d, current_level=%d\n", last_level, current_level);
 		//if (limit < last_level){
 		if (0 != current_level){
 			if(limit < last_level){
-						printk("mt65xx_leds_set_cust in setMaxbrightness:value control start! limit=%d\n", limit);
+						//printk("mt65xx_leds_set_cust in setMaxbrightness:value control start! limit=%d\n", limit);
 						mt65xx_led_set_cust(&cust_led_list[MT65XX_LED_TYPE_LCD], limit);
 			}else{
-						printk("mt65xx_leds_set_cust in setMaxbrightness:value control start! last_level=%d\n", last_level);
+						//printk("mt65xx_leds_set_cust in setMaxbrightness:value control start! last_level=%d\n", last_level);
 						mt65xx_led_set_cust(&cust_led_list[MT65XX_LED_TYPE_LCD], last_level);
 			}
 		}
@@ -193,12 +198,12 @@ int setMaxbrightness(int max_level, int enable)
 		limit_flag = 0;
 		limit = 255;
 		mutex_unlock(&bl_level_limit_mutex);
-		LEDS_DEBUG("[LED] setMaxbrightness limit closed and and release lock!!\n");
+		//LEDS_DEBUG("[LED] setMaxbrightness limit closed and and release lock!!\n");
 		printk("setMaxbrightness disable:last_level=%d, current_level=%d\n", last_level, current_level);
 		
 		//if (last_level != 0){
 		if (0 != current_level){
-		printk("control temperature close:limit=%d\n", limit);
+		//printk("control temperature close:limit=%d\n", limit);
 		mt65xx_led_set_cust(&cust_led_list[MT65XX_LED_TYPE_LCD], last_level);
 		
 		//printk("mt65xx_leds_set_cust in setMaxbrightness:value control close!\n");
@@ -206,6 +211,10 @@ int setMaxbrightness(int max_level, int enable)
 	}
  	
 	LEDS_DEBUG("[LED] setMaxbrightness limit_flag = %d, limit=%d, current_level=%d\n",limit_flag, limit, current_level);
+ #else
+ 	printk("setMaxbrightness go through AAL\n");
+ 	disp_bls_set_max_backlight(max_level);
+ #endif
 	
 	return 0;
 	
@@ -242,7 +251,7 @@ int find_time_index(int time)
 	return PWM_DIV_NUM-1;
 }
 
-
+#if defined CONFIG_ARCH_MT6589
 static int led_set_pwm(int pwm_num, struct nled_setting* led)
 {
 	//struct pwm_easy_config pwm_setting;
@@ -289,7 +298,49 @@ static int led_set_pwm(int pwm_num, struct nled_setting* led)
 	return 0;
 	
 }
-//#endif
+#endif
+#if defined (CONFIG_ARCH_MT6577) || defined (CONFIG_ARCH_MT6575) || defined (CONFIG_ARCH_MT6575T)
+static int led_set_pwm(int pwm_num, struct nled_setting* led)
+{
+	struct pwm_easy_config pwm_setting;
+	int time_index = 0;
+	pwm_setting.pwm_no = pwm_num;
+    
+        LEDS_DEBUG("[LED]led_set_pwm: mode=%d,pwm_no=%d\n", led->nled_mode, pwm_num);  
+	if((pwm_num != PWM3 && pwm_num != PWM4 && pwm_num != PWM5))
+		pwm_setting.clk_src = PWM_CLK_OLD_MODE_32K;
+	else
+		pwm_setting.clk_src = PWM_CLK_NEW_MODE_BLOCK_DIV_BY_1625;
+    
+	switch (led->nled_mode)
+	{
+		case NLED_OFF :
+			pwm_setting.duty = 0;
+			pwm_setting.clk_div = CLK_DIV1;
+			pwm_setting.duration = 100;
+			break;
+            
+		case NLED_ON :
+			pwm_setting.duty = 30;
+			pwm_setting.clk_div = CLK_DIV1;			
+			pwm_setting.duration = 100;
+			break;
+            
+		case NLED_BLINK :
+			LEDS_DEBUG("[LED]LED blink on time = %d offtime = %d\n",led->blink_on_time,led->blink_off_time);
+			time_index = find_time_index(led->blink_on_time + led->blink_off_time);
+			LEDS_DEBUG("[LED]LED div is %d\n",time_index);
+			pwm_setting.clk_div = time_index;
+			pwm_setting.duration = (led->blink_on_time + led->blink_off_time) * MIN_FRE_OLD_PWM / div_array[time_index];
+			pwm_setting.duty = (led->blink_on_time*100) / (led->blink_on_time + led->blink_off_time);
+	}
+	pwm_set_easy_config(&pwm_setting);
+
+	return 0;
+	
+}
+
+#endif
 
 //***********************MT6589 led breath funcion*******************************//
 #if defined CONFIG_ARCH_MT6589
@@ -341,7 +392,6 @@ static int led_breath_pmic(enum mt65xx_led_pmic pmic_type, struct nled_setting* 
 
 #if defined CONFIG_ARCH_MT6589
 
-//#define PMIC_PERIOD_NUM 15
 #define PMIC_PERIOD_NUM 13
 //int pmic_period_array[] = {250,500,1000,1250,1666,2000,2500,3333,4000,5000,6666,8000,10000,13333,16000};
 int pmic_period_array[] = {250,500,1000,1250,1666,2000,2500,3333,4000,5000,6666,8000,10000};
@@ -416,11 +466,10 @@ static int led_blink_pmic(enum mt65xx_led_pmic pmic_type, struct nled_setting* l
 			upmu_set_isinks_ch2_step(0x3);//16mA
 			upmu_set_isink_dim2_duty(duty);
 			upmu_set_isink_dim2_fsel(pmic_freqsel_array[time_index]);
+			//upmu_set_rg_spk_pwm_div_pdn(0x01);
 			upmu_set_isinks_breath2_trf_sel(0x0);
 			upmu_set_isinks_breath2_ton_sel(0x02);
 			upmu_set_isinks_breath2_toff_sel(0x05);
-			//upmu_set_rg_spk_pwm_div_pdn(0x01);
-			
 			#ifdef ISINK_CHOP_CLK
 				//upmu_set_isinks2_chop_en(0x1);
 			#endif
@@ -493,6 +542,7 @@ static int led_blink_pmic(enum mt65xx_led_pmic pmic_type, struct nled_setting* l
 #endif
 
 //#if 0
+#if defined CONFIG_ARCH_MT6589
 static int backlight_set_pwm(int pwm_num, u32 level, u32 div, struct PWM_config *config_data)
 {
 	struct pwm_spec_config pwm_setting;
@@ -555,9 +605,82 @@ static int backlight_set_pwm(int pwm_num, u32 level, u32 div, struct PWM_config 
 		//printk("[LED]PWM con register is %x \n", INREG32(PWM_BASE + 0x0150));
 	return 0;
 }
-
+#endif
 //#endif
+#if defined (CONFIG_ARCH_MT6577) || defined (CONFIG_ARCH_MT6575) || defined (CONFIG_ARCH_MT6575T)
+static int backlight_set_pwm(int pwm_num, u32 level, u32 div, struct PWM_config *config_data)
+{
+	struct pwm_spec_config pwm_setting;
+	pwm_setting.pwm_no = pwm_num;
+	pwm_setting.mode = PWM_MODE_FIFO; //new mode fifo and periodical mode
+		
+	#ifdef CONTROL_BL_TEMPERATURE
+	mutex_lock(&bl_level_limit_mutex);
+			current_level = level;
+			//printk("brightness_set_pwm:current_level=%d\n", current_level);
+			if(0 == limit_flag){
+				last_level = level;
+				//printk("brightness_set_pwm:last_level=%d\n", last_level);
+			}else {
+					if(limit < current_level){
+						level = limit;
+					//	printk("backlight_set_pwm: control level=%d\n", level);
+					}
+			}	
+	mutex_unlock(&bl_level_limit_mutex);
+	#endif
+	if(config_data->div)
+	{
+		pwm_setting.clk_div = config_data->div;
+		backlight_PWM_div = config_data->div;
+	}
+	else
+		pwm_setting.clk_div = div;
+	if(config_data->clock_source)
+		pwm_setting.clk_src = PWM_CLK_NEW_MODE_BLOCK;
+	else
+		pwm_setting.clk_src = PWM_CLK_NEW_MODE_BLOCK_DIV_BY_1625;
+	
+	if(config_data->High_duration && config_data->low_duration)
+		{
+			pwm_setting.PWM_MODE_FIFO_REGS.HDURATION = config_data->High_duration;
+			pwm_setting.PWM_MODE_FIFO_REGS.LDURATION = config_data->low_duration;
+		}
+	else
+		{
+			pwm_setting.PWM_MODE_FIFO_REGS.HDURATION = 4;
+			pwm_setting.PWM_MODE_FIFO_REGS.LDURATION = 4;
+		}
+	pwm_setting.PWM_MODE_FIFO_REGS.IDLE_VALUE = 0;
+	pwm_setting.PWM_MODE_FIFO_REGS.GUARD_VALUE = 0;
+	pwm_setting.PWM_MODE_FIFO_REGS.STOP_BITPOS_VALUE = 63;
+	pwm_setting.PWM_MODE_FIFO_REGS.GDURATION = 0;
+	pwm_setting.PWM_MODE_FIFO_REGS.WAVE_NUM = 0;
+		
+	LEDS_DEBUG("[LED]backlight_set_pwm:duty is %d\n", level);
+	LEDS_DEBUG("[LED]backlight_set_pwm:clk_src/div/high/low is %d%d%d%d\n", pwm_setting.clk_src,pwm_setting.clk_div,pwm_setting.PWM_MODE_FIFO_REGS.HDURATION,pwm_setting.PWM_MODE_FIFO_REGS.LDURATION);
+	if(level>0 && level <= 32)
+	{
+		pwm_setting.PWM_MODE_FIFO_REGS.SEND_DATA0 =  (1 << level) - 1 ;
+		pwm_setting.PWM_MODE_FIFO_REGS.SEND_DATA1 = 0 ;
+		pwm_set_spec_config(&pwm_setting);
+	}else if(level>32 && level <=64)
+	{
+		level -= 32;
+		pwm_setting.PWM_MODE_FIFO_REGS.SEND_DATA0 =  0xFFFFFFFF ;
+		pwm_setting.PWM_MODE_FIFO_REGS.SEND_DATA1 = (1 << level) - 1;
+		pwm_set_spec_config(&pwm_setting);
+	}else
+	{
+		LEDS_DEBUG("[LED]Error level in backlight\n");
+		mt_set_pwm_disable(pwm_setting.pwm_no);
+		mt_pwm_power_off(pwm_setting.pwm_no);
+	}
+		//printk("[LED]PWM con register is %x \n", INREG32(PWM_BASE + 0x0150));
+	return 0;
+}
 
+#endif
 #if defined CONFIG_ARCH_MT6589
 static int brightness_set_pmic(enum mt65xx_led_pmic pmic_type, u32 level, u32 div)
 {
@@ -722,7 +845,6 @@ static int brightness_set_pmic(enum mt65xx_led_pmic pmic_type, u32 level, u32 di
 			}
 			else 
 			{
-				
 				upmu_set_isinks_ch0_en(0x00);
 				//upmu_set_rg_bst_drv_1m_ck_pdn(0x1);
 				//upmu_top2_bst_drv_ck_pdn(0x1);
@@ -765,7 +887,6 @@ static int brightness_set_pmic(enum mt65xx_led_pmic pmic_type, u32 level, u32 di
 			}
 			else 
 			{
-				
 				upmu_set_isinks_ch1_en(0x00);
 				//upmu_set_rg_bst_drv_1m_ck_pdn(0x1);
 				//upmu_top2_bst_drv_ck_pdn(0x1);
@@ -1067,6 +1188,7 @@ static int brightness_set_gpio(int gpio_num, enum led_brightness level)
 }
 #endif
 
+#if defined CONFIG_ARCH_MT6589
 static int mt65xx_led_set_cust(struct cust_mt65xx_led *cust, int level)
 {
 	struct nled_setting led_tmp_setting = {0,0,0};
@@ -1114,14 +1236,14 @@ static int mt65xx_led_set_cust(struct cust_mt65xx_led *cust, int level)
 			return 1;
           
 		case MT65XX_LED_MODE_GPIO:
-			printk("brightness_set_cust:go GPIO mode!!!!!\n");
+			//printk("brightness_set_cust:go GPIO mode!!!!!\n");
 			#ifdef CONTROL_BL_TEMPERATURE
 			mutex_lock(&bl_level_limit_mutex);
 			current_level = level;
-			printk("brightness_set_cust:current_level=%d\n", current_level);
+			//printk("brightness_set_cust:current_level=%d\n", current_level);
 			if(0 == limit_flag){
 				last_level = level;
-				printk("brightness_set_cust:last_level=%d\n", last_level);
+				//printk("brightness_set_cust:last_level=%d\n", last_level);
 			}else {
 					if(limit < current_level){
 						level = limit;
@@ -1143,10 +1265,10 @@ static int mt65xx_led_set_cust(struct cust_mt65xx_led *cust, int level)
 			#ifdef CONTROL_BL_TEMPERATURE
 			mutex_lock(&bl_level_limit_mutex);
 			current_level = level;
-			printk("brightness_set_cust:current_level=%d\n", current_level);
+			//printk("brightness_set_cust:current_level=%d\n", current_level);
 			if(0 == limit_flag){
 				last_level = level;
-				printk("brightness_set_cust:last_level=%d\n", last_level);
+				//printk("brightness_set_cust:last_level=%d\n", last_level);
 			}else {
 					if(limit < current_level){
 						level = limit;
@@ -1155,7 +1277,7 @@ static int mt65xx_led_set_cust(struct cust_mt65xx_led *cust, int level)
 			}	
 			mutex_unlock(&bl_level_limit_mutex);
 			#endif
-			printk("brightness_set_cust:backlight control by LCM\n");
+			//printk("brightness_set_cust:backlight control by LCM\n");
 			return ((cust_brightness_set)(cust->data))(level, bl_div);
 
 		
@@ -1167,10 +1289,10 @@ static int mt65xx_led_set_cust(struct cust_mt65xx_led *cust, int level)
 			#ifdef CONTROL_BL_TEMPERATURE
 					mutex_lock(&bl_level_limit_mutex);
 					current_level = level;
-					printk("brightness_set_cust:current_level=%d\n", current_level);
+					//printk("brightness_set_cust:current_level=%d\n", current_level);
 					if(0 == limit_flag){
 						last_level = level;
-						printk("brightness_set_cust:last_level=%d\n", last_level);
+						//printk("brightness_set_cust:last_level=%d\n", last_level);
 					}else {
 							if(limit < current_level){
 								level = limit;
@@ -1179,7 +1301,7 @@ static int mt65xx_led_set_cust(struct cust_mt65xx_led *cust, int level)
 					}	
 					mutex_unlock(&bl_level_limit_mutex);
 			#endif
-					printk("brightness_set_cust:backlight control by BLS_PWM!!\n");
+					//printk("brightness_set_cust:backlight control by BLS_PWM!!\n");
 			//#if !defined (MTK_AAL_SUPPORT)
 			return ((cust_set_brightness)(cust->data))(level);
 			printk("brightness_set_cust:backlight control by BLS_PWM done!!\n");
@@ -1192,14 +1314,115 @@ static int mt65xx_led_set_cust(struct cust_mt65xx_led *cust, int level)
 	return -1;
 }
 
+#elif defined (CONFIG_ARCH_MT6575) || defined (CONFIG_ARCH_MT6575T)|| defined (CONFIG_ARCH_MT6577)
+	static int brightness_set_gpio(int gpio_num, enum led_brightness level)
+	{
+		LEDS_DEBUG("[LED]GPIO#%d:%d\n", gpio_num, level);
+		mt_set_gpio_mode(gpio_num, GPIO_MODE_GPIO);
+		mt_set_gpio_dir(gpio_num, GPIO_DIR_OUT);
+	
+		if (level)
+			mt_set_gpio_out(gpio_num, GPIO_OUT_ONE);
+		else
+			mt_set_gpio_out(gpio_num, GPIO_OUT_ZERO);
+	
+		return 0;
+	}
+
+	static int mt65xx_led_set_cust(struct cust_mt65xx_led *cust, int level)
+	{
+		struct nled_setting led_tmp_setting = {0,0,0};
+		int tmp_level;
+	
+	/*#ifdef CONTROL_BL_TEMPERATURE
+		level = control_backlight_brightness(level);
+		
+#endif*/
+		tmp_level = level;
+		if (level > LED_FULL)
+			level = LED_FULL;
+		else if (level < 0)
+			level = 0;
+	
+		printk("mt65xx_leds_set_cust: set brightness, name:%s, mode:%d, level:%d\n", 
+			cust->name, cust->mode, level);
+		switch (cust->mode) {
+			case MT65XX_LED_MODE_PWM:
+				if(strcmp(cust->name,"lcd-backlight") == 0)
+				{
+					bl_brightness = level;
+					if(level == 0)
+					{
+						mt_set_pwm_disable(cust->data);
+						mt_pwm_power_off (cust->data);
+					}else
+					{
+						level = brightness_mapping(tmp_level);
+						if(level == ERROR_BL_LEVEL)
+							level = brightness_mapto64(tmp_level);
+							
+						backlight_set_pwm(cust->data, level, bl_div,&cust->config_data);
+					}
+					bl_duty = level;	
+					
+				}else
+				{
+					if(level == 0)
+					{
+						led_tmp_setting.nled_mode = NLED_OFF;
+					}else
+					{
+						led_tmp_setting.nled_mode = NLED_ON;
+					}
+					led_set_pwm(cust->data,&led_tmp_setting);
+				}
+				return 1;
+				
+			case MT65XX_LED_MODE_GPIO:
+				return brightness_set_gpio(cust->data, level);
+				
+			case MT65XX_LED_MODE_PMIC:
+				return brightness_set_pmic(cust->data, level, bl_div);
+				
+			case MT65XX_LED_MODE_CUST:
+				if(strcmp(cust->name,"lcd-backlight") == 0)
+				{
+					bl_brightness = level;
+				}
+			#ifdef CONTROL_BL_TEMPERATURE
+				mutex_lock(&bl_level_limit_mutex);
+				current_level = level;
+				//printk("brightness_set_cust:current_level=%d\n", current_level);
+				if(0 == limit_flag){
+					last_level = level;
+					//printk("brightness_set_cust:last_level=%d\n", last_level);
+				}else {
+						if(limit < current_level){
+							level = limit;
+							printk("backlight_set_cust: control level=%d\n", level);
+						}
+				}	
+				mutex_unlock(&bl_level_limit_mutex);
+			#endif
+				return ((cust_brightness_set)(cust->data))(level, bl_div);
+				
+			case MT65XX_LED_MODE_NONE:
+			default:
+				break;
+		}
+		return -1;
+	}
+
+#endif
 static void mt65xx_led_work(struct work_struct *work)
 {
 	struct mt65xx_led_data *led_data =
 		container_of(work, struct mt65xx_led_data, work);
 
 	LEDS_DEBUG("[LED]%s:%d\n", led_data->cust.name, led_data->level);
-
+	mutex_lock(&leds_mutex);
 	mt65xx_led_set_cust(&led_data->cust, led_data->level);
+	mutex_unlock(&leds_mutex);
 }
 
 static void mt65xx_led_set(struct led_classdev *led_cdev, enum led_brightness level)
@@ -1229,7 +1452,7 @@ static int  mt65xx_blink_set(struct led_classdev *led_cdev,
 		container_of(led_cdev, struct mt65xx_led_data, cdev);
 	static int got_wake_lock = 0;
 	struct nled_setting nled_tmp_setting = {0,0,0};
-	printk("mt65xx_leds_set_cust: Peng Zhou debug for LED++++++++\n");
+	
 
 	// only allow software blink when delay_on or delay_off changed
 	if (*delay_on != led_data->delay_on || *delay_off != led_data->delay_off) {
@@ -1241,7 +1464,7 @@ static int  mt65xx_blink_set(struct led_classdev *led_cdev,
 			//(led_data->cust.data != PWM3 && led_data->cust.data != PWM4 && led_data->cust.data != PWM5))
 
 			//AP PWM all support OLD mode in MT6589
-			printk("mt65xx_leds_set_cust: Peng Zhou debug for LED before 89++++++++\n");
+			
 			if(led_data->cust.mode == MT65XX_LED_MODE_PWM)
 			{
 				nled_tmp_setting.nled_mode = NLED_BLINK;
@@ -1257,7 +1480,7 @@ static int  mt65xx_blink_set(struct led_classdev *led_cdev,
 			{
 				//if(get_chip_eco_ver() == CHIP_E2) {
 				if(1){
-					printk("mt65xx_leds_set_cust: Peng Zhou debug for LED in 89++++++++\n");
+					
 					nled_tmp_setting.nled_mode = NLED_BLINK;
 					nled_tmp_setting.blink_off_time = led_data->delay_off;
 					nled_tmp_setting.blink_on_time = led_data->delay_on;
@@ -1384,7 +1607,7 @@ static ssize_t store_duty(struct device *dev,struct device_attribute *attr, cons
     
 	if(count == size)
 	{
-	/*
+	
 		if(bl_setting->mode == MT65XX_LED_MODE_PMIC)
 		{
 			
@@ -1400,15 +1623,18 @@ static ssize_t store_duty(struct device *dev,struct device_attribute *attr, cons
 			}
 #endif			
 		}
-		*/
-		//else if(bl_setting->mode == MT65XX_LED_MODE_PWM)
-		if(bl_setting->mode == MT65XX_LED_MODE_PWM)
+		
+		else if(bl_setting->mode == MT65XX_LED_MODE_PWM)
+		//if(bl_setting->mode == MT65XX_LED_MODE_PWM)
 		{
 			if(level == 0)
 			{
-				//mt_set_pwm_disable(bl_setting->data);
-				//mt_pwm_power_off (bl_setting->data);
+			#if defined (CONFIG_ARCH_MT6575) || defined (CONFIG_ARCH_MT6575T)|| defined (CONFIG_ARCH_MT6577)
+				mt_set_pwm_disable(bl_setting->data);
+				mt_pwm_power_off (bl_setting->data);
+			#elif defined CONFIG_ARCH_MT6589
 				mt_pwm_disable(bl_setting->data, bl_setting->config_data.pmic_pad);
+			#endif
 			}else if(level <= 64)
 			{
 				backlight_set_pwm(bl_setting->data,level, bl_div,&bl_setting->config_data);
@@ -1459,7 +1685,7 @@ static ssize_t store_div(struct device *dev,struct device_attribute *attr, const
             backlight_set_pwm(bl_setting->data, bl_duty, div,&bl_setting->config_data);
 		}
 		
-        else if(bl_setting->mode == MT65XX_LED_MODE_CUST_LCM)
+        else if(bl_setting->mode == MT65XX_LED_MODE_CUST_LCM || bl_setting->mode == MT65XX_LED_MODE_CUST_BLS_PWM)
         {
             LEDS_DEBUG("set cust backlight div OK: div=%d, brightness=%d\n", div, bl_brightness);
 	        ((cust_brightness_set)(bl_setting->data))(bl_brightness, div);
@@ -1643,7 +1869,7 @@ static int mt65xx_leds_suspend(struct platform_device *pdev, pm_message_t state)
 	return 0;
 }
 */
-
+#if defined CONFIG_ARCH_MT6589
 static void mt65xx_leds_shutdown(struct platform_device *pdev)
 {
 	int i;
@@ -1676,7 +1902,6 @@ static void mt65xx_leds_shutdown(struct platform_device *pdev)
 		    case MT65XX_LED_MODE_PMIC:
 			    brightness_set_pmic(g_leds_data[i]->cust.data, 0, 0);
                 break;
-                
 		    case MT65XX_LED_MODE_CUST_LCM:
 				printk("[LED]backlight control through LCM!!1\n");
 			    ((cust_brightness_set)(g_leds_data[i]->cust.data))(0, bl_div);
@@ -1692,6 +1917,50 @@ static void mt65xx_leds_shutdown(struct platform_device *pdev)
 	}
 
 }
+#elif defined (CONFIG_ARCH_MT6575) || defined (CONFIG_ARCH_MT6575T)|| defined (CONFIG_ARCH_MT6577)
+static void mt65xx_leds_shutdown(struct platform_device *pdev)
+{
+	int i;
+    struct nled_setting led_tmp_setting = {NLED_OFF,0,0};
+    
+    LEDS_DEBUG("[LED]%s\n", __func__);
+    printk("[LED]mt65xx_leds_shutdown: turn off backlight\n");
+    
+	for (i = 0; i < MT65XX_LED_TYPE_TOTAL; i++) {
+		if (!g_leds_data[i])
+			continue;
+		switch (g_leds_data[i]->cust.mode) {
+		    case MT65XX_LED_MODE_PWM:
+			    if(strcmp(g_leds_data[i]->cust.name,"lcd-backlight") == 0)
+			    {
+					mt_set_pwm_disable(g_leds_data[i]->cust.data);
+					mt_pwm_power_off (g_leds_data[i]->cust.data);
+			    }else
+			    {
+				    led_set_pwm(g_leds_data[i]->cust.data,&led_tmp_setting);
+			    }
+                break;
+                
+		    case MT65XX_LED_MODE_GPIO:
+			    brightness_set_gpio(g_leds_data[i]->cust.data, 0);
+                break;
+                
+		    case MT65XX_LED_MODE_PMIC:
+			    brightness_set_pmic(g_leds_data[i]->cust.data, 0, 0);
+                break;
+                
+		    case MT65XX_LED_MODE_CUST:
+			    ((cust_brightness_set)(g_leds_data[i]->cust.data))(0, bl_div);
+                break;
+                
+		    case MT65XX_LED_MODE_NONE:
+		    default:
+			    break;
+          }
+	}
+
+}
+#endif
 
 
 static struct platform_driver mt65xx_leds_driver = {

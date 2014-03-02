@@ -1,5 +1,8 @@
 // ---------------------------------------------------------------------------
 
+#ifndef     HDMITX_H
+#define     HDMITX_H
+
 #define HDMI_CHECK_RET(expr)                                                \
     do {                                                                    \
         HDMI_STATUS ret = (expr);                                           \
@@ -175,7 +178,7 @@ typedef struct
 typedef struct 
 {
 	unsigned int	u1adress;
-	unsigned int	*pu1Data;
+	unsigned int	pu1Data;
 }	READ_REG_VALUE;
 
 #endif
@@ -251,6 +254,7 @@ struct ext_buffer{
 #define MTK_EXT_DISPLAY_SET_MEMORY_INFO		HDMI_IOW(44, struct ext_memory_info)
 #define MTK_EXT_DISPLAY_GET_MEMORY_INFO		HDMI_IOW(45, struct ext_memory_info)
 #define MTK_EXT_DISPLAY_GET_BUFFER						HDMI_IOW(46, struct ext_buffer)
+#define MTK_EXT_DISPLAY_FREE_BUFFER						HDMI_IOW(47, struct ext_buffer)
 
 
 
@@ -270,14 +274,12 @@ void hdmi_power_on(void);
 void hdmi_power_off(void);
 void hdmi_update_buffer_switch(void);
 void hdmi_update(void);
-HDMI_STATUS hdmi_drv_deinit(void);
 void hdmi_dpi_config_clock(void);
 void hdmi_dpi_power_switch(bool enable);
 int hdmi_audio_config(int samplerate);
 int hdmi_video_enable(bool enable);
 int hdmi_audio_enable(bool enable);
 int hdmi_audio_delay_mute(int latency);
-void hdmi_update_impl(void);
 void hdmi_set_mode(unsigned char ucMode);
 void hdmi_reg_dump(void);
 #ifdef MTK_MT8193_HDMI_SUPPORT
@@ -286,3 +288,5 @@ void hdmi_read_reg(unsigned char u8Reg, unsigned int *p4Data);
 void hdmi_read_reg(unsigned char u8Reg);
 #endif
 void hdmi_write_reg(unsigned char u8Reg, unsigned char u8Data);
+
+#endif

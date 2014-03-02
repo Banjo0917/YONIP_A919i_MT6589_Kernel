@@ -13,7 +13,21 @@ static int g_AAL_NewFrameUpdate = 0;
 /*
  *g_AAL_Param is protected by disp_set_needupdate
  */
-static DISP_AAL_PARAM g_AAL_Param;
+static DISP_AAL_PARAM g_AAL_Param = 
+{
+    .lumaCurve = { 0, 32, 64, 96, 128, 160, 192, 224, 256, 
+                   288, 320, 352, 384, 416, 448, 480, 512,
+                   544, 576, 608, 640, 672, 704, 736, 768,
+                   800, 832, 864, 896, 928, 960, 992, 1023 },
+    .pwmDuty = 0,
+    .setting = 0,
+    .maxClrLimit = 0,
+    .maxClrDistThd = 0,
+    .preDistThd = 0,
+    .scDiffThd = 0,
+    .scBinThd = 0,
+};
+
 static int g_Configured = 0;
 static int g_ColorIntFlag = 0;
 
@@ -21,6 +35,8 @@ static unsigned long g_PrevPWMDuty = 0;
 
 unsigned long long g_PrevTime = 0;
 unsigned long long g_CurrTime = 0;
+
+extern unsigned char aal_debug_flag;
 
 int disp_wait_hist_update(unsigned long u4TimeOut_ms)
 {
@@ -36,12 +52,17 @@ int disp_wait_hist_update(unsigned long u4TimeOut_ms)
 void disp_set_aal_alarm(unsigned int u4En)
 {
     g_Alarm = u4En;
+    if (aal_debug_flag == 0)
+        DISP_REG_SET(DISP_REG_BLS_EN, 0x80010001);
 }
 
 //Executed in ISR content
 int disp_needWakeUp(void)
 {
-    return (g_AAL_NewFrameUpdate || g_Alarm) ? 1 : 0;
+    if (aal_debug_flag == 1)
+        return 0;
+    else
+        return (g_AAL_NewFrameUpdate || g_Alarm) ? 1 : 0;
 }
 
 //Executed in ISR content

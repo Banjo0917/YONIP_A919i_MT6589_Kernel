@@ -459,11 +459,8 @@ static int __init TMP103_HW_i2c_init( void )
 
 	i2c_register_board_info(TMP_I2C_BUSNUM, TMP103_HW_i2c_info, ARRAY_SIZE(TMP103_HW_i2c_info)); 
 	
-#ifdef USER_BUILD_KERNEL	
 	prEntry = create_proc_entry("TMP103", 0660, 0); 
-#else
-	prEntry = create_proc_entry("TMP103", 0667, 0); 
-#endif	
+
   if (prEntry) 
   {
   	prEntry->read_proc = TMP103_HW_Read_Proc; 

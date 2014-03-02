@@ -41,7 +41,7 @@ Erratum:794322,An instruction fetch can be allocated into the L2 cache after the
 This erratum can be avoided by inserting both of the following after the SCTLR.C bit is cleared to 0, and before the caches are cleaned or invalidated:
 1) A TLBIMVA operation to any address.
 2) A DSB instruction.
-*/
+*/   
     MCR p15,0,r0,c8,c7,1
     dsb
 /**/

@@ -102,7 +102,7 @@ static ssize_t slt_cpu##_N##_maxpower_store(struct device_driver *driver, const 
     \
     printk("\n>> CPU%d maxpower test start (cpu id = %d) <<\n\n", _N, raw_smp_processor_id());  \
     \
-    for (i = 0; i < g_iMaxPowerLoopCount; i++) {    \
+    for (i = 0, g_iCPU##_N##_PassFail = 0; i < g_iMaxPowerLoopCount; i++) {    \
         spin_lock_irqsave(&cpu##_N##_lock, cpu##_N##_flags);    \
         ret = fp0_maxpower_start(_N);    /* 1: PASS, 0:Fail, -1: target CPU power off */  \
         spin_unlock_irqrestore(&cpu##_N##_lock, cpu##_N##_flags);   \

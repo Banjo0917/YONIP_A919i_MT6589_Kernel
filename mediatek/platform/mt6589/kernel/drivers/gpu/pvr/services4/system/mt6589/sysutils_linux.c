@@ -45,6 +45,9 @@
 #include <linux/pm_runtime.h>
 
 #include "mach/mt_gpufreq.h"
+#include "mach/pmic_mt6320_sw.h"
+#include "mach/upmu_common.h"
+#include "mach/upmu_hw.h"
 
 #define SPM_MFG_PWR_CON 0xF0006214
 
@@ -58,6 +61,8 @@ extern struct platform_device *gpsPVRLDMDev;
 #endif
 
 extern unsigned int mt_gpufreq_cur_freq(void);
+extern int g_pmic_cid;
+
 
 static PVRSRV_ERROR PowerLockWrap(SYS_SPECIFIC_DATA *psSysSpecData, IMG_BOOL bTryLock)
 {
@@ -158,6 +163,12 @@ PVRSRV_ERROR EnableSGXClocks(SYS_DATA *psSysData)
 	}
 #endif
 
+    if(( g_pmic_cid != 0) && (get_gpu_power_src()==0))
+    {
+        upmu_set_rg_vrf18_2_modeset(1); // force PWM mode
+    }
+//    printk("EnableSGXClocks ... Reg[0x%x]=0x%x\n",0x37E,upmu_get_reg_value(0x37E));
+
     enable_clock(MT_CG_MFG_HYD, "MFG");
     enable_clock(MT_CG_MFG_G3D, "MFG");
     enable_clock(MT_CG_MFG_MEM, "MFG");
@@ -231,7 +242,13 @@ IMG_VOID DisableSGXClocks(SYS_DATA *psSysData)
     disable_clock(MT_CG_MFG_MEM, "MFG");
     disable_clock(MT_CG_MFG_G3D, "MFG");
     disable_clock(MT_CG_MFG_HYD, "MFG");
-	
+
+    if (( g_pmic_cid != 0) && (get_gpu_power_src()==0) && (subsys_is_on(SYS_MFG)==0))
+    {
+        upmu_set_rg_vrf18_2_modeset(0); // PFM mode
+    }
+//    printk("DisableSGXClocks ... Reg[0x%x]=0x%x\n",0x37E,upmu_get_reg_value(0x37E));
+
 	atomic_set(&psSysSpecData->sSGXClocksEnabled, 0);
 
 #else	

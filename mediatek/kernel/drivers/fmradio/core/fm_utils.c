@@ -28,6 +28,7 @@
 #include <asm/uaccess.h>
 #include <linux/semaphore.h>
 #include <linux/timer.h>
+#include <linux/delay.h>
 
 #include "fm_typedef.h"
 #include "fm_dbg.h"
@@ -141,6 +142,36 @@ fm_s32 fm_flag_event_put(struct fm_flag_event *thiz)
 }
 
 //fm lock methods
+static fm_s32 fm_lock_try(struct fm_lock *thiz,fm_s32 retryCnt)
+{
+    fm_s32 retry_cnt = 0;
+    struct semaphore *sem;
+    struct task_struct *task = current;
+    FMR_ASSERT(thiz);
+    FMR_ASSERT(thiz->priv);
+
+    while(down_trylock((struct semaphore*)thiz->priv))
+    {
+        WCN_DBG(FM_WAR | MAIN, "down_trylock failed\n");
+        if(++retry_cnt < retryCnt)
+        {
+            WCN_DBG(FM_WAR | MAIN,"[retryCnt=%d]\n", retry_cnt);
+            msleep_interruptible(50); 
+            continue;
+        }
+        else
+        {
+            WCN_DBG(FM_CRT | MAIN,"down_trylock retry failed\n");
+			return -FM_ELOCK;
+        }    
+    }
+
+    sem = (struct semaphore*)thiz->priv;
+    WCN_DBG(FM_NTC | MAIN, "%s --->trylock, cnt=%d, pid=%d\n", thiz->name, (int)sem->count, task->pid);
+    return 0;
+}
+
+//fm try lock methods
 static fm_s32 fm_lock_lock(struct fm_lock *thiz)
 {
     struct semaphore *sem;
@@ -192,6 +223,7 @@ struct fm_lock* fm_lock_create(const fm_s8 *name)
     fm_memcpy(tmp->name, name, (strlen(name)>FM_NAME_MAX)?(FM_NAME_MAX):(strlen(name)));
 
     tmp->lock = fm_lock_lock;
+    tmp->trylock = fm_lock_try;
     tmp->unlock = fm_lock_unlock;
 
     return tmp;
@@ -220,6 +252,80 @@ fm_s32 fm_lock_put(struct fm_lock *thiz)
     }
 }
 
+//fm lock methods
+static fm_s32 fm_spin_lock_lock(struct fm_lock *thiz)
+{
+    struct task_struct *task = current;
+    FMR_ASSERT(thiz);
+    FMR_ASSERT(thiz->priv);
+
+	spin_lock_bh((spinlock_t *)thiz->priv);
+
+    WCN_DBG(FM_NTC | MAIN, "%s --->lock pid=%d\n", thiz->name, task->pid);
+    return 0;
+}
+
+static fm_s32 fm_spin_lock_unlock(struct fm_lock *thiz)
+{
+    struct task_struct *task = current;
+    FMR_ASSERT(thiz);
+    FMR_ASSERT(thiz->priv);
+
+    WCN_DBG(FM_NTC | MAIN, "%s <---unlock, pid=%d\n", thiz->name, task->pid);
+    spin_unlock_bh((spinlock_t *)thiz->priv);
+    return 0;
+}
+
+struct fm_lock* fm_spin_lock_create(const fm_s8 *name) 
+{
+	struct fm_lock *tmp;
+	spinlock_t *spin_lock;
+
+    if (!(tmp = fm_zalloc(sizeof(struct fm_lock)))) {
+        WCN_DBG(FM_ALT | MAIN, "fm_zalloc(fm_lock) -ENOMEM\n");
+        return NULL;
+    }
+
+    if (!(spin_lock = fm_zalloc(sizeof(spinlock_t)))) {
+        WCN_DBG(FM_ALT | MAIN, "fm_zalloc(spinlock_t) -ENOMEM\n");
+        fm_free(tmp);
+        return NULL;
+    }
+
+    tmp->priv = spin_lock;
+    spin_lock_init(spin_lock);
+    tmp->ref = 0;
+    fm_memcpy(tmp->name, name, (strlen(name)>FM_NAME_MAX)?(FM_NAME_MAX):(strlen(name)));
+
+    tmp->lock = fm_spin_lock_lock;
+    tmp->unlock = fm_spin_lock_unlock;
+
+    return tmp;
+}
+
+
+fm_s32 fm_spin_lock_get(struct fm_lock *thiz)
+{
+    FMR_ASSERT(thiz);
+    thiz->ref++;
+    return 0;
+}
+
+fm_s32 fm_spin_lock_put(struct fm_lock *thiz)
+{
+    FMR_ASSERT(thiz);
+    thiz->ref--;
+
+    if (thiz->ref == 0) {
+        fm_free(thiz->priv);
+        fm_free(thiz);
+        return 0;
+    } else if (thiz->ref > 0) {
+        return -FM_EINUSE;
+    } else {
+        return -FM_EPARA;
+    }
+}
 
 /*
  * fm timer

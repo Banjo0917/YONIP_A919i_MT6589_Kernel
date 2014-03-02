@@ -265,6 +265,21 @@ p2pFuncGenerateP2p_IEForAssocRsp(
 
 
 UINT_32
+p2pFuncCalculateWSC_IELenForAssocRsp(
+    IN P_ADAPTER_T prAdapter,
+    IN ENUM_NETWORK_TYPE_INDEX_T eNetTypeIndex,
+    IN P_STA_RECORD_T prStaRec
+    );
+
+VOID
+p2pFuncGenerateWSC_IEForAssocRsp(
+    IN P_ADAPTER_T prAdapter,
+    IN P_MSDU_INFO_T prMsduInfo
+    );
+
+
+
+UINT_32
 p2pFuncCalculateP2P_IELen(
     IN P_ADAPTER_T prAdapter,
     IN ENUM_NETWORK_TYPE_INDEX_T eNetTypeIndex,

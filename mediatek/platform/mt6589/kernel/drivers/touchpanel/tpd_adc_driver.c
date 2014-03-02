@@ -1,3 +1,38 @@
+/* Copyright Statement:
+ *
+ * This software/firmware and related documentation ("MediaTek Software") are
+ * protected under relevant copyright laws. The information contained herein
+ * is confidential and proprietary to MediaTek Inc. and/or its licensors.
+ * Without the prior written permission of MediaTek inc. and/or its licensors,
+ * any reproduction, modification, use or disclosure of MediaTek Software,
+ * and information contained herein, in whole or in part, shall be strictly prohibited.
+ */
+/* MediaTek Inc. (C) 2010. All rights reserved.
+ *
+ * BY OPENING THIS FILE, RECEIVER HEREBY UNEQUIVOCALLY ACKNOWLEDGES AND AGREES
+ * THAT THE SOFTWARE/FIRMWARE AND ITS DOCUMENTATIONS ("MEDIATEK SOFTWARE")
+ * RECEIVED FROM MEDIATEK AND/OR ITS REPRESENTATIVES ARE PROVIDED TO RECEIVER ON
+ * AN "AS-IS" BASIS ONLY. MEDIATEK EXPRESSLY DISCLAIMS ANY AND ALL WARRANTIES,
+ * EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE IMPLIED WARRANTIES OF
+ * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE OR NONINFRINGEMENT.
+ * NEITHER DOES MEDIATEK PROVIDE ANY WARRANTY WHATSOEVER WITH RESPECT TO THE
+ * SOFTWARE OF ANY THIRD PARTY WHICH MAY BE USED BY, INCORPORATED IN, OR
+ * SUPPLIED WITH THE MEDIATEK SOFTWARE, AND RECEIVER AGREES TO LOOK ONLY TO SUCH
+ * THIRD PARTY FOR ANY WARRANTY CLAIM RELATING THERETO. RECEIVER EXPRESSLY ACKNOWLEDGES
+ * THAT IT IS RECEIVER'S SOLE RESPONSIBILITY TO OBTAIN FROM ANY THIRD PARTY ALL PROPER LICENSES
+ * CONTAINED IN MEDIATEK SOFTWARE. MEDIATEK SHALL ALSO NOT BE RESPONSIBLE FOR ANY MEDIATEK
+ * SOFTWARE RELEASES MADE TO RECEIVER'S SPECIFICATION OR TO CONFORM TO A PARTICULAR
+ * STANDARD OR OPEN FORUM. RECEIVER'S SOLE AND EXCLUSIVE REMEDY AND MEDIATEK'S ENTIRE AND
+ * CUMULATIVE LIABILITY WITH RESPECT TO THE MEDIATEK SOFTWARE RELEASED HEREUNDER WILL BE,
+ * AT MEDIATEK'S OPTION, TO REVISE OR REPLACE THE MEDIATEK SOFTWARE AT ISSUE,
+ * OR REFUND ANY SOFTWARE LICENSE FEES OR SERVICE CHARGE PAID BY RECEIVER TO
+ * MEDIATEK FOR SUCH MEDIATEK SOFTWARE AT ISSUE.
+ *
+ * The following software/firmware and/or related documentation ("MediaTek Software")
+ * have been modified by MediaTek Inc. All revisions are subject to any receiver's
+ * applicable license agreements with MediaTek Inc.
+ */
+
 #include "tpd_custom_generic.h"
 #include "tpd.h"
 #include <linux/delay.h>
@@ -148,7 +183,7 @@ EXPORT_SYMBOL(tpd_mode_select);
 irqreturn_t tpd_handler_penirq(int irq, void *dev_id) 
 {
 	disable_irq_nosync(MT65XX_TOUCH_IRQ_LINE);
-	if(tpd_adc_readw(AUXADC_TP_CON0)&(1<<1)) // touch
+	if(__raw_readw(AUXADC_TP_CON0)&(1<<1)) // touch
 	{	
 		tpd_para_adjust();
 	
@@ -190,7 +225,7 @@ irqreturn_t tpd_handler_batchirq(int irq, void *dev_id)
 	//TPD_DMESG("%s\n", __FUNCTION__);
 	disable_irq_nosync(MT65XX_TOUCH_BATCH_LINE);
 	if(tpd_sample_mode&FAV_MODE_SW) {
-		if(tpd_adc_readw(AUXADC_TP_CON1)&(1<<4))
+		if(__raw_readw(AUXADC_TP_CON1)&(1<<4))
 		{
 			tpd_fav_switch(1);
 			enable_irq(MT65XX_TOUCH_BATCH_LINE);
@@ -201,7 +236,7 @@ irqreturn_t tpd_handler_batchirq(int irq, void *dev_id)
 	}
 	
 	if(tpd_sample_mode&FAV_MODE_HW || tpd_sample_mode&RAW_DATA_MODE) {	
-		if(tpd_adc_readw(AUXADC_TP_CON1)&(1<<4))
+		if(__raw_readw(AUXADC_TP_CON1)&(1<<4))
 		{
 			/* removed due to hardware bug */
 			//tpd_clear_invalid_flag();
@@ -210,8 +245,8 @@ irqreturn_t tpd_handler_batchirq(int irq, void *dev_id)
 			//return IRQ_HANDLED;
 		}
 		tpd_fav_switch(0);
-		//tpd_adc_writew(tpd_adc_readw(AUXADC_TP_CON1)&(~(1<<2)), AUXADC_TP_CON1); // disable SEL, auto interval
-		if(tpd_adc_readw(AUXADC_TP_CON1)&(1<<7))
+		//__raw_writew(__raw_readw(AUXADC_TP_CON1)&(~(1<<2)), AUXADC_TP_CON1); // disable SEL, auto interval
+		if(__raw_readw(AUXADC_TP_CON1)&(1<<7))
 		{
 			/* should never run here */
 			TPD_DMESG("FAV EN bit is 1\n");
@@ -299,15 +334,15 @@ static int fav_sw_buf[4];
 
 void tpd_fav_coord_sel(int coord)
 {
-	unsigned tscon1 = tpd_adc_readw(AUXADC_TP_CON1);
+	unsigned tscon1 = __raw_readw(AUXADC_TP_CON1);
 	if(coord == 0 || coord == 1 || coord == 2) {
-		tpd_adc_writew((tscon1&(~(3<<5)))|(coord<<5), AUXADC_TP_CON1);
+		__raw_writew((tscon1&(~(3<<5)))|(coord<<5), AUXADC_TP_CON1);
 	} else {
-		tpd_adc_writew((tscon1&(~(3<<5)))|(1<<5), AUXADC_TP_CON1);
+		__raw_writew((tscon1&(~(3<<5)))|(1<<5), AUXADC_TP_CON1);
 	}
 	
 	if(coord == 0) {
-		tpd_adc_writew(TP_CMD_ADDR_X, AUXADC_TP_ADDR);
+		__raw_writew(TP_CMD_ADDR_X, AUXADC_TP_ADDR);
 	}
 	fav_sw_sample_count=0;
 	fav_sw_buf[0]=0;
@@ -329,31 +364,31 @@ int tpd_sampling(int *cx, int *cy, int *cp, int *cd) {
 	}
 
 	if(tpd_sample_mode&FAV_MODE_SW) {
-		unsigned tscon1 = tpd_adc_readw(AUXADC_TP_CON1);
+		unsigned tscon1 = __raw_readw(AUXADC_TP_CON1);
 		unsigned value = (tscon1>>5)&0x03;
 		if(value == 0) {
 			switch(fav_sw_sample_count) {
 				case 0:
 					fav_sw_buf[0]  = tpd_read(TPD_X, 0);
-					tpd_adc_writew(TP_CMD_ADDR_Y, AUXADC_TP_ADDR);
+					__raw_writew(TP_CMD_ADDR_Y, AUXADC_TP_ADDR);
 					fav_sw_sample_count=1;
 					tpd_fav_switch(1);
 					return 1;
 				case 1:
 					fav_sw_buf[1]  = tpd_read(TPD_X, 0);
-					tpd_adc_writew(TP_CMD_ADDR_Z1, AUXADC_TP_ADDR);
+					__raw_writew(TP_CMD_ADDR_Z1, AUXADC_TP_ADDR);
 					fav_sw_sample_count=2;
 					tpd_fav_switch(1);
 					return 2;
 				case 2:
 					fav_sw_buf[2]  = tpd_read(TPD_X, 0);
-					tpd_adc_writew(TP_CMD_ADDR_Z2, AUXADC_TP_ADDR);
+					__raw_writew(TP_CMD_ADDR_Z2, AUXADC_TP_ADDR);
 					fav_sw_sample_count=3;
 					tpd_fav_switch(1);
 					return 3;
 				case 3:
 					fav_sw_buf[3]  = tpd_read(TPD_X, 0);
-					tpd_adc_writew(TP_CMD_ADDR_X, AUXADC_TP_ADDR);
+					__raw_writew(TP_CMD_ADDR_X, AUXADC_TP_ADDR);
 					fav_sw_sample_count=0;
 					rx = fav_sw_buf[0];
 					ry = fav_sw_buf[1];
@@ -371,13 +406,13 @@ int tpd_sampling(int *cx, int *cy, int *cp, int *cd) {
 		    rz1 = tpd_read(TPD_Z1,0);
 		    rz2 = tpd_read(TPD_Z2,0);
 		} else if(value == 2) {
-			tpd_adc_writew((tscon1&(~(3<<5)))|(3<<5), AUXADC_TP_CON1);
+			__raw_writew((tscon1&(~(3<<5)))|(3<<5), AUXADC_TP_CON1);
 			fav_sw_buf[0]  = tpd_read(TPD_X, 0);
 		    fav_sw_buf[1]  = tpd_read(TPD_Y, 0);
 		    tpd_fav_switch(1);
 		    return 1;
 		} else if(value == 3) {
-			tpd_adc_writew((tscon1&(~(3<<5)))|(2<<5), AUXADC_TP_CON1);
+			__raw_writew((tscon1&(~(3<<5)))|(2<<5), AUXADC_TP_CON1);
 			fav_sw_buf[2]  = tpd_read(TPD_X, 0);
 		    fav_sw_buf[3]  = tpd_read(TPD_Y, 0);
 		    rx = fav_sw_buf[0];

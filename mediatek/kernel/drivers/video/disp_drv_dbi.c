@@ -25,6 +25,8 @@
 extern LCM_DRIVER *lcm_drv;
 extern LCM_PARAMS *lcm_params;
 
+#define ALIGN_TO(x, n)  \
+    (((x) + ((n) - 1)) & ~((n) - 1))
 
 
 // ---------------------------------------------------------------------------
@@ -130,16 +132,6 @@ static DISP_STATUS dbi_init(UINT32 fbVA, UINT32 fbPA, BOOL isLcmInited)
 	
 			config.srcModule = DISP_MODULE_OVL;
 	
-			if(config.srcModule == DISP_MODULE_RDMA0)
-			{
-				config.inFormat = RDMA_INPUT_FORMAT_RGB565;
-				config.addr = fbPA; 
-				config.pitch = DISP_GetScreenWidth()*2;
-				config.srcROI.x = 0;config.srcROI.y = 0;
-				config.srcROI.height= DISP_GetScreenHeight();config.srcROI.width= DISP_GetScreenWidth();
-			}
-			else
-			{			
 				config.bgROI.x = 0;
 				config.bgROI.y = 0;
 				config.bgROI.width = DISP_GetScreenWidth();
@@ -150,33 +142,56 @@ static DISP_STATUS dbi_init(UINT32 fbVA, UINT32 fbPA, BOOL isLcmInited)
 				config.srcROI.x = 0;config.srcROI.y = 0;
 				config.srcROI.height= DISP_GetScreenHeight();config.srcROI.width= DISP_GetScreenWidth();
 				config.ovl_config.source = OVL_LAYER_SOURCE_MEM; 
-#if 0
-				config.ovl_config.layer = FB_LAYER;
+        // Config FB_Layer port to be physical.
+        {
+            M4U_PORT_STRUCT portStruct;
+            portStruct.ePortID = M4U_PORT_OVL_CH3;		   //hardware port ID, defined in M4U_PORT_ID_ENUM
+            portStruct.Virtuality = 1;
+            portStruct.Security = 0;
+            portStruct.domain = 3;			  //domain : 0 1 2 3
+            portStruct.Distance = 1;
+            portStruct.Direction = 0;
+            m4u_config_port(&portStruct);
+        }
+        // Reconfig FB_Layer and enable it.
+        config.ovl_config.layer = FB_LAYER;
 				config.ovl_config.layer_en = 1; 
 				config.ovl_config.fmt = OVL_INPUT_FORMAT_RGB565;
 				config.ovl_config.addr = fbPA;	
 				config.ovl_config.source = OVL_LAYER_SOURCE_MEM; 
-				config.ovl_config.x = 0;		// ROI
-				config.ovl_config.y = 0;  
-				config.ovl_config.w = DISP_GetScreenWidth();  
-				config.ovl_config.h = DISP_GetScreenHeight(); 
-				config.ovl_config.pitch = DISP_GetScreenWidth()*2; //pixel number
-				config.ovl_config.keyEn = 1;
-				config.ovl_config.key = 0xFFFFFFFF; 	// color key
-				config.ovl_config.aen = 0;			   // alpha enable
-				config.ovl_config.alpha = 0;  
-#endif
-			}
-			
-			config.dstModule = DISP_MODULE_DBI;// DISP_MODULE_WDMA1
-			if(config.dstModule == DISP_MODULE_DBI)
-				config.outFormat = RDMA_OUTPUT_FORMAT_ARGB; 
-			else
-				config.outFormat = WDMA_OUTPUT_FORMAT_ARGB; 		
-			//disp_path_get_mutex();
-			disp_path_config(&config);
+        config.ovl_config.src_x = 0;
+        config.ovl_config.src_y = 0;
+        config.ovl_config.dst_x = 0;	   // ROI
+        config.ovl_config.dst_y = 0;
+        config.ovl_config.dst_w = DISP_GetScreenWidth();
+        config.ovl_config.dst_h = DISP_GetScreenHeight();
+        config.ovl_config.src_pitch = ALIGN_TO(DISP_GetScreenWidth(),32)*2; //pixel number
+        config.ovl_config.keyEn = 0;
+        config.ovl_config.key = 0xFF;	   // color key
+        config.ovl_config.aen = 0;			  // alpha enable
+        config.ovl_config.alpha = 0;
+        LCD_LayerSetAddress(FB_LAYER, fbPA);
+        LCD_LayerSetFormat(FB_LAYER, LCD_LAYER_FORMAT_RGB565);
+        LCD_LayerSetOffset(FB_LAYER, 0, 0);
+        LCD_LayerSetSize(FB_LAYER,DISP_GetScreenWidth(),DISP_GetScreenHeight());
+        LCD_LayerSetPitch(FB_LAYER, ALIGN_TO(DISP_GetScreenWidth(),32) * 2);
+        LCD_LayerEnable(FB_LAYER, TRUE);
+        config.dstModule = DISP_MODULE_DBI;// DISP_MODULE_WDMA1
+        config.outFormat = RDMA_OUTPUT_FORMAT_ARGB;
+        //disp_path_get_mutex();
+        disp_path_config(&config);
+        // Config LK UI layer port to be physical.
+        {
+            M4U_PORT_STRUCT portStruct;
+            portStruct.ePortID = M4U_PORT_OVL_CH2;		   //hardware port ID, defined in M4U_PORT_ID_ENUM
+            portStruct.Virtuality = 1;
+            portStruct.Security = 0;
+            portStruct.domain = 3;			  //domain : 0 1 2 3
+            portStruct.Distance = 1;
+            portStruct.Direction = 0;
+            m4u_config_port(&portStruct);
+        }
 
-			disp_bls_config();
 		}
 #endif
 

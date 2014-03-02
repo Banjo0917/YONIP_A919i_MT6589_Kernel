@@ -1,17 +1,13 @@
+
+
 #ifndef _CAMERA_INFO_IMX073MIPIRAW_H
 #define _CAMERA_INFO_IMX073MIPIRAW_H
 
-/*******************************************************************************
-*   Configuration
-********************************************************************************/
 #define SENSOR_ID                           IMX073_SENSOR_ID
 #define SENSOR_DRVNAME                      SENSOR_DRVNAME_IMX073_MIPI_RAW
 #define INCLUDE_FILENAME_ISP_REGS_PARAM     "camera_isp_regs_imx073mipiraw.h"
 #define INCLUDE_FILENAME_ISP_PCA_PARAM      "camera_isp_pca_imx073mipiraw.h"
 #define INCLUDE_FILENAME_ISP_LSC_PARAM      "camera_isp_lsc_imx073mipiraw.h"
-/*******************************************************************************
-*
-********************************************************************************/
 
 #if defined(ISP_SUPPORT)
 

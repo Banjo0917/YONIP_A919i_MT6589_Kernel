@@ -52,6 +52,7 @@ static struct class *mtkfb_vsync_class = NULL;
 DEFINE_SEMAPHORE(mtkfb_vsync_sem);
 
 extern void mtkfb_waitVsync(void);
+extern void mtkfb_disable_non_fb_layer(void);
 
 void mtkfb_vsync_log_enable(int enable)
 {
@@ -74,6 +75,8 @@ static ssize_t mtkfb_vsync_read(struct file *file, char __user *data, size_t len
 static int mtkfb_vsync_release(struct inode *inode, struct file *file)
 {
     VSYNC_DBG("driver release\n");
+    VSYNC_DBG("reset overlay engine\n");
+    mtkfb_disable_non_fb_layer();
 	return 0;
 }
 

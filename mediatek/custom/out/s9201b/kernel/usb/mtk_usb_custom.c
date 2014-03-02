@@ -41,9 +41,9 @@ bool usb_enable_clock(bool enable)
 
 	spin_unlock_irqrestore(&musb_reg_clock_lock, flags);
 
-    printk(KERN_DEBUG "enable(%d), count(%d) res=%d\n", enable, count, res);
+	printk(KERN_DEBUG "enable(%d), count(%d) res=%d\n", enable, count, res);
 #endif //End of CONFIG_MT6589_FPGA
-    return 1;
+	return 1;
 }
 
 void hs_slew_rate_cal(void){
@@ -139,8 +139,7 @@ void usb_phy_poweron(){
     return;
 }
 
-
-static void usb_phy_savecurrent_internal()
+static void usb_phy_savecurrent_internal(void)
 {
     //4 1. swtich to USB function. (system register, force ip into usb mode.
     USBPHY_CLR8(0x6b, 0x04);
@@ -180,7 +179,6 @@ static void usb_phy_savecurrent_internal()
     USBPHY_SET8(0x6a, 0x04);
     //4 13.  wait 1us
     udelay(1);
-    return;
 }
 
 void usb_phy_savecurrent(){
@@ -310,7 +308,7 @@ void musb_phy_context_save()
 }
 #endif
 
-void musb_phy_context_restore()
+void musb_phy_context_restore(void)
 {
   enable_pll(UNIVPLL, "USB_PLL");
   #ifndef CONFIG_MTK_USBFSH
@@ -319,3 +317,4 @@ void musb_phy_context_restore()
   usb_phy_savecurrent_internal();
   disable_pll(UNIVPLL,"USB_PLL");
 }
+

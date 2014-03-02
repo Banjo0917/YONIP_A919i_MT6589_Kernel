@@ -20,9 +20,17 @@
 *                         C O M P I L E R   F L A G S
 ********************************************************************************
 */
-
+#if defined(MT6620E3) || defined(MT6620E3)
 #define CFG_CORE_MT6620_SUPPORT 1 /* whether MT6620 is supported or not */
+#else
+#define CFG_CORE_MT6620_SUPPORT 0 /* whether MT6620 is supported or not */
+#endif
+
+#if defined(MT6628)
+#define CFG_CORE_MT6628_SUPPORT 1 /* whether MT6628 is supported or not */
+#else
 #define CFG_CORE_MT6628_SUPPORT 0 /* whether MT6628 is supported or not */
+#endif
 
 // TODO:[ChangeFeature][George] move this definition outside so that wmt_dev can remove wmt_core.h inclusion.
 #define defaultPatchName "mt66xx_patch_hdr.bin"
@@ -182,6 +190,11 @@ typedef struct _WMT_GEN_CONF {
     UCHAR pwr_on_rst_slot;
     UCHAR pwr_on_off_slot;
     UCHAR pwr_on_on_slot;
+	UCHAR co_clock_flag;
+
+    /* Combo chip side SDIO driving setting */
+    UINT32 sdio_driving_cfg;
+    
 } WMT_GEN_CONF, *P_WMT_GEN_CONF;
 
 typedef enum _ENUM_DRV_STS_ {
@@ -220,10 +233,22 @@ typedef enum _WMT_IC_PIN_STATE_
     WMT_IC_PIN_STATE_MAX
 } WMT_IC_PIN_STATE, *P_WMT_IC_PIN_STATE;
 
+typedef enum _WMT_CO_CLOCK_
+{
+    WMT_CO_CLOCK_DIS = 0,
+    WMT_CO_CLOCK_EN = 1,
+    WMT_CO_CLOCK_MAX
+} WMT_CO_CLOCK, *P_WMT_CO_CLOCK;
+
+
 typedef INT32 (*SW_INIT)(P_WMT_HIF_CONF pWmtHifConf);
 typedef INT32 (*SW_DEINIT)(P_WMT_HIF_CONF pWmtHifConf);
 typedef INT32 (*IC_PIN_CTRL)(WMT_IC_PIN_ID id, WMT_IC_PIN_STATE state, UINT32 flag);
 typedef INT32 (*IC_VER_CHECK)(VOID);
+typedef INT32 (*CO_CLOCK_CTRL)(WMT_CO_CLOCK on);
+typedef MTK_WCN_BOOL(*IS_QUICK_SLEEP_SUPPORT)(VOID);
+typedef MTK_WCN_BOOL(*IS_AEE_DUMP_SUPPORT)(VOID);
+
 
 typedef struct _WMT_IC_OPS_ {
     UINT32 icId;
@@ -231,6 +256,9 @@ typedef struct _WMT_IC_OPS_ {
     SW_DEINIT sw_deinit;
     IC_PIN_CTRL ic_pin_ctrl;
     IC_VER_CHECK ic_ver_check;
+	CO_CLOCK_CTRL co_clock_ctrl;
+	IS_QUICK_SLEEP_SUPPORT is_quick_sleep;
+	IS_AEE_DUMP_SUPPORT is_aee_dump_support;
 } WMT_IC_OPS, *P_WMT_IC_OPS;
 
 typedef struct _WMT_CTX_
@@ -387,6 +415,9 @@ wmt_core_tx (
     UINT32 *writtenSize,
     MTK_WCN_BOOL bRawFlag
     );
+extern MTK_WCN_BOOL wmt_core_is_quick_ps_support (void);
+
+extern MTK_WCN_BOOL wmt_core_get_aee_dump_flag(void);
 
 
 /*******************************************************************************

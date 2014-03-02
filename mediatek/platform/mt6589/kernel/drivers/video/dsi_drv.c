@@ -38,6 +38,8 @@ static DECLARE_WAIT_QUEUE_HEAD(_dsi_reg_update_wq);
 
 #include "debug.h"
 
+//#define ENABLE_DSI_ERROR_REPORT
+
 /*
 #define PLL_BASE			(0xF0060000)
 #define DSI_PHY_BASE		(0xF0060B00)
@@ -96,6 +98,59 @@ static bool s_isDsiPowerOn = FALSE;
 static DSI_CONTEXT _dsiContext;
 extern LCM_PARAMS *lcm_params;
 
+DSI_PLL_CONFIG pll_config[50] =
+{{1,1,1,0x1E,1,2,3,8,4,0xC},
+{1,1,1,0x0F,0,2,2,4,1,0xC},
+{1,1,1,0x20,1,2,3,9,4,0xC},
+{1,1,1,0x10,0,2,2,4,1,0xC},
+{1,1,1,0x22,1,2,3,9,4,0xC},
+{1,1,1,0x11,0,2,2,4,1,0xC},
+{1,1,1,0x24,1,2,3,0xA,5,0xC},
+{1,1,1,0x12,0,2,2,5,2,0xC},
+{1,1,1,0x26,1,2,3,0xA,4,0xC},
+{1,1,1,0x13,0,2,2,5,2,0xC},
+{1,1,1,0x28,1,2,3,0xA,4,0xC},
+{1,1,1,0x14,0,2,2,5,2,0xC},
+{1,1,1,0x2A,1,2,3,0xB,5,0xC},
+{1,1,1,0x15,0,2,2,6,2,0xC},
+{1,1,1,0x2C,1,2,3,0xB,5,0xC},
+{1,1,1,0x16,0,2,2,6,2,0xC},
+{1,1,1,0x2E,1,2,3,0xC,5,0xC},
+{1,1,1,0x17,0,2,2,6,2,0xC},
+{1,1,1,0x30,1,2,3,0xD,5,0xC},
+{1,1,1,0x18,0,2,2,6,2,0xC},
+{1,1,1,0x32,1,2,3,0xE,6,0xC},
+{1,1,1,0x19,0,2,2,6,2,0xC},
+{1,1,1,0x34,1,1,3,0x7,6,0x6},
+{1,1,1,0x1A,0,2,2,7,2,0xC},
+{1,1,1,0x36,1,1,3,0x7,7,0x6},
+{1,0,0,0x1B,0,2,2,5,2,0x8},
+{1,0,0,0x38,1,2,2,0xA,5,0x8},
+{1,0,1,0x1C,1,2,2,0xA,5,0x8},
+{1,0,1,0x3A,3,1,3,5,3,0x8},
+{1,0,1,0x0E,0,2,2,5,2,0x9},
+{1,0,1,0x3C,3,1,3,5,3,0x8},
+{1,0,1,0x1E,1,1,2,5,5,0x4},
+{1,0,1,0x3E,3,1,3,5,3,0x8},
+{1,0,1,0x0F,0,2,2,5,2,0xA},
+{1,0,1,0x40,3,1,3,5,3,0x8},
+{1,0,1,0x20,1,1,2,6,5,0x4},
+{1,0,1,0x42,3,1,3,6,3,0x8},
+{1,0,1,0x10,0,2,2,6,2,0xA},
+{1,0,1,0x44,3,1,3,6,3,0x8},
+{1,0,1,0x22,1,1,2,6,6,0x4},
+{1,0,1,0x46,3,1,3,6,4,0x8},
+{1,0,1,0x11,0,2,2,5,2,0xA},
+{1,0,1,0x48,3,1,3,6,4,0x8},
+{1,0,1,0x24,1,1,2,6,6,0x4},
+{1,0,1,0x4A,3,1,3,7,4,0x8},
+{1,0,1,0x12,0,2,2,5,2,0xC},
+{1,0,1,0x4C,3,1,3,7,4,0x8},
+{1,0,1,0x26,1,1,2,7,6,0x4},
+{1,0,1,0x4E,3,1,3,7,4,0x8},
+{1,0,1,0x13,0,2,2,5,2,0xC},
+};
+
 #ifndef BUILD_UBOOT
 
 
@@ -144,6 +199,7 @@ static unsigned int vsync_timer = 0;
 static irqreturn_t _DSI_InterruptHandler(int irq, void *dev_id)
 {   
     DSI_INT_STATUS_REG status = DSI_REG->DSI_INTSTA;
+    static unsigned int prev_error = 0;
 
     MMProfileLogEx(MTKFB_MMP_Events.DSIIRQ, MMProfileFlagPulse, *(unsigned int*)&status, lcdStartTransfer);
 	if(dsi_log_on)
@@ -156,7 +212,30 @@ static irqreturn_t _DSI_InterruptHandler(int irq, void *dev_id)
         /// write clear RD_RDY interrupt must be before DSI_RACK
         /// because CMD_DONE will raise after DSI_RACK, 
         /// so write clear RD_RDY after that will clear CMD_DONE too
-        
+#ifdef ENABLE_DSI_ERROR_REPORT
+        {
+            unsigned int read_data[4];
+			OUTREG32(&read_data[0], AS_UINT32(&DSI_REG->DSI_RX_DATA0));
+			OUTREG32(&read_data[1], AS_UINT32(&DSI_REG->DSI_RX_DATA1));
+			OUTREG32(&read_data[2], AS_UINT32(&DSI_REG->DSI_RX_DATA2));
+			OUTREG32(&read_data[3], AS_UINT32(&DSI_REG->DSI_TRIG_STA));
+            if (dsi_log_on)
+            {
+				if ((read_data[0] & 0x3) == 0x02)
+				{
+					if (read_data[0] & (~prev_error))
+						printk("[DSI] Detect DSI error. prev:0x%08X new:0x%08X\n", prev_error, read_data[0]);
+				}
+				else if ((read_data[1] & 0x3) == 0x02)
+				{
+					if (read_data[1] & (~prev_error))
+						printk("[DSI] Detect DSI error. prev:0x%08X new:0x%08X\n", prev_error, read_data[1]);
+				}
+            }
+            MMProfileLogEx(MTKFB_MMP_Events.DSIRead, MMProfileFlagStart, read_data[0], read_data[1]);
+            MMProfileLogEx(MTKFB_MMP_Events.DSIRead, MMProfileFlagEnd, read_data[2], read_data[3]);
+        }
+#endif
 		do
         {
             ///send read ACK
@@ -735,8 +814,10 @@ static void DSI_WaitBtaTE(void)
 	// Set DSI_RACK to let DSI idle
 	//DSI_REG->DSI_RACK.DSI_RACK = 1;
 	OUTREGBIT(DSI_RACK_REG,DSI_REG->DSI_RACK,DSI_RACK,1);
-	if(!dsiTeEnable)
+	if(!dsiTeEnable){
+		DSI_LP_Reset();
 		return;
+	}
 	dsi_current_time = get_current_time_us();
 
 	while(DSI_REG->DSI_INTSTA.CMD_DONE == 0)	// polling CMD_DONE
@@ -763,7 +844,7 @@ static void DSI_WaitBtaTE(void)
 	OUTREGBIT(DSI_INT_STATUS_REG,DSI_REG->DSI_INTSTA,CMD_DONE,0);
 
 #endif
-
+	DSI_LP_Reset();
 }
 
 
@@ -789,6 +870,10 @@ DSI_STATUS DSI_StartTransfer(bool isMutexLocked)
     if (!isMutexLocked)
         disp_path_get_mutex();
     mutex_lock(&OverlaySettingMutex);
+    // isMutexLocked=false means it is the first time of DSI update after init or late resume.
+    // Layer config was not applied in config update thread.
+    // So need to config overlay here.
+    if (!isMutexLocked)
     LCD_ConfigOVL();
     // Insert log for trigger point.
     DBG_OnTriggerLcd();
@@ -828,6 +913,13 @@ DSI_STATUS DSI_Reset(void)
     return DSI_STATUS_OK;
 }
 
+DSI_STATUS DSI_LP_Reset(void)
+{
+	_WaitForEngineNotBusy();
+	OUTREGBIT(DSI_COM_CTRL_REG,DSI_REG->DSI_COM_CTRL,DSI_RESET,1);
+	OUTREGBIT(DSI_COM_CTRL_REG,DSI_REG->DSI_COM_CTRL,DSI_RESET,0);
+    return DSI_STATUS_OK;
+}
 
 DSI_STATUS DSI_SetMode(unsigned int mode)
 {
@@ -971,13 +1063,25 @@ DSI_STATUS DSI_handle_TE(void)
 
 }
 
+void DSI_PLL_Select(unsigned int pll_select)
+{
+	if(pll_select == 1){
+		//ASSERT(0 == enable_pll_hp(LVDSPLL));
+		ASSERT(0 == pll_hp_switch_on(LVDSPLL, 0));
+		ASSERT(0 == enable_pll(LVDSPLL,"mtk_dsi"));
+	}
+}
+
+#define ALIGN_TO(x, n)  \
+	(((x) + ((n) - 1)) & ~((n) - 1))
+unsigned int dsi_cycle_time;
+
 void DSI_Config_VDO_Timing(LCM_PARAMS *lcm_params)
 {
 	unsigned int line_byte;
 	unsigned int horizontal_sync_active_byte;
 	unsigned int horizontal_backporch_byte;
 	unsigned int horizontal_frontporch_byte;
-	unsigned int rgb_byte;
 	unsigned int dsiTmpBufBpp;
 
 	#define LINE_PERIOD_US				(8 * line_byte * _dsiContext.bit_time_ns / 1000)
@@ -996,26 +1100,28 @@ void DSI_Config_VDO_Timing(LCM_PARAMS *lcm_params)
 											+ lcm_params->dsi.horizontal_backporch \
 											+ lcm_params->dsi.horizontal_frontporch \
 											+ lcm_params->dsi.horizontal_active_pixel) * dsiTmpBufBpp;
-	
-	horizontal_sync_active_byte 		=	(lcm_params->dsi.horizontal_sync_active * dsiTmpBufBpp - 4);
 
-	if (lcm_params->dsi.mode == SYNC_EVENT_VDO_MODE)
-		horizontal_backporch_byte		=	((lcm_params->dsi.horizontal_backporch + lcm_params->dsi.horizontal_sync_active)* dsiTmpBufBpp - 4);
-	else
-		horizontal_backporch_byte		=	(lcm_params->dsi.horizontal_backporch * dsiTmpBufBpp - 4);
+	if (lcm_params->dsi.mode == SYNC_EVENT_VDO_MODE || lcm_params->dsi.mode == BURST_VDO_MODE ){
+		ASSERT((lcm_params->dsi.horizontal_backporch + lcm_params->dsi.horizontal_sync_active) * dsiTmpBufBpp> 9);
+		horizontal_backporch_byte		=	((lcm_params->dsi.horizontal_backporch + lcm_params->dsi.horizontal_sync_active)* dsiTmpBufBpp - 10);
+	}
+	else{
+		ASSERT(lcm_params->dsi.horizontal_sync_active * dsiTmpBufBpp > 9);
+		horizontal_sync_active_byte 		=	(lcm_params->dsi.horizontal_sync_active * dsiTmpBufBpp - 10);
 	
-	horizontal_frontporch_byte			=	(lcm_params->dsi.horizontal_frontporch * dsiTmpBufBpp - 6);
-	rgb_byte							=	(lcm_params->dsi.horizontal_active_pixel * dsiTmpBufBpp + 6);					
-/*	
-	OUTREG32(&DSI_REG->DSI_LINE_NB, line_byte);
-	OUTREG32(&DSI_REG->DSI_HSA_NB, horizontal_sync_active_byte);
-	OUTREG32(&DSI_REG->DSI_HBP_NB, horizontal_backporch_byte);
-	OUTREG32(&DSI_REG->DSI_HFP_NB, horizontal_frontporch_byte);
-	OUTREG32(&DSI_REG->DSI_RGB_NB, rgb_byte);
-*/
-	OUTREG32(&DSI_REG->DSI_HSA_WC, (horizontal_sync_active_byte-6));
-	OUTREG32(&DSI_REG->DSI_HBP_WC, (horizontal_backporch_byte-6));
-	OUTREG32(&DSI_REG->DSI_HFP_WC, (horizontal_frontporch_byte-6)); 
+		ASSERT(lcm_params->dsi.horizontal_backporch * dsiTmpBufBpp > 9);
+		horizontal_backporch_byte		=	(lcm_params->dsi.horizontal_backporch * dsiTmpBufBpp - 10);
+	}
+
+	ASSERT(lcm_params->dsi.horizontal_frontporch * dsiTmpBufBpp > 11);
+	horizontal_frontporch_byte			=	(lcm_params->dsi.horizontal_frontporch * dsiTmpBufBpp - 12);
+
+//	ASSERT(lcm_params->dsi.horizontal_frontporch * dsiTmpBufBpp > ((300/dsi_cycle_time) * lcm_params->dsi.LANE_NUM));
+//	horizontal_frontporch_byte -= ((300/dsi_cycle_time) * lcm_params->dsi.LANE_NUM);
+
+	OUTREG32(&DSI_REG->DSI_HSA_WC, ALIGN_TO((horizontal_sync_active_byte), 4));
+	OUTREG32(&DSI_REG->DSI_HBP_WC, ALIGN_TO((horizontal_backporch_byte), 4));
+	OUTREG32(&DSI_REG->DSI_HFP_WC, ALIGN_TO((horizontal_frontporch_byte), 4));
 
 	_dsiContext.vfp_period_us 		= LINE_PERIOD_US * lcm_params->dsi.vertical_frontporch / 1000;
 	_dsiContext.vsa_vs_period_us	= LINE_PERIOD_US * 1 / 1000;
@@ -1028,81 +1134,9 @@ void DSI_Config_VDO_Timing(LCM_PARAMS *lcm_params)
 	DISP_LOG_PRINT(ANDROID_LOG_INFO, "DSI", "[DISP] kernel - VBP : %d %d(us)\n", DSI_REG->DSI_VBP_NL, _dsiContext.vbp_period_us);
 	DISP_LOG_PRINT(ANDROID_LOG_INFO, "DSI", "[DISP] kernel - VFP : %d %d(us)\n", DSI_REG->DSI_VFP_NL, _dsiContext.vfp_period_us);
 	DISP_LOG_PRINT(ANDROID_LOG_INFO, "DSI", "[DISP] kernel - VACT: %d \n", DSI_REG->DSI_VACT_NL);
-/*
-	DISP_LOG_PRINT(ANDROID_LOG_INFO, "DSI", "[DISP] kernel - HLB : %d \n", DSI_REG->DSI_LINE_NB);
-	DISP_LOG_PRINT(ANDROID_LOG_INFO, "DSI", "[DISP] kernel - HSA : %d \n", DSI_REG->DSI_HSA_NB);
-	DISP_LOG_PRINT(ANDROID_LOG_INFO, "DSI", "[DISP] kernel - HBP : %d \n", DSI_REG->DSI_HBP_NB);
-	DISP_LOG_PRINT(ANDROID_LOG_INFO, "DSI", "[DISP] kernel - HFP : %d \n", DSI_REG->DSI_HFP_NB);
-	DISP_LOG_PRINT(ANDROID_LOG_INFO, "DSI", "[DISP] kernel - RGB : %d \n", DSI_REG->DSI_RGB_NB);
-*/
 }
 
-extern u32 get_devinfo_with_index(u32 index);
-void DSI_PHY_clk_adjusting()
-{
-    u32 m_hw_res2 = get_devinfo_with_index(9);
-	u32 m_hw_res3 = get_devinfo_with_index(14);
 
-	u32 m_hw_res2_15 = m_hw_res2 & 0x00008000;
-	u32 m_hw_res2_14_11 = m_hw_res2 & 0x00007800;
-	u32 m_hw_res3_31_29 = m_hw_res3 & 0xE0000000;
-
-	u32 dsi_bg_con_31_28_efuse = 0;
-	u32 dsi_bg_con_27_24_efuse = 0;
-
-	u32 dsi_bg_con = 0;
-	u32 dsi_bg_con_31_28 = 0;
-	u32 dsi_bg_con_27_24 = 0;
-
-	printk("[wwy][DSI_PHY_clk_adjusting] m_hw_res2 = 0x%x\n",m_hw_res2);
-	printk("[wwy][DSI_PHY_clk_adjusting] m_hw_res3 = 0x%x\n",m_hw_res3);
-	printk("[wwy][DSI_PHY_clk_adjusting] m_hw_res2_15 = 0x%x\n",m_hw_res2_15);
-	printk("[wwy][DSI_PHY_clk_adjusting] m_hw_res2_14_11 = 0x%x\n",m_hw_res2_14_11);
-	printk("[wwy][DSI_PHY_clk_adjusting] m_hw_res3_31_29 = 0x%x\n",m_hw_res3_31_29);
-
-    if(m_hw_res2_14_11)
-    {
-        dsi_bg_con_31_28_efuse = (m_hw_res2_14_11 >> 11) & 0x0000000F;
-        printk("[wwy][DSI_PHY_clk_adjusting] dsi_bg_con_31_28_efuse = 0x%x\n",dsi_bg_con_31_28_efuse);
-        dsi_bg_con = INREG32(MIPI_CONFIG_BASE + 0x44);
-        printk("[wwy][DSI_PHY_clk_adjusting] dsi_bg_con = 0x%x\n",dsi_bg_con);
-        dsi_bg_con_31_28 = (dsi_bg_con >> 28) & 0x0000000F;
-        printk("[wwy][DSI_PHY_clk_adjusting] [1]dsi_bg_con_31_28 = 0x%x\n",dsi_bg_con_31_28);
-        dsi_bg_con_31_28 = dsi_bg_con_31_28 + dsi_bg_con_31_28_efuse;
-    	printk("[wwy][DSI_PHY_clk_adjusting] [2]dsi_bg_con_31_28 = 0x%x\n",dsi_bg_con_31_28);
-    	dsi_bg_con_31_28 = dsi_bg_con_31_28 << 28;
-    	printk("[wwy][DSI_PHY_clk_adjusting] [3]dsi_bg_con_31_28 = 0x%x\n",dsi_bg_con_31_28);
-    	dsi_bg_con_31_28 = dsi_bg_con_31_28 & 0xF0000000;
-    	printk("[wwy][DSI_PHY_clk_adjusting] [4]dsi_bg_con_31_28 = 0x%x\n",dsi_bg_con_31_28);
-
-    	MASKREG32(MIPI_CONFIG_BASE + 0x44, 0xF0000000, dsi_bg_con_31_28);
-    	printk("[wwy][DSI_PHY_clk_adjusting] dsi_bg_con = 0x%x\n",INREG32(MIPI_CONFIG_BASE + 0x44));
-    }
-
-    if(m_hw_res2_15 || m_hw_res3_31_29)
-    {
-    	dsi_bg_con_27_24_efuse =
-				  ((m_hw_res2_15 >> 12) | (m_hw_res3_31_29 >> 29)) & 0x0000000F;
-		printk("[wwy][DSI_PHY_clk_adjusting] dsi_bg_con_27_24_efuse = 0x%x\n",dsi_bg_con_27_24_efuse);
-	    dsi_bg_con = INREG32(MIPI_CONFIG_BASE + 0x44);
-	    printk("[wwy][DSI_PHY_clk_adjusting] dsi_bg_con = 0x%x\n",dsi_bg_con);
-	    dsi_bg_con_27_24 = (dsi_bg_con >> 24) & 0x0000000F;
-		printk("[wwy][DSI_PHY_clk_adjusting] [1]dsi_bg_con_27_24 = 0x%x\n",dsi_bg_con_27_24);
-		dsi_bg_con_27_24 = dsi_bg_con_27_24 + dsi_bg_con_27_24_efuse;
-		printk("[wwy][DSI_PHY_clk_adjusting] [2]dsi_bg_con_27_24 = 0x%x\n",dsi_bg_con_27_24);
-		dsi_bg_con_27_24 = dsi_bg_con_27_24 << 24;
-		printk("[wwy][DSI_PHY_clk_adjusting] [3]dsi_bg_con_27_24 = 0x%x\n",dsi_bg_con_27_24);
-		dsi_bg_con_27_24 = dsi_bg_con_27_24 & 0x0F000000;
-		printk("[wwy][DSI_PHY_clk_adjusting] [4]dsi_bg_con_27_24 = 0x%x\n",dsi_bg_con_27_24);
-
-		MASKREG32(MIPI_CONFIG_BASE + 0x44, 0x0F000000, dsi_bg_con_27_24);
-
-		printk("[wwy][DSI_PHY_clk_adjusting] dsi_bg_con = 0x%x\n",INREG32(MIPI_CONFIG_BASE + 0x44));
-
-    }
-
-}
-static unsigned int _is_need_adjusting_in_kernel = 0;
 void DSI_PHY_clk_setting(LCM_PARAMS *lcm_params)
 {//need re-write
 #if 0
@@ -1116,14 +1150,6 @@ void DSI_PHY_clk_setting(LCM_PARAMS *lcm_params)
 	MASKREG32(MIPI_CONFIG_BASE, 0x3, 0x3);
 //	msleep(1);
 	mdelay(1);
-    if(_is_need_adjusting_in_kernel)
-    {
-        //DSI_PHY_clk_adjusting();
-    }
-    else
-    {
-        _is_need_adjusting_in_kernel = 1;
-    }
 
 //	MASKREG32(MIPI_CONFIG_BASE + 0x44, 0x3, 0x3);
 //	MASKREG32(MIPI_CONFIG_BASE + 0x40, 0x2, 0x2);
@@ -1131,8 +1157,17 @@ void DSI_PHY_clk_setting(LCM_PARAMS *lcm_params)
 	mdelay(1);
 
 	MASKREG32(MIPI_CONFIG_BASE + 0x60, 0x600, 0x400);
-
-	if((lcm_params->dsi.rg_bp == 0) | (lcm_params->dsi.rg_bir == 0) | (lcm_params->dsi.rg_bic == 0))
+	
+	if(LCM_DSI_6589_PLL_CLOCK_NULL != lcm_params->dsi.PLL_CLOCK){
+		unsigned int i = lcm_params->dsi.PLL_CLOCK - 1;
+		printk("LCM PLL Config = %d, %d,%d,%d,%d,%d,%d,%d,%d,%d,%d\n", i, pll_config[i].TXDIV0, pll_config[i].TXDIV1, pll_config[i].FBK_SEL, pll_config[i].FBK_DIV,
+		pll_config[i].PRE_DIV, pll_config[i].RG_BR, pll_config[i].RG_BC, pll_config[i].RG_BIR, pll_config[i].RG_BIC, pll_config[i].RG_BP);
+		MASKREG32(MIPI_CONFIG_BASE + 0x50, 0xFFFFFFFE, 
+			(pll_config[i].RG_BR<<30)|(pll_config[i].RG_BC<<28)|(pll_config[i].RG_BP<<24)|(pll_config[i].RG_BIR<<20)
+			|(pll_config[i].RG_BIC<<16)|(pll_config[i].FBK_DIV<<1)|(pll_config[i].FBK_SEL<<10)
+			|(pll_config[i].TXDIV1<<14)|(pll_config[i].TXDIV0<<12)|(pll_config[i].PRE_DIV<<8));
+	}	
+	else if((lcm_params->dsi.rg_bp == 0) | (lcm_params->dsi.rg_bir == 0) | (lcm_params->dsi.rg_bic == 0))
 		MASKREG32(MIPI_CONFIG_BASE + 0x50, 0xF0FE, 
 			(lcm_params->dsi.fbk_div<<1)|(lcm_params->dsi.pll_div2<<14)|(lcm_params->dsi.pll_div1<<12));
 	else
@@ -1143,7 +1178,7 @@ void DSI_PHY_clk_setting(LCM_PARAMS *lcm_params)
 	
 	MASKREG32(MIPI_CONFIG_BASE + 0x50, 0x1, 0x1);
 //	msleep(1);
-	mdelay(100);
+	mdelay(1);
 	MASKREG32(MIPI_CONFIG_BASE + 0x60, 0x600, 0x600);
 	
 	mdelay(1);
@@ -1231,10 +1266,11 @@ void DSI_PHY_TIMCONFIG(LCM_PARAMS *lcm_params)
 	DSI_PHY_TIMCON1_REG timcon1;	
 	DSI_PHY_TIMCON2_REG timcon2;
 	DSI_PHY_TIMCON3_REG timcon3;
-	unsigned int div1;
-	unsigned int div2;
-	unsigned int fbk_sel;
-	unsigned int fbk_div = lcm_params->dsi.fbk_div;
+	unsigned int div1 = 0;
+	unsigned int div2 = 0;
+	unsigned int fbk_sel = 0;
+	unsigned int pre_div = 0;
+	unsigned int fbk_div = 0;
 	unsigned int lane_no = lcm_params->dsi.LANE_NUM;
 
 //	unsigned int div2_real;
@@ -1242,8 +1278,21 @@ void DSI_PHY_TIMCONFIG(LCM_PARAMS *lcm_params)
 	unsigned int ui;
 	unsigned int hs_trail_m, hs_trail_n;
 
+	if(LCM_DSI_6589_PLL_CLOCK_NULL != lcm_params->dsi.PLL_CLOCK){
+		div1 = pll_config[lcm_params->dsi.PLL_CLOCK - 1].TXDIV0;
+		div2 = pll_config[lcm_params->dsi.PLL_CLOCK - 1].TXDIV1;
+		fbk_sel = pll_config[lcm_params->dsi.PLL_CLOCK - 1].FBK_SEL;
+		fbk_div = pll_config[lcm_params->dsi.PLL_CLOCK - 1].FBK_DIV;
+		pre_div = pll_config[lcm_params->dsi.PLL_CLOCK - 1].PRE_DIV;
+	}
+	else{
+		div1 = lcm_params->dsi.pll_div1;
+		div2 = lcm_params->dsi.pll_div2;
+		fbk_sel = lcm_params->dsi.fbk_sel;
+		fbk_div = lcm_params->dsi.fbk_div;
+	}
 
-	switch(lcm_params->dsi.pll_div1)
+	switch(div1)
 	{
 	case 0:div1 = 1;break;
 	case 1:div1 = 2;break;
@@ -1254,7 +1303,7 @@ void DSI_PHY_TIMCONFIG(LCM_PARAMS *lcm_params)
 		div1 = 4;
 		break;
 	}
-	switch(lcm_params->dsi.pll_div2)
+	switch(div2)
 	{
 	case 0:div2 = 1;break;
 	case 1:div2 = 2;break;
@@ -1265,7 +1314,7 @@ void DSI_PHY_TIMCONFIG(LCM_PARAMS *lcm_params)
 		div2 = 4;
 		break;
 	}
-	switch(lcm_params->dsi.fbk_sel)
+	switch(fbk_sel)
 	{
 	case 0:fbk_sel = 1;break;
 	case 1:fbk_sel = 2;break;
@@ -1276,10 +1325,22 @@ void DSI_PHY_TIMCONFIG(LCM_PARAMS *lcm_params)
 		fbk_sel = 4;
 		break;
 	}
+
+	switch(pre_div)
+	{
+	case 0:pre_div = 1;break;
+	case 1:pre_div = 2;break;
+	case 2:
+	case 3:pre_div = 4;break;
+	default:
+		printk("pre_div should be less than 4!!\n");
+		pre_div = 4;
+		break;
+	}
 	
 //	div2_real=div2 ? div2*0x02 : 0x1;
-	cycle_time = (8 * 1000 * div2 * div1)/ (26 * (fbk_div+0x01) * fbk_sel * 2);
-	ui = (1000 * div2 * div1)/ (26 * (fbk_div+0x01) * fbk_sel * 2) + 1;
+	cycle_time = (8 * 1000 * div2 * div1 * pre_div)/ (26 * (fbk_div+0x01) * fbk_sel * 2);
+	ui = (1000 * div2 * div1 * pre_div)/ (26 * (fbk_div+0x01) * fbk_sel * 2) + 1;
 
 	DISP_LOG_PRINT(ANDROID_LOG_INFO, "DSI", "[DISP] - kernel - DSI_PHY_TIMCONFIG, Cycle Time = %d(ns), Unit Interval = %d(ns). div1 = %d, div2 = %d, fbk_div = %d, lane# = %d \n", cycle_time, ui, div1, div2, fbk_div, lane_no); 		
 
@@ -1291,16 +1352,14 @@ void DSI_PHY_TIMCONFIG(LCM_PARAMS *lcm_params)
 	// +3 is recommended from designer becauase of HW latency
 	timcon0.HS_TRAIL	= ((hs_trail_m > hs_trail_n) ? hs_trail_m : hs_trail_n) + 0x0a;
 	
-	timcon0.HS_PRPR 	= (lcm_params->dsi.HS_PRPR == 0) ? NS_TO_CYCLE((40 + 5 * ui), cycle_time) : lcm_params->dsi.HS_PRPR;
+	timcon0.HS_PRPR 	= (lcm_params->dsi.HS_PRPR == 0) ? NS_TO_CYCLE((60 + 5 * ui), cycle_time) : lcm_params->dsi.HS_PRPR;
 	// HS_PRPR can't be 1.
 	if (timcon0.HS_PRPR == 0)
 		timcon0.HS_PRPR = 1;
 
-	timcon0.HS_ZERO 	= (lcm_params->dsi.HS_ZERO == 0) ? NS_TO_CYCLE((0xC8 + 0x0a * ui), cycle_time) : lcm_params->dsi.HS_ZERO;
-	if (timcon0.HS_ZERO > timcon0.HS_PRPR)
-		timcon0.HS_ZERO -= timcon0.HS_PRPR;
+	timcon0.HS_ZERO 	= (lcm_params->dsi.HS_ZERO == 0) ? NS_TO_CYCLE((0xC8 + 0x0a * ui - timcon0.HS_PRPR * cycle_time), cycle_time) : lcm_params->dsi.HS_ZERO;
 	
-	timcon0.LPX 		= (lcm_params->dsi.LPX == 0) ? NS_TO_CYCLE(50, cycle_time) : lcm_params->dsi.LPX;
+	timcon0.LPX 		= (lcm_params->dsi.LPX == 0) ? NS_TO_CYCLE(65, cycle_time) : lcm_params->dsi.LPX;
 	if(timcon0.LPX == 0) timcon0.LPX = 1;
 //	timcon1.TA_SACK 	= (lcm_params->dsi.TA_SACK == 0) ? 1 : lcm_params->dsi.TA_SACK;
 	timcon1.TA_GET 		= (lcm_params->dsi.TA_GET == 0) ? (5 * timcon0.LPX) : lcm_params->dsi.TA_GET;
@@ -1319,13 +1378,11 @@ void DSI_PHY_TIMCONFIG(LCM_PARAMS *lcm_params)
 	timcon3.CLK_HS_PRPR	= (lcm_params->dsi.CLK_HS_PRPR == 0) ? NS_TO_CYCLE(0x40, cycle_time) : lcm_params->dsi.CLK_HS_PRPR;
 	if(timcon3.CLK_HS_PRPR == 0) timcon3.CLK_HS_PRPR = 1;
 	
-	timcon2.CLK_ZERO	= (lcm_params->dsi.CLK_ZERO == 0) ? NS_TO_CYCLE(0x190, cycle_time) : lcm_params->dsi.CLK_ZERO;
-	if (timcon2.CLK_ZERO > timcon3.CLK_HS_PRPR)
-		timcon2.CLK_ZERO -= timcon3.CLK_HS_PRPR;
+	timcon2.CLK_ZERO	= (lcm_params->dsi.CLK_ZERO == 0) ? NS_TO_CYCLE(0x190 - timcon3.CLK_HS_PRPR * cycle_time, cycle_time) : lcm_params->dsi.CLK_ZERO;
 
 	timcon3.CLK_HS_EXIT= (lcm_params->dsi.CLK_HS_EXIT == 0) ? (2 * timcon0.LPX) : lcm_params->dsi.CLK_HS_EXIT;
 	
-	timcon3.CLK_HS_POST= (lcm_params->dsi.CLK_HS_POST == 0) ? NS_TO_CYCLE((60 + 52 * ui), cycle_time) : lcm_params->dsi.CLK_HS_POST;
+	timcon3.CLK_HS_POST= (lcm_params->dsi.CLK_HS_POST == 0) ? NS_TO_CYCLE((80 + 52 * ui), cycle_time) : lcm_params->dsi.CLK_HS_POST;
 
 	DISP_LOG_PRINT(ANDROID_LOG_INFO, "DSI", "[DISP] - kernel - DSI_PHY_TIMCONFIG, HS_TRAIL = %d, HS_ZERO = %d, HS_PRPR = %d, LPX = %d, TA_GET = %d, TA_SURE = %d, TA_GO = %d, CLK_TRAIL = %d, CLK_ZERO = %d, CLK_HS_PRPR = %d \n", \
 			timcon0.HS_TRAIL, timcon0.HS_ZERO, timcon0.HS_PRPR, timcon0.LPX, timcon1.TA_GET, timcon1.TA_SURE, timcon1.TA_GO, timcon2.CLK_TRAIL, timcon2.CLK_ZERO, timcon3.CLK_HS_PRPR);		
@@ -1338,7 +1395,7 @@ void DSI_PHY_TIMCONFIG(LCM_PARAMS *lcm_params)
 	OUTREG32(&DSI_REG->DSI_PHY_TIMECON1,AS_UINT32(&timcon1));
 	OUTREG32(&DSI_REG->DSI_PHY_TIMECON2,AS_UINT32(&timcon2));
 	OUTREG32(&DSI_REG->DSI_PHY_TIMECON3,AS_UINT32(&timcon3));
-	
+	dsi_cycle_time = cycle_time;
 }
 
 
@@ -1712,6 +1769,9 @@ void DSI_handle_noncont_clk(void)
 }
 #endif
 
+#ifdef ENABLE_DSI_ERROR_REPORT
+static unsigned int _dsi_cmd_queue[32];
+#endif
 void DSI_set_cmdq_V2(unsigned cmd, unsigned char count, unsigned char *para_list, unsigned char force_update)
 {
 	UINT32 i, layer, layer_state, lane_num;
@@ -1720,7 +1780,20 @@ void DSI_set_cmdq_V2(unsigned cmd, unsigned char count, unsigned char *para_list
 	DSI_T0_INS t0;	
 	DSI_T1_INS t1;	
 	DSI_T2_INS t2;	
-
+#ifdef ENABLE_DSI_ERROR_REPORT
+    if ((para_list[0] & 1))
+    {
+		memset(_dsi_cmd_queue, 0, sizeof(_dsi_cmd_queue));
+		memcpy(_dsi_cmd_queue, para_list, count);
+		_dsi_cmd_queue[(count+3)/4*4] = 0x4;
+		count = (count+3)/4*4 + 4;
+		para_list = (unsigned char*) _dsi_cmd_queue;
+    }
+    else
+    {
+		para_list[0] |= 4;
+    }
+#endif
     _WaitForEngineNotBusy();
 #if 0    
 	if (count > 59)
@@ -1923,11 +1996,11 @@ void DSI_set_cmdq_V2(unsigned cmd, unsigned char count, unsigned char *para_list
 
 		if(force_update)
         {
-            MMProfileLog(MTKFB_MMP_Events.DSICmd, MMProfileFlagStart);
+            MMProfileLogEx(MTKFB_MMP_Events.DSICmd, MMProfileFlagStart, *(unsigned int*)(&DSI_CMDQ_REG->data[0]), *(unsigned int*)(&DSI_CMDQ_REG->data[1]));
             DSI_EnableClk();
             for(i=0; i<10; i++) ;
             _WaitForEngineNotBusy();
-            MMProfileLog(MTKFB_MMP_Events.DSICmd, MMProfileFlagEnd);
+            MMProfileLogEx(MTKFB_MMP_Events.DSICmd, MMProfileFlagEnd, *(unsigned int*)(&DSI_CMDQ_REG->data[2]), *(unsigned int*)(&DSI_CMDQ_REG->data[3]));
         }
 	}
 
@@ -2188,6 +2261,18 @@ void DSI_set_cmdq(unsigned int *pdata, unsigned int queue_size, unsigned char fo
 	ASSERT(queue_size<=16);
 
     _WaitForEngineNotBusy();
+#ifdef ENABLE_DSI_ERROR_REPORT
+    if ((pdata[0] & 1))
+    {
+		memcpy(_dsi_cmd_queue, pdata, queue_size*4);
+		_dsi_cmd_queue[queue_size++] = 0x4;
+		pdata = (unsigned int*) _dsi_cmd_queue;
+    }
+    else
+    {
+		pdata[0] |= 4;
+    }
+#endif
 
 	for(i=0; i<queue_size; i++)
 		OUTREG32(&DSI_CMDQ_REG->data[i], AS_UINT32((pdata+i)));
@@ -2199,11 +2284,11 @@ void DSI_set_cmdq(unsigned int *pdata, unsigned int queue_size, unsigned char fo
 
 	if(force_update)
     {
-        MMProfileLog(MTKFB_MMP_Events.DSICmd, MMProfileFlagStart);
+        MMProfileLogEx(MTKFB_MMP_Events.DSICmd, MMProfileFlagStart, *(unsigned int*)(&DSI_CMDQ_REG->data[0]), *(unsigned int*)(&DSI_CMDQ_REG->data[1]));
 		DSI_EnableClk();
         for(i=0; i<10; i++) ;
         _WaitForEngineNotBusy();
-        MMProfileLog(MTKFB_MMP_Events.DSICmd, MMProfileFlagEnd);
+        MMProfileLogEx(MTKFB_MMP_Events.DSICmd, MMProfileFlagEnd, *(unsigned int*)(&DSI_CMDQ_REG->data[2]), *(unsigned int*)(&DSI_CMDQ_REG->data[3]));
     }
 }
 

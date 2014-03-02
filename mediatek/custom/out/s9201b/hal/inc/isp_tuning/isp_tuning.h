@@ -1,3 +1,4 @@
+
 #ifndef _ISP_TUNING_H_
 #define _ISP_TUNING_H_
 
@@ -6,9 +7,6 @@ namespace NSIspTuning
 {
 
 
-/*******************************************************************************
-*
-*******************************************************************************/
 typedef enum MERROR_ENUM
 {
     MERR_OK         = 0,
@@ -32,9 +30,6 @@ typedef enum MERROR_ENUM
 } MERROR_ENUM_T;
 
 
-/*******************************************************************************
-* Operation Mode
-*******************************************************************************/
 typedef enum
 {
     EOperMode_Normal    = 0,
@@ -43,9 +38,6 @@ typedef enum
     EOperMode_EM
 } EOperMode_T;
 
-/*******************************************************************************
-* Sensor Mode
-*******************************************************************************/
 typedef enum
 {
     ESensorMode_Preview    = 0,
@@ -53,9 +45,6 @@ typedef enum
     ESensorMode_Capture
 } ESensorMode_T;
 
-/*******************************************************************************
-*
-*******************************************************************************/
 typedef enum
 {
     //  NORMAL
@@ -72,15 +61,13 @@ typedef enum
 } EIspProfile_T;
 
 
-/*******************************************************************************
-*
-*******************************************************************************/
 typedef enum
 {
     ESensorDev_Main         = 0x01,
     ESensorDev_Sub          = 0x02,
-    ESensorDev_MainSecond   = 0x04,
-    ESensorDev_Main3D       = 0x05,
+	ESensorDev_Atv          = 0x04,
+	ESensorDev_MainSecond   = 0x08,
+    ESensorDev_Main3D       = 0x09,    
 }   ESensorDev_T;
 
 };  //  NSIspTuning

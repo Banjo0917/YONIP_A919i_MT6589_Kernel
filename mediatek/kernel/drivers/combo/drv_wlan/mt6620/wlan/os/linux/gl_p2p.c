@@ -1963,7 +1963,7 @@ p2pGetStats (
 
     prGlueInfo = *((P_GLUE_INFO_T *) netdev_priv(prDev));
 
-#if 1 // frog temp fix
+#if 0 // frog temp fix
     //@FIXME
     //prDev->stats.rx_packets = 0;
     //prDev->stats.tx_packets = 0;
@@ -1976,13 +1976,13 @@ p2pGetStats (
     return &prDev->stats;
 
 #else
-    prGlueInfo->prP2PInfo->rNetDevStats.rx_packets = 0;
-    prGlueInfo->prP2PInfo->rNetDevStats.tx_packets = 0;
+    //prGlueInfo->prP2PInfo->rNetDevStats.rx_packets = 0;
+    //prGlueInfo->prP2PInfo->rNetDevStats.tx_packets = 0;
     prGlueInfo->prP2PInfo->rNetDevStats.tx_errors  = 0;
     prGlueInfo->prP2PInfo->rNetDevStats.rx_errors  = 0;
-    prGlueInfo->prP2PInfo->rNetDevStats.rx_bytes   = 0;
-    prGlueInfo->prP2PInfo->rNetDevStats.tx_bytes   = 0;
-    prGlueInfo->prP2PInfo->rNetDevStats.rx_errors  = 0;
+    //prGlueInfo->prP2PInfo->rNetDevStats.rx_bytes   = 0;
+    //prGlueInfo->prP2PInfo->rNetDevStats.tx_bytes   = 0;
+    //prGlueInfo->prP2PInfo->rNetDevStats.rx_errors  = 0;
     prGlueInfo->prP2PInfo->rNetDevStats.multicast  = 0;
 
     return &prGlueInfo->prP2PInfo->rNetDevStats;
@@ -2177,8 +2177,9 @@ p2pHardStartXmit(
     kalSetEvent(prGlueInfo);
 
     /* Statistic usage. */
-    prDev->stats.tx_bytes += prSkb->len;
-    prDev->stats.tx_packets++;
+    prGlueInfo->prP2PInfo->rNetDevStats.tx_bytes += prSkb->len;
+	prGlueInfo->prP2PInfo->rNetDevStats.tx_packets++;
+    //prDev->stats.tx_packets++;
 
     return NETDEV_TX_OK;
 } /* end of p2pHardStartXmit() */

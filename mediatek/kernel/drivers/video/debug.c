@@ -5,6 +5,7 @@
 #include <linux/vmalloc.h>
 #include <linux/sched.h>
 #include <linux/debugfs.h>
+#include <linux/wait.h>
 
 #include <disp_drv_platform.h>
 #include "disp_drv_log.h"
@@ -62,13 +63,21 @@ extern void mtkfb_hang_test(bool en);
 extern void mtkfb_switch_normal_to_factory(void);
 extern void mtkfb_switch_factory_to_normal(void);
 
-extern unsigned int bDebugDumpImage;
-extern unsigned int DebugDumpImageDownX;
-extern unsigned int DebugDumpImageDownY;
-extern unsigned int gCaptureThreadEnable;
+extern unsigned int gCaptureLayerEnable;
+extern unsigned int gCaptureLayerDownX;
+extern unsigned int gCaptureLayerDownY;
+
+extern unsigned int gCaptureOvlThreadEnable;
 extern unsigned int gCaptureOvlDownX;
 extern unsigned int gCaptureOvlDownY;
-extern struct task_struct *capture_task;
+extern struct task_struct *captureovl_task;
+
+extern unsigned int gCaptureFBEnable;
+extern unsigned int gCaptureFBDownX;
+extern unsigned int gCaptureFBDownY;
+extern unsigned int gCaptureFBPeriod;
+extern struct task_struct *capturefb_task;
+extern struct wait_queue_head_t gCaptureFBWQ;
 
 #if defined (MTK_TVOUT_SUPPORT)
 bool capture_tv_buffer = false;
@@ -193,7 +202,18 @@ void init_mtkfb_mmp_events(void)
         MTKFB_MMP_Events.DSIIRQ = MMProfileRegisterEvent(MTKFB_MMP_Events.MTKFB, "DSIIrq");
         MTKFB_MMP_Events.WaitVSync = MMProfileRegisterEvent(MTKFB_MMP_Events.MTKFB, "WaitVSync");
         MTKFB_MMP_Events.LayerDump = MMProfileRegisterEvent(MTKFB_MMP_Events.MTKFB, "LayerDump");
+        MTKFB_MMP_Events.Layer[0] = MMProfileRegisterEvent(MTKFB_MMP_Events.LayerDump, "Layer0");
+        MTKFB_MMP_Events.Layer[1] = MMProfileRegisterEvent(MTKFB_MMP_Events.LayerDump, "Layer1");
+        MTKFB_MMP_Events.Layer[2] = MMProfileRegisterEvent(MTKFB_MMP_Events.LayerDump, "Layer2");
+        MTKFB_MMP_Events.Layer[3] = MMProfileRegisterEvent(MTKFB_MMP_Events.LayerDump, "Layer3");
         MTKFB_MMP_Events.OvlDump = MMProfileRegisterEvent(MTKFB_MMP_Events.MTKFB, "OvlDump");
+        MTKFB_MMP_Events.FBDump = MMProfileRegisterEvent(MTKFB_MMP_Events.MTKFB, "FBDump");
+        MTKFB_MMP_Events.DSIRead = MMProfileRegisterEvent(MTKFB_MMP_Events.MTKFB, "DSIRead");
+        MTKFB_MMP_Events.GetLayerInfo = MMProfileRegisterEvent(MTKFB_MMP_Events.MTKFB, "GetLayerInfo");
+        MTKFB_MMP_Events.LayerInfo[0] = MMProfileRegisterEvent(MTKFB_MMP_Events.GetLayerInfo, "LayerInfo0");
+        MTKFB_MMP_Events.LayerInfo[1] = MMProfileRegisterEvent(MTKFB_MMP_Events.GetLayerInfo, "LayerInfo1");
+        MTKFB_MMP_Events.LayerInfo[2] = MMProfileRegisterEvent(MTKFB_MMP_Events.GetLayerInfo, "LayerInfo2");
+        MTKFB_MMP_Events.LayerInfo[3] = MMProfileRegisterEvent(MTKFB_MMP_Events.GetLayerInfo, "LayerInfo3");
         MTKFB_MMP_Events.Debug = MMProfileRegisterEvent(MTKFB_MMP_Events.MTKFB, "Debug");
         MMProfileEnableEventRecursive(MTKFB_MMP_Events.MTKFB, 1);
     }
@@ -922,13 +942,13 @@ static void process_dbg_opt(const char *opt)
         if (0 == strncmp(opt + 11, "on", 2))
         {
             char *p = (char *)opt + 14;
-            DebugDumpImageDownX = simple_strtoul(p, &p, 10);
-            DebugDumpImageDownY = simple_strtoul(p+1, &p, 10);
-            bDebugDumpImage = 1;
+            gCaptureLayerDownX = simple_strtoul(p, &p, 10);
+            gCaptureLayerDownY = simple_strtoul(p+1, &p, 10);
+            gCaptureLayerEnable = 1;
         }
         else if (0 == strncmp(opt + 11, "off", 3))
         {
-            bDebugDumpImage = 0;
+            gCaptureLayerEnable = 0;
         }
     }
     else if (0 == strncmp(opt, "dump_ovl:", 9))
@@ -938,23 +958,29 @@ static void process_dbg_opt(const char *opt)
             char *p = (char *)opt + 12;
             gCaptureOvlDownX = simple_strtoul(p, &p, 10);
             gCaptureOvlDownY = simple_strtoul(p+1, &p, 10);
-            gCaptureThreadEnable = 1;
-			wake_up_process(capture_task);
+            gCaptureOvlThreadEnable = 1;
+			wake_up_process(captureovl_task);
         }
         else if (0 == strncmp(opt + 9, "off", 3))
         {
-            gCaptureThreadEnable = 0;
-        }   
+            gCaptureOvlThreadEnable = 0;
+        }
     }
-	else if (0 == strncmp(opt, "dsir:", 5))
+    else if (0 == strncmp(opt, "dump_fb:", 8))
     {
-        char *p = (char *)opt + 5;
-        unsigned int addr = (unsigned int) simple_strtoul(p, &p, 16);
-		unsigned char buffer[2];
-				
-		DSI_dcs_read_lcm_reg_v2(addr, buffer, 2);
-
-        DISP_LOG_PRINT(ANDROID_LOG_INFO, "DBG", "DSI Read register 0x%08x: 0x%08x\n", addr, buffer[0]);
+        if (0 == strncmp(opt + 8, "on", 2))
+        {
+            char *p = (char *)opt + 11;
+            gCaptureFBDownX = simple_strtoul(p, &p, 10);
+            gCaptureFBDownY = simple_strtoul(p+1, &p, 10);
+            gCaptureFBPeriod = simple_strtoul(p+1, &p, 10);
+            gCaptureFBEnable = 1;
+			wake_up_interruptible(&gCaptureFBWQ);
+        }
+        else if (0 == strncmp(opt + 8, "off", 3))
+        {
+            gCaptureFBEnable = 0;
+        }   
     }
     else
 	{

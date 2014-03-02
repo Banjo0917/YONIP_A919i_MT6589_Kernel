@@ -26,9 +26,11 @@
 #include "mount.h"
 #include <mach/mt_io_logger.h>
 #include <linux/mmc/mmc.h>
+#include <mach/env.h>
 
 #define CHECK_1TH  (10 * 1024 * 1024)
 #define CHECK_2TH  (1 * 1024 * 1024)
+long long store = 0;
 
 const struct file_operations generic_ro_fops = {
 	.llseek		= generic_file_llseek,
@@ -468,7 +470,7 @@ ssize_t vfs_write(struct file *file, const char __user *buf, size_t count, loff_
 	ssize_t ret;
 	struct task_struct *tsk = current;
 	struct kstatfs stat;
-	static long long store = 0;
+	//static long long store = 0;
 	unsigned char num = 0;
 	struct mount *mount_data;
 	char *file_list[10] = {"ccci_fsd", NULL};
@@ -493,11 +495,31 @@ ssize_t vfs_write(struct file *file, const char __user *buf, size_t count, loff_
 						break;
 				}
 				if (file_list[num] == NULL) {
+					store += count;
 					return -ENOSPC;
 				} 
 			}
 		}
 	}
+#ifdef LIMIT_SDCARD_SIZE
+	//if(!memcmp(mount_data->mnt_mountpoint->d_name.name, "emulated", 8)){
+	if(!memcmp(file->f_path.mnt->mnt_sb->s_type->name, "fuse", 5)){	
+		store -= count;
+		if(store <= (data_free_size_th  + CHECK_1TH*2)){		
+			vfs_statfs(&file->f_path, &stat);
+			store = stat.f_bfree * stat.f_bsize + data_free_size_th;
+			//printk("initialize data free size when acess sdcard0 ,%llx\n",store);
+			store -= count;
+			if (store <= data_free_size_th) {
+				//printk("wite sdcard0 over flow, %llx\n",store);
+				store += count;
+				return -ENOSPC;
+			}
+		}
+		store +=count;
+	}
+#endif
+
 #if IO_LOGGER_ENABLE
 	if(unlikely(en_IOLogger())){
 		mount_point = mount_data->mnt_mountpoint->d_name.name;
@@ -521,10 +543,11 @@ ssize_t vfs_write(struct file *file, const char __user *buf, size_t count, loff_
 	if (g_mtk_mmc_clear == 0){
 		//memset(g_req_write_buf, 0, 8*4000*30);
 		//memset(g_mmcqd_buf, 0, 8*400*300);
+		g_dbg_req_count = 0;
 		g_dbg_write_count = 0;
 		g_mtk_mmc_clear = 1;
 	}
-	if (('l' == *(current->comm)) && ('m' == *(current->comm + 1)) && ('d' == *(current->comm + 2)) && ('d' == *(current->comm + 3))){
+	if (('l' == *(current->comm)) && ('m' == *(current->comm + 1)) && ('d' == *(current->comm + 2)) && ('d' == *(current->comm + 3)) && g_check_read_write == 25){
 		g_dbg_write_count++;
 		g_req_write_count[g_dbg_write_count] = count;
 		g_req_write_buf[g_dbg_write_count][0] = sched_clock(); 
@@ -552,7 +575,7 @@ ssize_t vfs_write(struct file *file, const char __user *buf, size_t count, loff_
 		inc_syscw(current);
 	}
 #ifdef MTK_IO_PERFORMANCE_DEBUG   
-	if (('l' == *(current->comm)) && ('m' == *(current->comm + 1)) && ('d' == *(current->comm + 2)) && ('d' == *(current->comm + 3))){
+	if (('l' == *(current->comm)) && ('m' == *(current->comm + 1)) && ('d' == *(current->comm + 2)) && ('d' == *(current->comm + 3)) && g_check_read_write == 25){
 		g_req_write_buf[g_dbg_write_count][14] = sched_clock(); 
 	}	
 #endif

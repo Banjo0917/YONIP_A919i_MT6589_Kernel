@@ -132,12 +132,12 @@ kal_uint32 fan5405_read_interface (kal_uint8 RegNum, kal_uint8 *val, kal_uint8 M
 
     ret = fan5405_read_byte(RegNum, &fan5405_reg);
 	if (Enable_BATDRV_LOG == 1) {
-		printk("[fan5405_read_interface] Reg[%x]=0x%x\n", RegNum, fan5405_reg);
+    printk("[fan5405_read_interface] Reg[%x]=0x%x\n", RegNum, fan5405_reg);
 	}
     fan5405_reg &= (MASK << SHIFT);
-    *val = (fan5405_reg >> SHIFT);
+    *val = (fan5405_reg >> SHIFT);    
 	if (Enable_BATDRV_LOG == 1) {
-		printk("[fan5405_read_interface] val=0x%x\n", *val);
+    printk("[fan5405_read_interface] val=0x%x\n", *val);
 	}
     return ret;
 }
@@ -542,6 +542,12 @@ extern int g_pmic_cid;
 
 void fan5405_hw_init(void)
 {    
+#ifdef TINNO_FAN5405_HIGH_VBATT	    		
+//Ivan    
+    fan5405_config_interface_liao(0x06,0x74); // set ISAFE
+    printk("[fan5405_hw_init] (0x06,0x74)\n");
+#else
+ 
     if(g_enable_high_vbat_spec == 1)
     {
         if(g_pmic_cid == 0x1020)
@@ -560,6 +566,7 @@ void fan5405_hw_init(void)
         printk("[fan5405_hw_init] (0x06,0x70) \n");
         fan5405_config_interface_liao(0x06,0x70); // set ISAFE
     }
+#endif
 }
 
 static int fan5405_driver_probe(struct i2c_client *client, const struct i2c_device_id *id) 
@@ -580,7 +587,7 @@ static int fan5405_driver_probe(struct i2c_client *client, const struct i2c_devi
     fan5405_hw_init();
     fan5405_dump_register();
 	g_fan5405_rdy_flag = 1;
-	
+
     return 0;                                                                                       
 
 exit:

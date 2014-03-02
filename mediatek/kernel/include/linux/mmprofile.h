@@ -2,7 +2,7 @@
 #define __MMPROFILE_H__
 #include "mmprofile_static_event.h"
 
-//#define DEFAULT_MMP_ENABLE
+#define DEFAULT_MMP_ENABLE
 
 #ifdef __cplusplus
 extern "C"

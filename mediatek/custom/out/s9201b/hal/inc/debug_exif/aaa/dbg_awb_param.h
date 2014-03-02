@@ -1,3 +1,4 @@
+
 #ifndef _DBG_AWB_PARAM_H_
 #define _DBG_AWB_PARAM_H_
 
@@ -304,6 +305,7 @@ enum
 	// CCT Estimation
 	AWB_TAG_CCT,               // CCT estimation
 	AWB_TAG_FLUORESCENT_INDEX, // CCT estimation: fluorescent index
+	AWB_TAG_DAYLIGHT_FLUORESCENT_INDEX, // CCT estimation: daylight fluorescent index
 	AWB_TAG_CCT_LOG_RG,        // CCT estimation: log(R/G) (from AWB gain)
     AWB_TAG_CCT_LOG_BG,        // CCT estimation: log(B/G) (from AWB gain)
 	AWB_TAG_CCT_X,             // CCT estimation: X (from AWB gain)
@@ -559,7 +561,7 @@ enum
 	AWB_TAG_NUM
 };
 
-#define AWB_DEBUG_TAG_VERSION (0)
+#define AWB_DEBUG_TAG_VERSION (1)
 #define AWB_DEBUG_TAG_SIZE (AWB_TAG_NUM + 10)
 
 typedef struct

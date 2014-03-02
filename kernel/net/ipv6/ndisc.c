@@ -1883,7 +1883,7 @@ static int ndp_is_extiface(const char *ifname)
 {
    if(!strncmp(ifname, "wlan", 4))
    	return 1;
-   if(!strncmp(ifname, "ccmni", 5))
+   if(!strncmp(ifname, "ccmni", 2))
    	return 1;
    return 0;
 }

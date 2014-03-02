@@ -708,6 +708,7 @@ struct _P2P_FSM_INFO_T {
     WFD_CFG_SETTINGS_T rWfdConfigureSettings;
 #endif
 
+    BOOLEAN fgIsWPSMode;
 };
 
 
@@ -1872,7 +1873,8 @@ typedef struct _MSG_P2P_SERVICE_DISCOVERY_REQUEST_T {
 ********************************************************************************
 */
 #define p2pChangeMediaState(_prAdapter, _eNewMediaState) \
-            (_prAdapter->rWifiVar.arBssInfo[NETWORK_TYPE_P2P_INDEX].eConnectionState = (_eNewMediaState));
+            (_prAdapter->rWifiVar.arBssInfo[NETWORK_TYPE_P2P_INDEX].eConnectionState = (_eNewMediaState));\
+            wfdChangeMediaState((_prAdapter),NETWORK_TYPE_P2P_INDEX,(_eNewMediaState));
 
 #define ATTRI_ID(_fp)       (((P_P2P_ATTRIBUTE_T) _fp)->ucId)
 #define ATTRI_LEN(_fp)      \

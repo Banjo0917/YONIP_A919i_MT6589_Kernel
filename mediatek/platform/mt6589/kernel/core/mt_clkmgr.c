@@ -17,6 +17,13 @@
 #include <mach/mt_spm_mtcmos.h>
 #include <mach/mt_spm_sleep.h>
 #include <mach/mt_freqhopping.h>
+#include <mach/mt_gpufreq.h>
+
+
+
+/************************************************
+ **********         log debug          **********
+ ************************************************/
 
 #define USING_XLOG
 
@@ -58,6 +65,12 @@
 
 #endif
 
+
+
+/************************************************
+ **********      register access       **********
+ ************************************************/
+
 #define clk_readl(addr) \
     DRV_Reg32(addr)
 
@@ -71,23 +84,12 @@
     mt65xx_reg_sync_writel(clk_readl(addr) & ~(val), addr)
 
 
-#define PWR_DOWN    0
-#define PWR_ON      1
 
-static int initialized = 0;
+/************************************************
+ **********      struct definition     **********
+ ************************************************/
 
-
-static DEFINE_SPINLOCK(clock_lock);
-
-#define clkmgr_lock(flags)  \
-do {    \
-    spin_lock_irqsave(&clock_lock, flags);  \
-} while (0)
-
-#define clkmgr_unlock(flags)  \
-do {    \
-    spin_unlock_irqrestore(&clock_lock, flags);  \
-} while (0)
+//#define CONFIG_CLKMGR_STAT
 
 struct pll;
 struct pll_ops {
@@ -115,7 +117,11 @@ struct pll {
     struct pll_ops *ops;
     unsigned int hp_id;
     int hp_switch;
+#ifdef CONFIG_CLKMGR_STAT
+    struct list_head head;
+#endif
 };
+
 
 struct subsys;
 struct subsys_ops {
@@ -139,7 +145,11 @@ struct subsys {
     struct cg_grp *start;
     unsigned int nr_grps;
     struct clkmux *mux;
+#ifdef CONFIG_CLKMGR_STAT
+    struct list_head head;
+#endif
 };
+
 
 struct clkmux;
 struct clkmux_ops {
@@ -160,7 +170,11 @@ struct clkmux {
     struct clkmux *parent;
     struct clkmux *siblings;
     struct pll *pll;
+#ifdef CONFIG_CLKMGR_STAT
+    struct list_head head;
+#endif
 };
+
 
 struct cg_grp;
 struct cg_grp_ops {
@@ -181,6 +195,7 @@ struct cg_grp {
     struct subsys *sys;
 };
 
+
 struct cg_clk;
 struct cg_clk_ops {
     int (*get_state)(struct cg_clk *clk);  
@@ -198,955 +213,212 @@ struct cg_clk {
     struct cg_grp *grp;
     struct clkmux *mux;
     struct cg_clk *parent;
+#ifdef CONFIG_CLKMGR_STAT
+    struct list_head head;
+#endif
 };
 
+
+#ifdef CONFIG_CLKMGR_STAT
+struct stat_node {
+    struct list_head link;
+    unsigned int cnt_on;
+    unsigned int cnt_off;
+    char name[0];
+};
+#endif
+
+
+
+/************************************************
+ **********      global variablies     **********
+ ************************************************/
+
+#define PWR_DOWN    0
+#define PWR_ON      1
+
+static int initialized = 0;
+
+static struct pll plls[NR_PLLS];
 static struct subsys syss[NR_SYSS];
 static struct clkmux muxs[NR_MUXS];
 static struct cg_grp grps[NR_GRPS];
 static struct cg_clk clks[NR_CLKS];
 
 
-static struct cg_clk_ops general_cg_clk_ops;
-static struct cg_clk_ops cec_cg_clk_ops;
-static struct cg_clk_ops audio_cg_clk_ops;
-static struct cg_clk_ops audsys_cg_clk_ops; // @audio sys
-static struct cg_clk_ops vdec_cg_clk_ops;
-static struct cg_clk_ops venc_cg_clk_ops;
 
-static struct pll plls[NR_PLLS];
+/************************************************
+ **********      spin lock protect     **********
+ ************************************************/
 
-static struct cg_clk clks[NR_CLKS] = {
-    [CG_PERI0_FROM ... CG_PERI0_TO] = {
-        .cnt = 0,
-        .ops = &general_cg_clk_ops,
-        .grp = &grps[CG_PERI0],
-    },
-    [CG_PERI1_FROM ... CG_PERI1_TO] = {
-        .cnt = 0,
-        .ops = &general_cg_clk_ops,
-        .grp = &grps[CG_PERI1],
-    },
-    [CG_INFRA_FROM ... CG_INFRA_TO] = {
-        .cnt = 0,
-        .ops = &general_cg_clk_ops,
-        .grp = &grps[CG_INFRA],
-    },
-    [CG_TOPCK_FROM ... CG_TOPCK_TO] = {
-        .cnt = 0,
-        .ops = &general_cg_clk_ops,
-        .grp = &grps[CG_TOPCK],
-    },
-    [CG_DISP0_FROM ... CG_DISP0_TO] = {
-        .cnt = 0,
-        .ops = &general_cg_clk_ops,
-        .grp = &grps[CG_DISP0],
-    },
-    [CG_DISP1_FROM ... CG_DISP1_TO] = {
-        .cnt = 0,
-        .ops = &general_cg_clk_ops,
-        .grp = &grps[CG_DISP1],
-    },
-    [CG_IMAGE_FROM ... CG_IMAGE_TO] = {
-        .cnt = 0,
-        .ops = &general_cg_clk_ops,
-        .grp = &grps[CG_IMAGE],
-    },
-    [CG_MFG_FROM ... CG_MFG_TO] = {
-        .cnt = 0,
-        .ops = &general_cg_clk_ops,
-        .grp = &grps[CG_MFG],
-    },
-    [CG_AUDIO_FROM ... CG_AUDIO_TO] = {
-        .cnt = 0,
-        .ops = &audsys_cg_clk_ops,
-        .grp = &grps[CG_AUDIO],
-    },
-    [CG_VDEC0_FROM ... CG_VDEC0_TO] = {
-        .cnt = 0,
-        .ops = &vdec_cg_clk_ops,
-        .grp = &grps[CG_VDEC0],
-    },
-    [CG_VDEC1_FROM ... CG_VDEC1_TO] = {
-        .cnt = 0,
-        .ops = &vdec_cg_clk_ops,
-        .grp = &grps[CG_VDEC1],
-    },
-    [CG_VENC_FROM ... CG_VENC_TO] = {
-        .cnt = 0,
-        .ops = &venc_cg_clk_ops,
-        .grp = &grps[CG_VENC],
-    },
-};
+static DEFINE_SPINLOCK(clock_lock);
 
-static struct cg_clk *id_to_clk(unsigned int id)
+#define clkmgr_lock(flags)  \
+do {    \
+    spin_lock_irqsave(&clock_lock, flags);  \
+} while (0)
+
+#define clkmgr_unlock(flags)  \
+do {    \
+    spin_unlock_irqrestore(&clock_lock, flags);  \
+} while (0)
+
+#define clkmgr_locked()  (spin_is_locked(&clock_lock))
+
+int clkmgr_is_locked()
 {
-    return id < NR_CLKS ? clks + id : NULL;
+    return clkmgr_locked();
 }
+EXPORT_SYMBOL(clkmgr_is_locked);
 
-static int general_clk_get_state_op(struct cg_clk *clk)
+
+
+/************************************************
+ **********     clkmgr stat debug      **********
+ ************************************************/
+
+#ifdef CONFIG_CLKMGR_STAT
+void update_stat_locked(struct list_head *head, char *name, int op)
 {
-    struct subsys *sys = clk->grp->sys;
-    if (sys && !sys->state) {
-        return PWR_DOWN; 
-    }
-
-    return (clk_readl(clk->grp->sta_addr) & (clk->mask)) ? PWR_DOWN : PWR_ON ;
-}
-
-static int general_clk_check_validity_op(struct cg_clk *clk)
-{
-    int valid = 0;
-    if (clk->mask & clk->grp->mask) {
-        valid = 1;
-    }
-
-    return valid;
-}
-
-static int general_clk_enable_op(struct cg_clk *clk)
-{
-    clk_writel(clk->grp->clr_addr, clk->mask);
-    return 0;
-}
-
-static int general_clk_disable_op(struct cg_clk *clk)
-{
-    clk_writel(clk->grp->set_addr, clk->mask);
-    return 0;
-}
-
-static struct cg_clk_ops general_cg_clk_ops = {
-    .get_state = general_clk_get_state_op,
-    .check_validity = general_clk_check_validity_op,
-    .enable = general_clk_enable_op,
-    .disable = general_clk_disable_op,
-};
-
-
-static int audio_clk_enable_op(struct cg_clk *clk)
-{
-    clk_writel(clk->grp->clr_addr, clk->mask);
-    clk_setl(TOPAXI_SI0_CTL, 1U << 7);
-    return 0;
-}
-
-static int audio_clk_disable_op(struct cg_clk *clk)
-{
-    clk_clrl(TOPAXI_SI0_CTL, 1U << 7);
-    clk_writel(clk->grp->set_addr, clk->mask);
-    return 0;
-}
-
-static struct cg_clk_ops audio_cg_clk_ops = {
-    .get_state = general_clk_get_state_op,
-    .check_validity = general_clk_check_validity_op,
-    .enable = audio_clk_enable_op,
-    .disable = audio_clk_disable_op,
-};
-
-
-static int cec_clk_enable_op(struct cg_clk *clk)
-{
-    clk_writel(clk->grp->set_addr, clk->mask);
-    return 0;
-}
-
-static int cec_clk_disable_op(struct cg_clk *clk)
-{
-    clk_writel(clk->grp->clr_addr, clk->mask);
-    return 0;
-}
-
-static struct cg_clk_ops cec_cg_clk_ops = {
-    .get_state = general_clk_get_state_op,
-    .check_validity = general_clk_check_validity_op,
-    .enable = cec_clk_enable_op,
-    .disable = cec_clk_disable_op,
-};
-
-static int audsys_clk_enable_op(struct cg_clk *clk)
-{
-    clk_clrl(clk->grp->sta_addr, clk->mask);
-    return 0;
-}
-
-static int audsys_clk_disable_op(struct cg_clk *clk)
-{
-    clk_setl(clk->grp->sta_addr, clk->mask);
-    return 0;
-}
-
-static struct cg_clk_ops audsys_cg_clk_ops = {
-    .get_state = general_clk_get_state_op,
-    .check_validity = general_clk_check_validity_op,
-    .enable = audsys_clk_enable_op,
-    .disable = audsys_clk_disable_op,
-};
-
-static int vdec_clk_get_state_op(struct cg_clk *clk)
-{
-    return (clk_readl(clk->grp->set_addr) & (clk->mask)) ? PWR_ON : PWR_DOWN;
-}
-
-static struct cg_clk_ops vdec_cg_clk_ops = {
-    .get_state = vdec_clk_get_state_op,
-    .check_validity = general_clk_check_validity_op,
-    .enable = general_clk_enable_op,
-    .disable = general_clk_disable_op,
-};
-
-
-static int venc_clk_get_state_op(struct cg_clk *clk)
-{
-    return (clk_readl(clk->grp->sta_addr) & (clk->mask)) ? PWR_ON : PWR_DOWN;
-}
-
-static struct cg_clk_ops venc_cg_clk_ops = {
-    .get_state = venc_clk_get_state_op,
-    .check_validity = general_clk_check_validity_op,
-    .enable = general_clk_enable_op,
-    .disable = general_clk_disable_op,
-};
-
-
-struct mux {
-};
-
-struct divider {
-};
-
-static struct cg_grp_ops general_cg_grp_ops;
-static struct cg_grp_ops vdec_cg_grp_ops;
-static struct cg_grp_ops venc_cg_grp_ops;
-
-
-static struct cg_grp grps[NR_GRPS] = {
-    {
-        .name = __stringify(CG_PERI0),
-        .set_addr = PERI_PDN0_SET,
-        .clr_addr = PERI_PDN0_CLR,
-        .sta_addr = PERI_PDN0_STA,
-        .mask = 0xFFFFFFFF,
-        .ops = &general_cg_grp_ops,
-    }, {
-        .name = __stringify(CG_PERI1),
-        .set_addr = PERI_PDN1_SET,
-        .clr_addr = PERI_PDN1_CLR,
-        .sta_addr = PERI_PDN1_STA,
-        .mask = 0x0000001F,
-        .ops = &general_cg_grp_ops,
-    }, {
-        .name = __stringify(CG_INFRA),
-        .set_addr = INFRA_PDN_SET,
-        .clr_addr = INFRA_PDN_CLR,
-        .sta_addr = INFRA_PDN_STA,
-        .mask = 0x00F1FFE7,
-        .ops = &general_cg_grp_ops,
-    }, {
-        .name = __stringify(CG_TOPCK),
-        .set_addr = TOPCK_PDN_SET,
-        .clr_addr = TOPCK_PDN_CLR,
-        .sta_addr = TOPCK_PDN_STA,
-        .mask = 0x00000001,
-        .ops = &general_cg_grp_ops,
-    }, {
-        .name = __stringify(CG_DISP0),
-        .set_addr = DISP_CG_SET0,
-        .clr_addr = DISP_CG_CLR0,
-        .sta_addr = DISP_CG_CON0,
-        .mask = 0x01FFFFFF,
-        .ops = &general_cg_grp_ops,
-        .sys = &syss[SYS_DIS],
-    }, {
-        .name = __stringify(CG_DISP1),
-        .set_addr = DISP_CG_SET1,
-        .clr_addr = DISP_CG_CLR1,
-        .sta_addr = DISP_CG_CON1,
-        .mask = 0x000003FF,
-        .ops = &general_cg_grp_ops,
-        .sys = &syss[SYS_DIS],
-    }, {
-        .name = __stringify(CG_IMAGE),
-        .set_addr = IMG_CG_SET,
-        .clr_addr = IMG_CG_CLR,
-        .sta_addr = IMG_CG_CON,
-        .mask = 0x00003FF5,
-        .ops = &general_cg_grp_ops,
-        .sys = &syss[SYS_ISP],
-    }, {
-        .name = __stringify(CG_MFG),
-        .set_addr = MFG_CG_SET,
-        .clr_addr = MFG_CG_CLR,
-        .sta_addr = MFG_CG_CON,
-        .mask = 0x0000000F,
-        .ops = &general_cg_grp_ops,
-        .sys = &syss[SYS_MFG],
-    }, {
-        .name = __stringify(CG_AUDIO),
-        .sta_addr = AUDIO_TOP_CON0,
-        .mask = 0x00000044,
-        .ops = &general_cg_grp_ops,
-    }, {
-        .name = __stringify(CG_VDEC0),
-        .set_addr = VDEC_CKEN_CLR,
-        .clr_addr = VDEC_CKEN_SET,
-        .mask = 0x00000001,
-        .ops = &vdec_cg_grp_ops,
-        .sys = &syss[SYS_VDE],
-    }, {
-        .name = __stringify(CG_VDEC1),
-        .set_addr = LARB_CKEN_CLR,
-        .clr_addr = LARB_CKEN_SET,
-        .mask = 0x00000001,
-        .ops = &vdec_cg_grp_ops,
-        .sys = &syss[SYS_VDE],
-    }, {
-        .name = __stringify(CG_VENC),
-        .set_addr = VENCSYS_CG_CLR,
-        .clr_addr = VENCSYS_CG_SET,
-        .sta_addr = VENCSYS_CG_CON,
-        .mask = 0x00000001,
-        .ops = &venc_cg_grp_ops,
-        .sys = &syss[SYS_VEN],
-    }
-};
-
-static struct cg_grp *id_to_grp(unsigned int id)
-{
-    return id < NR_GRPS ? grps + id : NULL;
-}
-
-static unsigned int general_grp_get_state_op(struct cg_grp *grp)
-{
-    volatile unsigned int val;
-    struct subsys *sys = grp->sys;
-
-    if (sys && !sys->state) {
-        return 0;
-    }
-
-    val = clk_readl(grp->sta_addr);
-    val = (~val) & (grp->mask); 
-    return val;
-}
-
-static int general_grp_dump_regs_op(struct cg_grp *grp, unsigned int *ptr)
-{
-    *(ptr) = clk_readl(grp->sta_addr);
-    return 1;
-}
-
-static struct cg_grp_ops general_cg_grp_ops = {
-    .get_state = general_grp_get_state_op,
-    .dump_regs = general_grp_dump_regs_op,
-};
-
-static unsigned int vdec_grp_get_state_op(struct cg_grp *grp)
-{
-    volatile unsigned int val = clk_readl(grp->set_addr);
-    val &= grp->mask; 
-    return val;
-}
-
-static int vdec_grp_dump_regs_op(struct cg_grp *grp, unsigned int *ptr)
-{
-    *(ptr) = clk_readl(grp->set_addr);
-    *(++ptr) = clk_readl(grp->clr_addr);
-    return 2;
-}
-
-static struct cg_grp_ops vdec_cg_grp_ops = {
-    .get_state = vdec_grp_get_state_op,
-    .dump_regs = vdec_grp_dump_regs_op,
-};
-
-static unsigned int venc_grp_get_state_op(struct cg_grp *grp)
-{
-    volatile unsigned int val = clk_readl(grp->sta_addr);
-    val &= grp->mask; 
-    return val;
-}
-
-static struct cg_grp_ops venc_cg_grp_ops = {
-    .get_state = venc_grp_get_state_op,
-    .dump_regs = general_grp_dump_regs_op,
-};
-
-static void clkmux_enable_locked(struct clkmux *mux);
-static void clkmux_disable_locked(struct clkmux *mux);
-
-static int enable_pll_locked(struct pll *pll);
-static int disable_pll_locked(struct pll *pll);
-
-static int enable_subsys_locked(struct subsys *sys);
-static int disable_subsys_locked(struct subsys *sys, int force_off);
-
-static int power_prepare_locked(struct cg_grp *grp)
-{
-    int err = 0;
-    if (grp->sys) {
-        err = enable_subsys_locked(grp->sys);
-    }
-    return err;
-}
-
-static int power_finish_locked(struct cg_grp *grp)
-{
-    int err = 0;
-    if (grp->sys) {
-        err = disable_subsys_locked(grp->sys, 0);
-    }
-    return err;
-}
-
-static int enable_clock_locked(struct cg_clk *clk)
-{
-    struct cg_grp *grp = clk->grp;
-    unsigned int local_state;
-#ifdef STATE_CHECK_DEBUG
-    unsigned int reg_state;
-#endif
-    int err;
-
-    clk->cnt++;
-    if (clk->cnt > 1) {
-        return 0;
-    }
-
-    local_state = clk->state;
-
-#ifdef STATE_CHECK_DEBUG
-    reg_state = grp->ops->get_state(grp, clk);
-    //BUG_ON(local_state != reg_state);
-#endif
-
-    if (clk->mux) {
-        clkmux_enable_locked(clk->mux);
-    }
-
-    err = power_prepare_locked(grp);
-    BUG_ON(err);
-
-    if (clk->parent) {
-        enable_clock_locked(clk->parent);
-    }
-
-    if (local_state == PWR_ON) {
-        return 0;
-    }
-
-    clk->ops->enable(clk);
-
-    clk->state = PWR_ON;
-    grp->state |= clk->mask;
-
-    return 0;
-}
-
-static int disable_clock_locked(struct cg_clk *clk)
-{
-    struct cg_grp *grp = clk->grp; 
-    unsigned int local_state;
-#ifdef STATE_CHECK_DEBUG
-    unsigned int reg_state;
-#endif
-    int err;
-
-    BUG_ON(!clk->cnt);
-    clk->cnt--;
-    if (clk->cnt > 0) {
-        return 0;
-    }
-
-    local_state = clk->state;
-
-#ifdef STATE_CHECK_DEBUG
-    reg_state = grp->ops->get_state(grp, clk);
-    //BUG_ON(local_state != reg_state);
-#endif
-
-    if (local_state == PWR_DOWN) {
-        return 0;
-    }
-
-    if (clk->force_on) {
-        return 0;
-    }
-
-    clk->ops->disable(clk);
-
-    clk->state = PWR_DOWN;
-    grp->state &= ~(clk->mask);
-
-    if (clk->parent) {
-        disable_clock_locked(clk->parent);
-    }
-
-    err = power_finish_locked(grp);
-    BUG_ON(err);
-
-    if (clk->mux) {
-        clkmux_disable_locked(clk->mux);
-    }
-
-    return 0;
-}
-
-int enable_clock(int id, char *name)
-{
-    int err;
-    unsigned long flags;
-    struct cg_clk *clk = id_to_clk(id);
-
-    BUG_ON(!initialized);
-    BUG_ON(!clk);
-    BUG_ON(!clk->grp);
-    BUG_ON(!clk->ops->check_validity(clk));
-
-    clkmgr_lock(flags);
-    err = enable_clock_locked(clk);
-    clkmgr_unlock(flags);
-
-    return err;
-}
-EXPORT_SYMBOL(enable_clock);
-
-
-int disable_clock(int id, char *name)
-{
-    int err;
-    unsigned long flags;
-    struct cg_clk *clk = id_to_clk(id);
-
-    BUG_ON(!initialized);
-    BUG_ON(!clk);
-    BUG_ON(!clk->grp);
-    BUG_ON(!clk->ops->check_validity(clk));
-
-    clkmgr_lock(flags);
-    err = disable_clock_locked(clk);
-    clkmgr_unlock(flags);
-
-    return err;
-}
-EXPORT_SYMBOL(disable_clock);
-
-static void clk_set_force_on_locked(struct cg_clk *clk)
-{
-    clk->force_on = 1;
-}
-
-static void clk_clr_force_on_locked(struct cg_clk *clk)
-{
-    clk->force_on = 0;
-}
-
-void clk_set_force_on(int id)
-{
-    unsigned long flags;
-    struct cg_clk *clk = id_to_clk(id);
-
-    BUG_ON(!initialized);
-    BUG_ON(!clk);
-    BUG_ON(!clk->grp);
-    BUG_ON(!clk->ops->check_validity(clk));
-
-    clkmgr_lock(flags);
-    clk_set_force_on_locked(clk);
-    clkmgr_unlock(flags);
-}
-EXPORT_SYMBOL(clk_set_force_on);
-
-void clk_clr_force_on(int id)
-{
-    unsigned long flags;
-    struct cg_clk *clk = id_to_clk(id);
-
-    BUG_ON(!initialized);
-    BUG_ON(!clk);
-    BUG_ON(!clk->grp);
-    BUG_ON(!clk->ops->check_validity(clk));
-
-    clkmgr_lock(flags);
-    clk_clr_force_on_locked(clk);
-    clkmgr_unlock(flags);
-}
-EXPORT_SYMBOL(clk_clr_force_on);
-
-int clk_is_force_on(int id)
-{
-    struct cg_clk *clk = id_to_clk(id);
-
-    BUG_ON(!initialized);
-    BUG_ON(!clk);
-    BUG_ON(!clk->grp);
-    BUG_ON(!clk->ops->check_validity(clk));
-
-    return clk->force_on;
-}
-
-int grp_dump_regs(int id, unsigned int *ptr)
-{
-    struct cg_grp *grp = id_to_grp(id);    
-
-    //BUG_ON(!initialized);
-    BUG_ON(!grp);
-
-    return grp->ops->dump_regs(grp, ptr);
-}
-EXPORT_SYMBOL(grp_dump_regs);
-
-const char* grp_get_name(int id)
-{
-    struct cg_grp *grp = id_to_grp(id);    
-
-    //BUG_ON(!initialized);
-    BUG_ON(!grp);
-
-    return grp->name;
-}
-
-void print_grp_regs(void)
-{
-    int i;
-    int cnt;
-    unsigned int value[2];
-    const char *name;
-
-    for (i = 0; i < NR_GRPS; i++) {
-        name = grp_get_name(i);
-        cnt = grp_dump_regs(i, value);
-        if (cnt == 1) {
-            clk_info("[%02d][%-8s]=[0x%08x]\n", i, name, value[0]);
+    struct list_head *pos = NULL;
+    struct stat_node *node = NULL;
+    int len = strlen(name);
+    int new_node = 1;
+
+    list_for_each(pos, head) {
+        node = list_entry(pos, struct stat_node, link);
+        if (!strncmp(node->name, name, len)) {
+            new_node = 0;
+            break;
+        }    
+    }    
+
+    if (new_node) {
+        node = NULL;
+        node = kzalloc(sizeof(*node) + len + 1, GFP_ATOMIC);   
+        if (!node) {
+            clk_err("[%s]: malloc stat node for %s fail\n", __func__, name);
+            return;
         } else {
-            clk_info("[%02d][%-8s]=[0x%08x][0x%08x]\n", i, name, value[0], value[1]);
-        }
-    }
+            memcpy(node->name, name, len);
+            list_add_tail(&node->link, head);
+        }    
+    }    
+
+    if (op) {
+        node->cnt_on++;
+    } else {
+        node->cnt_off++;
+    }    
 }
-
-static struct clkmux_ops clkmux_ops;
-static struct clkmux_ops audio_clkmux_ops;
-
-static struct clkmux muxs[NR_MUXS] = {
-    {
-        .name = __stringify(MUX_MFG),
-        .base_addr = CLK_CFG_0,
-        .sel_mask = 0x00070000,
-        .pdn_mask = 0x00800000,
-        .offset = 16,
-        .nr_inputs = 8,
-        .ops = &clkmux_ops,
-        .pll = &plls[MMPLL],
-    }, {
-        .name = __stringify(MUX_IRDA),
-        .base_addr = CLK_CFG_0,
-        .sel_mask = 0x03000000,
-        .pdn_mask = 0x80000000,
-        .offset = 24,
-        .nr_inputs = 3,
-        .ops = &clkmux_ops,
-    }, {
-        .name = __stringify(MUX_CAM),
-        .base_addr = CLK_CFG_1,
-        .sel_mask = 0x0000000F,
-        .pdn_mask = 0x00000080,
-        .offset = 0,
-        .nr_inputs = 11,
-        .ops = &clkmux_ops,
-        .pll = &plls[MAINPLL],
-    }, {
-        .name = __stringify(MUX_AUDINTBUS),
-        .base_addr = CLK_CFG_1,
-        .sel_mask = 0x00000300,
-        .pdn_mask = 0x00008000,
-        .offset = 8,
-        .nr_inputs = 3,
-        .ops = &audio_clkmux_ops,
-        .siblings = &muxs[MT_MUX_AUDIO],
-    }, {
-        .name = __stringify(MUX_JPG),
-        .base_addr = CLK_CFG_1,
-        .sel_mask = 0x00070000,
-        .pdn_mask = 0x00800000,
-        .offset = 16,
-        .nr_inputs = 5,
-        .ops = &clkmux_ops,
-        .pll = &plls[MAINPLL],
-    }, {
-        .name = __stringify(MUX_DISP),
-        .base_addr = CLK_CFG_1,
-        .sel_mask = 0x07000000,
-        .pdn_mask = 0x80000000,
-        .offset = 24,
-        .nr_inputs = 4,
-        .ops = &clkmux_ops,
-    }, {
-        .name = __stringify(MUX_MSDC1),
-        .base_addr = CLK_CFG_2,
-        .sel_mask = 0x00000007,
-        .pdn_mask = 0x00000080,
-        .offset = 0,
-        .nr_inputs = 6,
-        .ops = &clkmux_ops,
-        .pll = &plls[MSDCPLL],
-    }, {
-        .name = __stringify(MUX_MSDC2),
-        .base_addr = CLK_CFG_2,
-        .sel_mask = 0x00000700,
-        .pdn_mask = 0x00008000,
-        .offset = 8,
-        .nr_inputs = 6,
-        .ops = &clkmux_ops,
-        .pll = &plls[MSDCPLL],
-    }, {
-        .name = __stringify(MUX_MSDC3),
-        .base_addr = CLK_CFG_2,
-        .sel_mask = 0x00070000,
-        .pdn_mask = 0x00800000,
-        .offset = 16,
-        .nr_inputs = 6,
-        .ops = &clkmux_ops,
-        .pll = &plls[MSDCPLL],
-    }, {
-        .name = __stringify(MUX_MSDC4),
-        .base_addr = CLK_CFG_2,
-        .sel_mask = 0x07000000,
-        .pdn_mask = 0x80000000,
-        .offset = 24,
-        .nr_inputs = 6,
-        .ops = &clkmux_ops,
-        .pll = &plls[MSDCPLL],
-    }, {
-        .name = __stringify(MUX_USB20),
-        .base_addr = CLK_CFG_3,
-        .sel_mask = 0x00000003,
-        .pdn_mask = 0x00000080,
-        .offset = 0,
-        .nr_inputs = 3,
-        .ops = &clkmux_ops,
-    }, {
-        .name = __stringify(MUX_HYD),
-        .base_addr = CLK_CFG_4,
-        .sel_mask = 0x00000007,
-        .pdn_mask = 0x00000080,
-        .offset = 0,
-        .nr_inputs = 8,
-        .ops = &clkmux_ops,
-        .pll = &plls[MMPLL],
-    }, {
-        .name = __stringify(MUX_VENC),
-        .base_addr = CLK_CFG_4,
-        .sel_mask = 0x00000700,
-        .pdn_mask = 0x00008000,
-        .offset = 8,
-        .nr_inputs = 8,
-        .ops = &clkmux_ops,
-        .pll = &plls[MMPLL],
-    }, {
-        .name = __stringify(MUX_SPI),
-        .base_addr = CLK_CFG_4,
-        .sel_mask = 0x00070000,
-        .pdn_mask = 0x00800000,
-        .offset = 16,
-        .nr_inputs = 6,
-        .ops = &clkmux_ops,
-    }, {
-        .name = __stringify(MUX_UART),
-        .base_addr = CLK_CFG_4,
-        .sel_mask = 0x03000000,
-        .pdn_mask = 0x80000000,
-        .offset = 24,
-        .nr_inputs = 2,
-        .ops = &clkmux_ops,
-    }, {
-        .name = __stringify(MUX_CAMTG),
-        .base_addr = CLK_CFG_6,
-        .sel_mask = 0x00000700,
-        .pdn_mask = 0x00008000,
-        .offset = 8,
-        .nr_inputs = 6,
-        .ops = &clkmux_ops,
-#if 0
-    }, {
-        .name = __stringify(MUX_FD),
-        .base_addr = CLK_CFG_6,
-        .sel_mask = 0x00070000,
-        .pdn_mask = 0x00800000,
-        .offset = 16,
-        .nr_inputs = 5,
-        .ops = &clkmux_ops,
 #endif
-    }, {
-        .name = __stringify(MUX_AUDIO),
-        .base_addr = CLK_CFG_6,
-        .sel_mask = 0x03000000,
-        .pdn_mask = 0x80000000,
-        .offset = 24,
-        .nr_inputs = 2,
-        .ops = &audio_clkmux_ops,
-    }, {
-        .name = __stringify(MUX_VDEC),
-        .base_addr = CLK_CFG_7,
-        .sel_mask = 0x00000F00,
-        .pdn_mask = 0x00008000,
-        .offset = 8,
-        .nr_inputs = 10,
-        .ops = &clkmux_ops,
-        .pll = &plls[MAINPLL],
-    }, {
-        .name = __stringify(MUX_DPILVDS),
-        .base_addr = CLK_CFG_7,
-        .sel_mask = 0x07000000,
-        .pdn_mask = 0x80000000,
-        .offset = 24,
-        .nr_inputs = 5,
-        .ops = &clkmux_ops,
-    }, {
-        .name = __stringify(MUX_PMICSPI),
-        .base_addr = CLK_CFG_8,
-        .sel_mask = 0x00000007,
-        .pdn_mask = 0x00000080,
-        .offset = 0,
-        .nr_inputs = 8,
-        .ops = &clkmux_ops,
-    }, {
-        .name = __stringify(MUX_MSDC0),
-        .base_addr = CLK_CFG_8,
-        .sel_mask = 0x00000700,
-        .pdn_mask = 0x00008000,
-        .offset = 8,
-        .nr_inputs = 6,
-        .ops = &clkmux_ops,
-        .pll = &plls[MSDCPLL],
-    }, {
-        .name = __stringify(MUX_SMI_MFG_AS),
-        .base_addr = CLK_CFG_8,
-        .sel_mask = 0x00030000,
-        .pdn_mask = 0x00800000,
-        .offset = 16,
-        .nr_inputs = 4,
-        .ops = &clkmux_ops,
-    }
-};
 
 
-static void clkmux_sel_op(struct clkmux *mux, unsigned clksrc)
+
+/************************************************
+ **********    function declaration    **********
+ ************************************************/
+
+static int pll_enable_locked(struct pll *pll);
+static int pll_disable_locked(struct pll *pll);
+
+static int sys_enable_locked(struct subsys *sys);
+static int sys_disable_locked(struct subsys *sys, int force_off);
+
+static void mux_enable_locked(struct clkmux *mux);
+static void mux_disable_locked(struct clkmux *mux);
+
+static int clk_enable_locked(struct cg_clk *clk);
+static int clk_disable_locked(struct cg_clk *clk);
+
+
+static inline int pll_enable_internal(struct pll *pll, char *name)
 {
-    volatile unsigned int reg;
-
-    reg = clk_readl(mux->base_addr);
-
-    reg &= ~(mux->sel_mask);
-    reg |= (clksrc << mux->offset) & mux->sel_mask;
-
-    clk_writel(mux->base_addr, reg);
+    int err;
+    err = pll_enable_locked(pll);
+#ifdef CONFIG_CLKMGR_STAT
+    update_stat_locked(&pll->head, name, 1);
+#endif
+    return err;
 }
 
-static void clkmux_enable_op(struct clkmux *mux)
+static inline int pll_disable_internal(struct pll *pll, char *name)
 {
-    clk_clrl(mux->base_addr, mux->pdn_mask); 
+    int err;
+    err = pll_disable_locked(pll);
+#ifdef CONFIG_CLKMGR_STAT
+    update_stat_locked(&pll->head, name, 0);
+#endif
+    return err;
 }
 
-static void clkmux_disable_op(struct clkmux *mux)
+
+static inline int subsys_enable_internal(struct subsys *sys, char *name)
 {
-    clk_setl(mux->base_addr, mux->pdn_mask); 
+    int err;
+    err = sys_enable_locked(sys);
+#ifdef CONFIG_CLKMGR_STAT
+    //update_stat_locked(&sys->head, name, 1);
+#endif
+    return err;
 }
 
-static struct clkmux_ops clkmux_ops = {
-    .sel = clkmux_sel_op,
-    .enable = clkmux_enable_op, 
-    .disable = clkmux_disable_op,
-};
-
-static void audio_clkmux_enable_op(struct clkmux *mux)
+static inline int subsys_disable_internal(struct subsys *sys, int force_off, char *name)
 {
-    disable_infra_dcm(); 
-    clk_clrl(mux->base_addr, mux->pdn_mask); 
-    restore_infra_dcm();
-};
-
-static struct clkmux_ops audio_clkmux_ops = {
-    .sel = clkmux_sel_op,
-    .enable = audio_clkmux_enable_op, 
-    .disable = clkmux_disable_op,
-};
-
-static struct clkmux *id_to_mux(unsigned int id)
-{
-    return id < NR_MUXS ? muxs + id : NULL;
+    int err;
+    err = sys_disable_locked(sys, force_off);
+#ifdef CONFIG_CLKMGR_STAT
+    //update_stat_locked(&sys->head, name, 0);
+#endif
+    return err;
 }
 
-static void clkmux_sel_locked(struct clkmux *mux, unsigned int clksrc)
+
+static inline void mux_enable_internal(struct clkmux *mux, char *name)
 {
-    mux->ops->sel(mux, clksrc);
+    mux_enable_locked(mux);
+#ifdef CONFIG_CLKMGR_STAT
+    update_stat_locked(&mux->head, name, 1);
+#endif
 }
 
-static void clkmux_enable_locked(struct clkmux *mux)
+static inline void mux_disable_internal(struct clkmux *mux, char *name)
 {
-    mux->cnt++;
-    if (mux->cnt > 1) {
-        return;
-    }
-
-    if (mux->pll) {
-        enable_pll_locked(mux->pll);
-    }
-
-    if (mux->parent) {
-        clkmux_enable_locked(mux->parent);
-    }
-
-    mux->ops->enable(mux);
-
-    if (mux->siblings) {
-        clkmux_enable_locked(mux->siblings);
-    }
+    mux_disable_locked(mux);
+#ifdef CONFIG_CLKMGR_STAT
+    update_stat_locked(&mux->head, name, 0);
+#endif
 }
 
-static void clkmux_disable_locked(struct clkmux *mux)
+
+static inline int clk_enable_internal(struct cg_clk *clk, char *name)
 {
-    BUG_ON(!mux->cnt);
-    mux->cnt--;
-    if (mux->cnt > 0) {
-        return;
-    }
-
-    mux->ops->disable(mux);
-
-    if (mux->siblings) {
-        clkmux_disable_locked(mux->siblings);
-    }
-
-    if (mux->parent) {
-        clkmux_disable_locked(mux->parent);
-    }
-
-    if (mux->pll) {
-        disable_pll_locked(mux->pll);
-    }
+    int err;
+    err = clk_enable_locked(clk);
+#ifdef CONFIG_CLKMGR_STAT
+    update_stat_locked(&clk->head, name, 1);
+#endif
+    return err;
 }
 
-int clkmux_sel(int id, unsigned int clksrc, char *name)
+static inline int clk_disable_internal(struct cg_clk *clk, char *name)
 {
-    unsigned long flags;
-    struct clkmux *mux = id_to_mux(id);
-
-    BUG_ON(!initialized); 
-    BUG_ON(!mux);
-    BUG_ON(clksrc >= mux->nr_inputs);
-    
-    clkmgr_lock(flags); 
-    clkmux_sel_locked(mux, clksrc);
-    clkmgr_unlock(flags);
-
-    return 0;
+    int err;
+    err = clk_disable_locked(clk);
+#ifdef CONFIG_CLKMGR_STAT
+    update_stat_locked(&clk->head, name, 0);
+#endif
+    return err;
 }
-EXPORT_SYMBOL(clkmux_sel);
 
+
+
+/************************************************
+ **********          pll part          **********
+ ************************************************/
 
 #define PLL_TYPE_SDM    0
 #define PLL_TYPE_LC     1
-
 
 #define HAVE_RST_BAR    (0x1 << 0)
 #define HAVE_PLL_HP     (0x1 << 1)
@@ -1246,7 +518,6 @@ static struct pll *id_to_pll(unsigned int id)
 
 #define PLL_FBKDIV_MASK     0x00007F00
 #define PLL_FBKDIV_OFFSET   0x8
-
 
 static int pll_get_state_op(struct pll *pll)
 {
@@ -1515,22 +786,25 @@ static int get_pll_state_locked(struct pll *pll)
     }
 }
 
-static int enable_pll_locked(struct pll *pll)
+static int pll_enable_locked(struct pll *pll)
 {
     pll->cnt++;
     if (pll->cnt > 1) {
         return 0;
     }
 
-    pll->ops->enable(pll); 
-    pll->state = PWR_ON;
+    if (pll->state == PWR_DOWN) {
+        pll->ops->enable(pll); 
+        pll->state = PWR_ON;
+    }
+
     if (pll->ops->hp_enable) {
         pll->ops->hp_enable(pll);
     }
     return 0;
 }
 
-static int disable_pll_locked(struct pll *pll)
+static int pll_disable_locked(struct pll *pll)
 {
     BUG_ON(!pll->cnt);
     pll->cnt--;
@@ -1538,13 +812,17 @@ static int disable_pll_locked(struct pll *pll)
         return 0;
     }
 
-    pll->ops->disable(pll); 
-    pll->state = PWR_DOWN;
+    if (pll->state == PWR_ON) {
+        pll->ops->disable(pll); 
+        pll->state = PWR_DOWN;
+    }
+
     if (pll->ops->hp_disable) {
         pll->ops->hp_disable(pll);
     }
     return 0;
 }
+
 
 static int pll_fsel_locked(struct pll *pll, unsigned int value)
 {
@@ -1579,9 +857,10 @@ int enable_pll(int id, char *name)
 
     BUG_ON(!initialized);
     BUG_ON(!pll);
+    BUG_ON(!name);
 
     clkmgr_lock(flags);
-    err = enable_pll_locked(pll);
+    err = pll_enable_internal(pll, name);
     clkmgr_unlock(flags);
 
     return err;
@@ -1596,9 +875,10 @@ int disable_pll(int id, char *name)
 
     BUG_ON(!initialized);
     BUG_ON(!pll);
+    BUG_ON(!name);
 
     clkmgr_lock(flags);
-    err = disable_pll_locked(pll);
+    err = pll_disable_internal(pll, name);
     clkmgr_unlock(flags);
 
     return err;
@@ -1621,6 +901,78 @@ int pll_fsel(int id, unsigned int value)
     return err;
 }
 EXPORT_SYMBOL(pll_fsel);
+
+
+int pll_hp_switch_on(int id, int hp_on)
+{
+    int err = 0;
+    unsigned long flags;
+    int old_value;
+    struct pll *pll = id_to_pll(id);
+
+    BUG_ON(!initialized);
+    BUG_ON(!pll);
+
+    if (pll->type != PLL_TYPE_SDM) {
+        err = -EINVAL;
+        goto out;
+    }
+
+    clkmgr_lock(flags);
+    old_value = pll->hp_switch;
+    if (old_value == 0) {
+        pll->hp_switch = 1;
+        if (hp_on) {
+            err = pll->ops->hp_enable(pll);
+        }
+    }
+    clkmgr_unlock(flags);
+
+#if 0
+    clk_info("[%s]hp_switch(%d->%d), hp_on=%d\n", 
+            __func__, old_value, pll->hp_switch, hp_on);
+#endif
+
+out:
+    return err;
+}
+EXPORT_SYMBOL(pll_hp_switch_on);
+
+int pll_hp_switch_off(int id, int hp_off)
+{
+    int err = 0;
+    unsigned long flags;
+    int old_value;
+    struct pll *pll = id_to_pll(id);
+
+    BUG_ON(!initialized);
+    BUG_ON(!pll);
+
+    if (pll->type != PLL_TYPE_SDM) {
+        err = -EINVAL;
+        goto out;
+    }
+
+    clkmgr_lock(flags);
+    old_value = pll->hp_switch;
+    if (old_value == 1) {
+        if (hp_off) {
+            err = pll->ops->hp_disable(pll);
+        }
+        pll->hp_switch = 0;
+    }
+    clkmgr_unlock(flags);
+
+#if 0
+    clk_info("[%s]hp_switch(%d->%d), hp_off=%d\n", 
+            __func__, old_value, pll->hp_switch, hp_off);
+#endif
+
+out:
+    return err;
+}
+EXPORT_SYMBOL(pll_hp_switch_off);
+
 
 int pll_dump_regs(int id, unsigned int *ptr)
 {
@@ -1685,124 +1037,15 @@ void clksq2_hw2sw(void)
 }
 EXPORT_SYMBOL(clksq2_hw2sw);
 
-static DEFINE_MUTEX(larb_monitor_lock);
-static LIST_HEAD(larb_monitor_handlers);
-
-void register_larb_monitor(struct larb_monitor *handler)
-{
-	struct list_head *pos;
-
-	mutex_lock(&larb_monitor_lock);
-	list_for_each(pos, &larb_monitor_handlers) {
-		struct larb_monitor *l;
-		l = list_entry(pos, struct larb_monitor, link);
-		if (l->level > handler->level)
-			break;
-	}
-	list_add_tail(&handler->link, pos);
-	mutex_unlock(&larb_monitor_lock);
-}
-EXPORT_SYMBOL(register_larb_monitor);
 
 
-void unregister_larb_monitor(struct larb_monitor *handler)
-{
-	mutex_lock(&larb_monitor_lock);
-	list_del(&handler->link);
-	mutex_unlock(&larb_monitor_lock);
-}
-EXPORT_SYMBOL(unregister_larb_monitor);
-
-static void larb_clk_prepare(int larb_idx)
-{
-    switch (larb_idx) {
-    case MT_LARB0:
-        /* ven */
-        clk_writel(VENCSYS_CG_SET, 0x1);
-        break;
-    case MT_LARB1:
-        /* vde */
-        clk_writel(LARB_CKEN_SET, 0x1);
-        break;
-    case MT_LARB2:
-        /* display */
-        clk_writel(DISP_CG_CLR0, 0x1);
-        break;
-    case MT_LARB3:
-        /* isp */
-        clk_writel(IMG_CG_CLR, 0x1);
-        break;
-    case MT_LARB4:
-        /* isp */
-        clk_writel(IMG_CG_CLR, 0x4);
-        break;
-    default:
-        BUG();
-    }
-}
-
-static void larb_clk_finish(int larb_idx)
-{
-    switch (larb_idx) {
-    case MT_LARB0:
-        /* ven */
-        clk_writel(VENCSYS_CG_CLR, 0x1);
-        break;
-    case MT_LARB1:
-        /* vde */
-        clk_writel(LARB_CKEN_CLR, 0x1);
-        break;
-    case MT_LARB2:
-        /* display */
-        clk_writel(DISP_CG_SET0, 0x1);
-        break;
-    case MT_LARB3:
-        /* isp */
-        clk_writel(IMG_CG_SET, 0x1);
-        break;
-    case MT_LARB4:
-        /* isp */
-        clk_writel(IMG_CG_SET, 0x4);
-        break;
-    default:
-        BUG();
-    }
-}
-
-static void larb_backup(int larb_idx)
-{
-	struct larb_monitor *pos;
-
-	//clk_info("[%s]: start to backup larb%d\n", __func__, larb_idx);
-    larb_clk_prepare(larb_idx);
-
-	list_for_each_entry(pos, &larb_monitor_handlers, link) {
-		if (pos->backup != NULL)
-			pos->backup(pos, larb_idx);
-	}
-
-    larb_clk_finish(larb_idx);
-}
-
-static void larb_restore(int larb_idx)
-{
-	struct larb_monitor *pos;
-
-	//clk_info("[%s]: start to restore larb%d\n", __func__, larb_idx);
-    larb_clk_prepare(larb_idx);
-
-	list_for_each_entry(pos, &larb_monitor_handlers, link) {
-		if (pos->restore != NULL)
-			pos->restore(pos, larb_idx);
-	}
-
-    larb_clk_finish(larb_idx);
-}
+/************************************************
+ **********         subsys part        **********
+ ************************************************/
 
 #define SYS_TYPE_MODEM    0 
 #define SYS_TYPE_MEDIA    1
 #define SYS_TYPE_OTHER    2
-
 
 static struct subsys_ops md1_sys_ops;
 static struct subsys_ops md2_sys_ops;
@@ -1863,7 +1106,7 @@ static struct subsys syss[NR_SYSS] = {
     }, {
         .name = __stringify(SYS_ISP),
         .type = SYS_TYPE_MEDIA,
-        .default_sta = PWR_ON,
+        .default_sta = PWR_DOWN,
         .sta_mask = 1U << 5,
         .ctl_addr = SPM_ISP_PWR_CON,
         //.pwr_ctrl = spm_mtcmos_ctrl_isp,
@@ -1902,6 +1145,12 @@ static struct subsys syss[NR_SYSS] = {
         .mux = &muxs[MT_MUX_VDEC],
     }
 };
+
+
+static void larb_backup(int larb_idx);
+static void larb_restore(int larb_idx);
+
+
 
 static struct subsys *id_to_sys(unsigned int id)
 {
@@ -2121,6 +1370,9 @@ static struct subsys_ops vde_sys_ops = {
     .dump_regs = sys_dump_regs_op,
 };
 
+
+
+
 static int get_sys_state_locked(struct subsys* sys)
 {
     if (likely(initialized)) {
@@ -2146,9 +1398,9 @@ int subsys_is_on(int id)
 }
 EXPORT_SYMBOL(subsys_is_on);
 
-#define STATE_CHECK_DEBUG
+//#define STATE_CHECK_DEBUG
 
-static int enable_subsys_locked(struct subsys *sys)
+static int sys_enable_locked(struct subsys *sys)
 {
     int err;
     int local_state = sys->state; //get_subsys_local_state(sys);
@@ -2163,7 +1415,7 @@ static int enable_subsys_locked(struct subsys *sys)
     }
 
     if (sys->mux) {
-        clkmux_enable_locked(sys->mux);
+        mux_enable_internal(sys->mux, "sys");
     }
 
     //err = sys->pwr_ctrl(STA_POWER_ON);
@@ -2177,7 +1429,7 @@ static int enable_subsys_locked(struct subsys *sys)
     return err;
 }
 
-static int disable_subsys_locked(struct subsys *sys, int force_off)
+static int sys_disable_locked(struct subsys *sys, int force_off)
 {
     int err;
     int local_state = sys->state;//get_subsys_local_state(sys);
@@ -2212,7 +1464,7 @@ static int disable_subsys_locked(struct subsys *sys, int force_off)
     }
 
     if (sys->mux) {
-        clkmux_disable_locked(sys->mux);
+        mux_disable_internal(sys->mux, "sys");
     }
 
     return err;
@@ -2228,7 +1480,7 @@ int enable_subsys(int id, char *name)
     BUG_ON(!sys);
 
     clkmgr_lock(flags);
-    err = enable_subsys_locked(sys);
+    err = subsys_enable_internal(sys, name);
     clkmgr_unlock(flags);
 
     return err;
@@ -2245,7 +1497,7 @@ int disable_subsys(int id, char *name)
     BUG_ON(!sys);
 
     clkmgr_lock(flags);
-    err = disable_subsys_locked(sys, 0);
+    err = subsys_disable_internal(sys, 0, name);
     clkmgr_unlock(flags);
 
     return err;
@@ -2262,7 +1514,7 @@ int disable_subsys_force(int id, char *name)
     BUG_ON(!sys);
 
     clkmgr_lock(flags);
-    err = disable_subsys_locked(sys, 1);
+    err = subsys_disable_internal(sys, 1, name);
     clkmgr_unlock(flags);
 
     return err;
@@ -2302,7 +1554,7 @@ int md_power_on(int id)
     BUG_ON(sys->type != SYS_TYPE_MODEM);
 
     clkmgr_lock(flags);
-    err = enable_subsys_locked(sys);
+    err = subsys_enable_internal(sys, "md");
     clkmgr_unlock(flags);
 
     WARN_ON(err);
@@ -2341,7 +1593,7 @@ int md_power_off(int id, unsigned int timeout)
     }
     
     clkmgr_lock(flags);
-    err = disable_subsys_locked(sys, 0);
+    err = subsys_disable_internal(sys, 0, "md");
     clkmgr_unlock(flags);
 
     WARN_ON(err);
@@ -2350,6 +1602,446 @@ int md_power_off(int id, unsigned int timeout)
 
 }
 EXPORT_SYMBOL(md_power_off);
+
+
+static DEFINE_MUTEX(larb_monitor_lock);
+static LIST_HEAD(larb_monitor_handlers);
+
+void register_larb_monitor(struct larb_monitor *handler)
+{
+	struct list_head *pos;
+
+	mutex_lock(&larb_monitor_lock);
+	list_for_each(pos, &larb_monitor_handlers) {
+		struct larb_monitor *l;
+		l = list_entry(pos, struct larb_monitor, link);
+		if (l->level > handler->level)
+			break;
+	}
+	list_add_tail(&handler->link, pos);
+	mutex_unlock(&larb_monitor_lock);
+}
+EXPORT_SYMBOL(register_larb_monitor);
+
+
+void unregister_larb_monitor(struct larb_monitor *handler)
+{
+	mutex_lock(&larb_monitor_lock);
+	list_del(&handler->link);
+	mutex_unlock(&larb_monitor_lock);
+}
+EXPORT_SYMBOL(unregister_larb_monitor);
+
+static void larb_clk_prepare(int larb_idx)
+{
+    switch (larb_idx) {
+    case MT_LARB0:
+        /* ven */
+        clk_writel(VENCSYS_CG_SET, 0x1);
+        break;
+    case MT_LARB1:
+        /* vde */
+        clk_writel(LARB_CKEN_SET, 0x1);
+        break;
+    case MT_LARB2:
+        /* display */
+        clk_writel(DISP_CG_CLR0, 0x1);
+        break;
+    case MT_LARB3:
+        /* isp */
+        clk_writel(IMG_CG_CLR, 0x1);
+        break;
+    case MT_LARB4:
+        /* isp */
+        clk_writel(IMG_CG_CLR, 0x4);
+        break;
+    default:
+        BUG();
+    }
+}
+
+static void larb_clk_finish(int larb_idx)
+{
+    switch (larb_idx) {
+    case MT_LARB0:
+        /* ven */
+        clk_writel(VENCSYS_CG_CLR, 0x1);
+        break;
+    case MT_LARB1:
+        /* vde */
+        clk_writel(LARB_CKEN_CLR, 0x1);
+        break;
+    case MT_LARB2:
+        /* display */
+        clk_writel(DISP_CG_SET0, 0x1);
+        break;
+    case MT_LARB3:
+        /* isp */
+        clk_writel(IMG_CG_SET, 0x1);
+        break;
+    case MT_LARB4:
+        /* isp */
+        clk_writel(IMG_CG_SET, 0x4);
+        break;
+    default:
+        BUG();
+    }
+}
+
+static void larb_backup(int larb_idx)
+{
+	struct larb_monitor *pos;
+
+	//clk_info("[%s]: start to backup larb%d\n", __func__, larb_idx);
+    larb_clk_prepare(larb_idx);
+
+	list_for_each_entry(pos, &larb_monitor_handlers, link) {
+		if (pos->backup != NULL)
+			pos->backup(pos, larb_idx);
+	}
+
+    larb_clk_finish(larb_idx);
+}
+
+static void larb_restore(int larb_idx)
+{
+	struct larb_monitor *pos;
+
+	//clk_info("[%s]: start to restore larb%d\n", __func__, larb_idx);
+    larb_clk_prepare(larb_idx);
+
+	list_for_each_entry(pos, &larb_monitor_handlers, link) {
+		if (pos->restore != NULL)
+			pos->restore(pos, larb_idx);
+	}
+
+    larb_clk_finish(larb_idx);
+}
+
+
+
+/************************************************
+ **********         clkmux part        **********
+ ************************************************/
+
+static struct clkmux_ops clkmux_ops;
+static struct clkmux_ops audio_clkmux_ops;
+
+static struct clkmux muxs[NR_MUXS] = {
+    {
+        .name = __stringify(MUX_MFG),
+        .base_addr = CLK_CFG_0,
+        .sel_mask = 0x00070000,
+        .pdn_mask = 0x00800000,
+        .offset = 16,
+        .nr_inputs = 8,
+        .ops = &clkmux_ops,
+        .pll = &plls[MMPLL],
+    }, {
+        .name = __stringify(MUX_IRDA),
+        .base_addr = CLK_CFG_0,
+        .sel_mask = 0x03000000,
+        .pdn_mask = 0x80000000,
+        .offset = 24,
+        .nr_inputs = 3,
+        .ops = &clkmux_ops,
+    }, {
+        .name = __stringify(MUX_CAM),
+        .base_addr = CLK_CFG_1,
+        .sel_mask = 0x0000000F,
+        .pdn_mask = 0x00000080,
+        .offset = 0,
+        .nr_inputs = 11,
+        .ops = &clkmux_ops,
+        .pll = &plls[MAINPLL],
+    }, {
+        .name = __stringify(MUX_AUDINTBUS),
+        .base_addr = CLK_CFG_1,
+        .sel_mask = 0x00000300,
+        .pdn_mask = 0x00008000,
+        .offset = 8,
+        .nr_inputs = 3,
+        .ops = &audio_clkmux_ops,
+        .siblings = &muxs[MT_MUX_AUDIO],
+    }, {
+        .name = __stringify(MUX_JPG),
+        .base_addr = CLK_CFG_1,
+        .sel_mask = 0x00070000,
+        .pdn_mask = 0x00800000,
+        .offset = 16,
+        .nr_inputs = 5,
+        .ops = &clkmux_ops,
+        .pll = &plls[MAINPLL],
+    }, {
+        .name = __stringify(MUX_DISP),
+        .base_addr = CLK_CFG_1,
+        .sel_mask = 0x07000000,
+        .pdn_mask = 0x80000000,
+        .offset = 24,
+        .nr_inputs = 4,
+        .ops = &clkmux_ops,
+    }, {
+        .name = __stringify(MUX_MSDC1),
+        .base_addr = CLK_CFG_2,
+        .sel_mask = 0x00000007,
+        .pdn_mask = 0x00000080,
+        .offset = 0,
+        .nr_inputs = 6,
+        .ops = &clkmux_ops,
+        .pll = &plls[MSDCPLL],
+    }, {
+        .name = __stringify(MUX_MSDC2),
+        .base_addr = CLK_CFG_2,
+        .sel_mask = 0x00000700,
+        .pdn_mask = 0x00008000,
+        .offset = 8,
+        .nr_inputs = 6,
+        .ops = &clkmux_ops,
+        .pll = &plls[MSDCPLL],
+    }, {
+        .name = __stringify(MUX_MSDC3),
+        .base_addr = CLK_CFG_2,
+        .sel_mask = 0x00070000,
+        .pdn_mask = 0x00800000,
+        .offset = 16,
+        .nr_inputs = 6,
+        .ops = &clkmux_ops,
+        .pll = &plls[MSDCPLL],
+    }, {
+        .name = __stringify(MUX_MSDC4),
+        .base_addr = CLK_CFG_2,
+        .sel_mask = 0x07000000,
+        .pdn_mask = 0x80000000,
+        .offset = 24,
+        .nr_inputs = 6,
+        .ops = &clkmux_ops,
+        .pll = &plls[MSDCPLL],
+    }, {
+        .name = __stringify(MUX_USB20),
+        .base_addr = CLK_CFG_3,
+        .sel_mask = 0x00000003,
+        .pdn_mask = 0x00000080,
+        .offset = 0,
+        .nr_inputs = 3,
+        .ops = &clkmux_ops,
+    }, {
+        .name = __stringify(MUX_HYD),
+        .base_addr = CLK_CFG_4,
+        .sel_mask = 0x00000007,
+        .pdn_mask = 0x00000080,
+        .offset = 0,
+        .nr_inputs = 8,
+        .ops = &clkmux_ops,
+        .pll = &plls[MMPLL],
+    }, {
+        .name = __stringify(MUX_VENC),
+        .base_addr = CLK_CFG_4,
+        .sel_mask = 0x00000700,
+        .pdn_mask = 0x00008000,
+        .offset = 8,
+        .nr_inputs = 8,
+        .ops = &clkmux_ops,
+        .pll = &plls[MMPLL],
+    }, {
+        .name = __stringify(MUX_SPI),
+        .base_addr = CLK_CFG_4,
+        .sel_mask = 0x00070000,
+        .pdn_mask = 0x00800000,
+        .offset = 16,
+        .nr_inputs = 6,
+        .ops = &clkmux_ops,
+    }, {
+        .name = __stringify(MUX_UART),
+        .base_addr = CLK_CFG_4,
+        .sel_mask = 0x03000000,
+        .pdn_mask = 0x80000000,
+        .offset = 24,
+        .nr_inputs = 2,
+        .ops = &clkmux_ops,
+    }, {
+        .name = __stringify(MUX_CAMTG),
+        .base_addr = CLK_CFG_6,
+        .sel_mask = 0x00000700,
+        .pdn_mask = 0x00008000,
+        .offset = 8,
+        .nr_inputs = 6,
+        .ops = &clkmux_ops,
+#if 0
+    }, {
+        .name = __stringify(MUX_FD),
+        .base_addr = CLK_CFG_6,
+        .sel_mask = 0x00070000,
+        .pdn_mask = 0x00800000,
+        .offset = 16,
+        .nr_inputs = 5,
+        .ops = &clkmux_ops,
+#endif
+    }, {
+        .name = __stringify(MUX_AUDIO),
+        .base_addr = CLK_CFG_6,
+        .sel_mask = 0x03000000,
+        .pdn_mask = 0x80000000,
+        .offset = 24,
+        .nr_inputs = 2,
+        .ops = &audio_clkmux_ops,
+    }, {
+        .name = __stringify(MUX_VDEC),
+        .base_addr = CLK_CFG_7,
+        .sel_mask = 0x00000F00,
+        .pdn_mask = 0x00008000,
+        .offset = 8,
+        .nr_inputs = 10,
+        .ops = &clkmux_ops,
+        .pll = &plls[MAINPLL],
+    }, {
+        .name = __stringify(MUX_DPILVDS),
+        .base_addr = CLK_CFG_7,
+        .sel_mask = 0x07000000,
+        .pdn_mask = 0x80000000,
+        .offset = 24,
+        .nr_inputs = 5,
+        .ops = &clkmux_ops,
+    }, {
+        .name = __stringify(MUX_PMICSPI),
+        .base_addr = CLK_CFG_8,
+        .sel_mask = 0x00000007,
+        .pdn_mask = 0x00000080,
+        .offset = 0,
+        .nr_inputs = 8,
+        .ops = &clkmux_ops,
+    }, {
+        .name = __stringify(MUX_MSDC0),
+        .base_addr = CLK_CFG_8,
+        .sel_mask = 0x00000700,
+        .pdn_mask = 0x00008000,
+        .offset = 8,
+        .nr_inputs = 6,
+        .ops = &clkmux_ops,
+        .pll = &plls[MSDCPLL],
+    }, {
+        .name = __stringify(MUX_SMI_MFG_AS),
+        .base_addr = CLK_CFG_8,
+        .sel_mask = 0x00030000,
+        .pdn_mask = 0x00800000,
+        .offset = 16,
+        .nr_inputs = 4,
+        .ops = &clkmux_ops,
+    }
+};
+
+
+static struct clkmux *id_to_mux(unsigned int id)
+{
+    return id < NR_MUXS ? muxs + id : NULL;
+}
+
+static void clkmux_sel_op(struct clkmux *mux, unsigned clksrc)
+{
+    volatile unsigned int reg;
+
+    reg = clk_readl(mux->base_addr);
+
+    reg &= ~(mux->sel_mask);
+    reg |= (clksrc << mux->offset) & mux->sel_mask;
+
+    clk_writel(mux->base_addr, reg);
+}
+
+static void clkmux_enable_op(struct clkmux *mux)
+{
+    clk_clrl(mux->base_addr, mux->pdn_mask); 
+}
+
+static void clkmux_disable_op(struct clkmux *mux)
+{
+    clk_setl(mux->base_addr, mux->pdn_mask); 
+}
+
+static struct clkmux_ops clkmux_ops = {
+    .sel = clkmux_sel_op,
+    .enable = clkmux_enable_op, 
+    .disable = clkmux_disable_op,
+};
+
+static void audio_clkmux_enable_op(struct clkmux *mux)
+{
+    disable_infra_dcm(); 
+    clk_clrl(mux->base_addr, mux->pdn_mask); 
+    restore_infra_dcm();
+};
+
+static struct clkmux_ops audio_clkmux_ops = {
+    .sel = clkmux_sel_op,
+    .enable = audio_clkmux_enable_op, 
+    .disable = clkmux_disable_op,
+};
+
+static void clkmux_sel_locked(struct clkmux *mux, unsigned int clksrc)
+{
+    mux->ops->sel(mux, clksrc);
+}
+
+static void mux_enable_locked(struct clkmux *mux)
+{
+    mux->cnt++;
+    if (mux->cnt > 1) {
+        return;
+    }
+
+    if (mux->pll) {
+        pll_enable_internal(mux->pll, "mux");
+    }
+
+    if (mux->parent) {
+        mux_enable_internal(mux->parent, "mux_p");
+    }
+
+    mux->ops->enable(mux);
+
+    if (mux->siblings) {
+        mux_enable_internal(mux->siblings, "mux_s");
+    }
+}
+
+static void mux_disable_locked(struct clkmux *mux)
+{
+    BUG_ON(!mux->cnt);
+    mux->cnt--;
+    if (mux->cnt > 0) {
+        return;
+    }
+
+    mux->ops->disable(mux);
+
+    if (mux->siblings) {
+        mux_disable_internal(mux->siblings, "mux_s");
+    }
+
+    if (mux->parent) {
+        mux_disable_internal(mux->siblings, "mux_p");
+    }
+
+    if (mux->pll) {
+        pll_disable_internal(mux->pll, "mux");
+    }
+}
+
+int clkmux_sel(int id, unsigned int clksrc, char *name)
+{
+    unsigned long flags;
+    struct clkmux *mux = id_to_mux(id);
+
+    BUG_ON(!initialized); 
+    BUG_ON(!mux);
+    BUG_ON(clksrc >= mux->nr_inputs);
+    
+    clkmgr_lock(flags); 
+    clkmux_sel_locked(mux, clksrc);
+    clkmgr_unlock(flags);
+
+    return 0;
+}
+EXPORT_SYMBOL(clkmux_sel);
 
 
 #define PMICSPI_CLKMUX_MASK 0x7
@@ -2375,6 +2067,697 @@ void pmicspi_clksq2mempll(void)
     clk_writel(CLK_CFG_8, val);
 }
 EXPORT_SYMBOL(pmicspi_clksq2mempll);
+
+static int gpu_power_src;
+int get_gpu_power_src(void)
+{
+    return gpu_power_src;
+}
+EXPORT_SYMBOL(get_gpu_power_src);
+
+
+
+/************************************************
+ **********         cg_grp part        **********
+ ************************************************/
+
+static struct cg_grp_ops general_cg_grp_ops;
+static struct cg_grp_ops vdec_cg_grp_ops;
+static struct cg_grp_ops venc_cg_grp_ops;
+
+
+static struct cg_grp grps[NR_GRPS] = {
+    {
+        .name = __stringify(CG_PERI0),
+        .set_addr = PERI_PDN0_SET,
+        .clr_addr = PERI_PDN0_CLR,
+        .sta_addr = PERI_PDN0_STA,
+        .mask = 0xFFFFFFFF,
+        .ops = &general_cg_grp_ops,
+    }, {
+        .name = __stringify(CG_PERI1),
+        .set_addr = PERI_PDN1_SET,
+        .clr_addr = PERI_PDN1_CLR,
+        .sta_addr = PERI_PDN1_STA,
+        .mask = 0x0000001F,
+        .ops = &general_cg_grp_ops,
+    }, {
+        .name = __stringify(CG_INFRA),
+        .set_addr = INFRA_PDN_SET,
+        .clr_addr = INFRA_PDN_CLR,
+        .sta_addr = INFRA_PDN_STA,
+        .mask = 0x00F1FFE7,
+        .ops = &general_cg_grp_ops,
+    }, {
+        .name = __stringify(CG_TOPCK),
+        .set_addr = TOPCK_PDN_SET,
+        .clr_addr = TOPCK_PDN_CLR,
+        .sta_addr = TOPCK_PDN_STA,
+        .mask = 0x00000001,
+        .ops = &general_cg_grp_ops,
+    }, {
+        .name = __stringify(CG_DISP0),
+        .set_addr = DISP_CG_SET0,
+        .clr_addr = DISP_CG_CLR0,
+        .sta_addr = DISP_CG_CON0,
+        .mask = 0x01FFFFFF,
+        .ops = &general_cg_grp_ops,
+        .sys = &syss[SYS_DIS],
+    }, {
+        .name = __stringify(CG_DISP1),
+        .set_addr = DISP_CG_SET1,
+        .clr_addr = DISP_CG_CLR1,
+        .sta_addr = DISP_CG_CON1,
+        .mask = 0x000003FF,
+        .ops = &general_cg_grp_ops,
+        .sys = &syss[SYS_DIS],
+    }, {
+        .name = __stringify(CG_IMAGE),
+        .set_addr = IMG_CG_SET,
+        .clr_addr = IMG_CG_CLR,
+        .sta_addr = IMG_CG_CON,
+        .mask = 0x00003FF5,
+        .ops = &general_cg_grp_ops,
+        .sys = &syss[SYS_ISP],
+    }, {
+        .name = __stringify(CG_MFG),
+        .set_addr = MFG_CG_SET,
+        .clr_addr = MFG_CG_CLR,
+        .sta_addr = MFG_CG_CON,
+        .mask = 0x0000000F,
+        .ops = &general_cg_grp_ops,
+        .sys = &syss[SYS_MFG],
+    }, {
+        .name = __stringify(CG_AUDIO),
+        .sta_addr = AUDIO_TOP_CON0,
+        .mask = 0x00000044,
+        .ops = &general_cg_grp_ops,
+    }, {
+        .name = __stringify(CG_VDEC0),
+        .set_addr = VDEC_CKEN_CLR,
+        .clr_addr = VDEC_CKEN_SET,
+        .mask = 0x00000001,
+        .ops = &vdec_cg_grp_ops,
+        .sys = &syss[SYS_VDE],
+    }, {
+        .name = __stringify(CG_VDEC1),
+        .set_addr = LARB_CKEN_CLR,
+        .clr_addr = LARB_CKEN_SET,
+        .mask = 0x00000001,
+        .ops = &vdec_cg_grp_ops,
+        .sys = &syss[SYS_VDE],
+    }, {
+        .name = __stringify(CG_VENC),
+        .set_addr = VENCSYS_CG_CLR,
+        .clr_addr = VENCSYS_CG_SET,
+        .sta_addr = VENCSYS_CG_CON,
+        .mask = 0x00000001,
+        .ops = &venc_cg_grp_ops,
+        .sys = &syss[SYS_VEN],
+    }
+};
+
+static struct cg_grp *id_to_grp(unsigned int id)
+{
+    return id < NR_GRPS ? grps + id : NULL;
+}
+
+static unsigned int general_grp_get_state_op(struct cg_grp *grp)
+{
+    volatile unsigned int val;
+    struct subsys *sys = grp->sys;
+
+    if (sys && !sys->state) {
+        return 0;
+    }
+
+    val = clk_readl(grp->sta_addr);
+    val = (~val) & (grp->mask); 
+    return val;
+}
+
+static int general_grp_dump_regs_op(struct cg_grp *grp, unsigned int *ptr)
+{
+    *(ptr) = clk_readl(grp->sta_addr);
+    return 1;
+}
+
+static struct cg_grp_ops general_cg_grp_ops = {
+    .get_state = general_grp_get_state_op,
+    .dump_regs = general_grp_dump_regs_op,
+};
+
+static unsigned int vdec_grp_get_state_op(struct cg_grp *grp)
+{
+    volatile unsigned int val = clk_readl(grp->set_addr);
+    val &= grp->mask; 
+    return val;
+}
+
+static int vdec_grp_dump_regs_op(struct cg_grp *grp, unsigned int *ptr)
+{
+    *(ptr) = clk_readl(grp->set_addr);
+    *(++ptr) = clk_readl(grp->clr_addr);
+    return 2;
+}
+
+static struct cg_grp_ops vdec_cg_grp_ops = {
+    .get_state = vdec_grp_get_state_op,
+    .dump_regs = vdec_grp_dump_regs_op,
+};
+
+static unsigned int venc_grp_get_state_op(struct cg_grp *grp)
+{
+    volatile unsigned int val = clk_readl(grp->sta_addr);
+    val &= grp->mask; 
+    return val;
+}
+
+static struct cg_grp_ops venc_cg_grp_ops = {
+    .get_state = venc_grp_get_state_op,
+    .dump_regs = general_grp_dump_regs_op,
+};
+
+
+
+/************************************************
+ **********         cg_clk part        **********
+ ************************************************/
+
+static struct cg_clk_ops general_cg_clk_ops;
+static struct cg_clk_ops cec_cg_clk_ops;
+static struct cg_clk_ops audio_cg_clk_ops;
+static struct cg_clk_ops audsys_cg_clk_ops; // @audio sys
+static struct cg_clk_ops vdec_cg_clk_ops;
+static struct cg_clk_ops venc_cg_clk_ops;
+
+static struct cg_clk clks[NR_CLKS] = {
+    [CG_PERI0_FROM ... CG_PERI0_TO] = {
+        .cnt = 0,
+        .ops = &general_cg_clk_ops,
+        .grp = &grps[CG_PERI0],
+    },
+    [CG_PERI1_FROM ... CG_PERI1_TO] = {
+        .cnt = 0,
+        .ops = &general_cg_clk_ops,
+        .grp = &grps[CG_PERI1],
+    },
+    [CG_INFRA_FROM ... CG_INFRA_TO] = {
+        .cnt = 0,
+        .ops = &general_cg_clk_ops,
+        .grp = &grps[CG_INFRA],
+    },
+    [CG_TOPCK_FROM ... CG_TOPCK_TO] = {
+        .cnt = 0,
+        .ops = &general_cg_clk_ops,
+        .grp = &grps[CG_TOPCK],
+    },
+    [CG_DISP0_FROM ... CG_DISP0_TO] = {
+        .cnt = 0,
+        .ops = &general_cg_clk_ops,
+        .grp = &grps[CG_DISP0],
+    },
+    [CG_DISP1_FROM ... CG_DISP1_TO] = {
+        .cnt = 0,
+        .ops = &general_cg_clk_ops,
+        .grp = &grps[CG_DISP1],
+    },
+    [CG_IMAGE_FROM ... CG_IMAGE_TO] = {
+        .cnt = 0,
+        .ops = &general_cg_clk_ops,
+        .grp = &grps[CG_IMAGE],
+    },
+    [CG_MFG_FROM ... CG_MFG_TO] = {
+        .cnt = 0,
+        .ops = &general_cg_clk_ops,
+        .grp = &grps[CG_MFG],
+    },
+    [CG_AUDIO_FROM ... CG_AUDIO_TO] = {
+        .cnt = 0,
+        .ops = &audsys_cg_clk_ops,
+        .grp = &grps[CG_AUDIO],
+    },
+    [CG_VDEC0_FROM ... CG_VDEC0_TO] = {
+        .cnt = 0,
+        .ops = &vdec_cg_clk_ops,
+        .grp = &grps[CG_VDEC0],
+    },
+    [CG_VDEC1_FROM ... CG_VDEC1_TO] = {
+        .cnt = 0,
+        .ops = &vdec_cg_clk_ops,
+        .grp = &grps[CG_VDEC1],
+    },
+    [CG_VENC_FROM ... CG_VENC_TO] = {
+        .cnt = 0,
+        .ops = &venc_cg_clk_ops,
+        .grp = &grps[CG_VENC],
+    },
+};
+
+static struct cg_clk *id_to_clk(unsigned int id)
+{
+    return id < NR_CLKS ? clks + id : NULL;
+}
+
+static int general_clk_get_state_op(struct cg_clk *clk)
+{
+    struct subsys *sys = clk->grp->sys;
+    if (sys && !sys->state) {
+        return PWR_DOWN; 
+    }
+
+    return (clk_readl(clk->grp->sta_addr) & (clk->mask)) ? PWR_DOWN : PWR_ON ;
+}
+
+static int general_clk_check_validity_op(struct cg_clk *clk)
+{
+    int valid = 0;
+    if (clk->mask & clk->grp->mask) {
+        valid = 1;
+    }
+
+    return valid;
+}
+
+static int general_clk_enable_op(struct cg_clk *clk)
+{
+    clk_writel(clk->grp->clr_addr, clk->mask);
+    return 0;
+}
+
+static int general_clk_disable_op(struct cg_clk *clk)
+{
+    clk_writel(clk->grp->set_addr, clk->mask);
+    return 0;
+}
+
+static struct cg_clk_ops general_cg_clk_ops = {
+    .get_state = general_clk_get_state_op,
+    .check_validity = general_clk_check_validity_op,
+    .enable = general_clk_enable_op,
+    .disable = general_clk_disable_op,
+};
+
+
+static int audio_clk_enable_op(struct cg_clk *clk)
+{
+    clk_writel(clk->grp->clr_addr, clk->mask);
+    clk_setl(TOPAXI_SI0_CTL, 1U << 7);
+    return 0;
+}
+
+static int audio_clk_disable_op(struct cg_clk *clk)
+{
+    clk_clrl(TOPAXI_SI0_CTL, 1U << 7);
+    clk_writel(clk->grp->set_addr, clk->mask);
+    return 0;
+}
+
+static struct cg_clk_ops audio_cg_clk_ops = {
+    .get_state = general_clk_get_state_op,
+    .check_validity = general_clk_check_validity_op,
+    .enable = audio_clk_enable_op,
+    .disable = audio_clk_disable_op,
+};
+
+
+static int cec_clk_enable_op(struct cg_clk *clk)
+{
+    clk_writel(clk->grp->set_addr, clk->mask);
+    return 0;
+}
+
+static int cec_clk_disable_op(struct cg_clk *clk)
+{
+    clk_writel(clk->grp->clr_addr, clk->mask);
+    return 0;
+}
+
+static struct cg_clk_ops cec_cg_clk_ops = {
+    .get_state = general_clk_get_state_op,
+    .check_validity = general_clk_check_validity_op,
+    .enable = cec_clk_enable_op,
+    .disable = cec_clk_disable_op,
+};
+
+static int audsys_clk_enable_op(struct cg_clk *clk)
+{
+    clk_clrl(clk->grp->sta_addr, clk->mask);
+    return 0;
+}
+
+static int audsys_clk_disable_op(struct cg_clk *clk)
+{
+    clk_setl(clk->grp->sta_addr, clk->mask);
+    return 0;
+}
+
+static struct cg_clk_ops audsys_cg_clk_ops = {
+    .get_state = general_clk_get_state_op,
+    .check_validity = general_clk_check_validity_op,
+    .enable = audsys_clk_enable_op,
+    .disable = audsys_clk_disable_op,
+};
+
+static int vdec_clk_get_state_op(struct cg_clk *clk)
+{
+    return (clk_readl(clk->grp->set_addr) & (clk->mask)) ? PWR_ON : PWR_DOWN;
+}
+
+static struct cg_clk_ops vdec_cg_clk_ops = {
+    .get_state = vdec_clk_get_state_op,
+    .check_validity = general_clk_check_validity_op,
+    .enable = general_clk_enable_op,
+    .disable = general_clk_disable_op,
+};
+
+
+static int venc_clk_get_state_op(struct cg_clk *clk)
+{
+    return (clk_readl(clk->grp->sta_addr) & (clk->mask)) ? PWR_ON : PWR_DOWN;
+}
+
+static struct cg_clk_ops venc_cg_clk_ops = {
+    .get_state = venc_clk_get_state_op,
+    .check_validity = general_clk_check_validity_op,
+    .enable = general_clk_enable_op,
+    .disable = general_clk_disable_op,
+};
+
+
+static int power_prepare_locked(struct cg_grp *grp)
+{
+    int err = 0;
+    if (grp->sys) {
+        err = subsys_enable_internal(grp->sys, "clk");
+    }
+    return err;
+}
+
+static int power_finish_locked(struct cg_grp *grp)
+{
+    int err = 0;
+    if (grp->sys) {
+        err = subsys_disable_internal(grp->sys, 0, "clk");
+    }
+    return err;
+}
+
+static int clk_enable_locked(struct cg_clk *clk)
+{
+    struct cg_grp *grp = clk->grp;
+    unsigned int local_state;
+#ifdef STATE_CHECK_DEBUG
+    unsigned int reg_state;
+#endif
+    int err;
+
+    clk->cnt++;
+    if (clk->cnt > 1) {
+        return 0;
+    }
+
+    local_state = clk->state;
+
+#ifdef STATE_CHECK_DEBUG
+    reg_state = grp->ops->get_state(grp, clk);
+    //BUG_ON(local_state != reg_state);
+#endif
+
+    if (clk->mux) {
+        mux_enable_internal(clk->mux, "clk");
+    }
+
+    err = power_prepare_locked(grp);
+    BUG_ON(err);
+
+    if (clk->parent) {
+        clk_enable_internal(clk->parent, "clk");
+    }
+
+    if (local_state == PWR_ON) {
+        return 0;
+    }
+
+    clk->ops->enable(clk);
+
+    clk->state = PWR_ON;
+    grp->state |= clk->mask;
+
+    return 0;
+}
+
+static int clk_disable_locked(struct cg_clk *clk)
+{
+    struct cg_grp *grp = clk->grp; 
+    unsigned int local_state;
+#ifdef STATE_CHECK_DEBUG
+    unsigned int reg_state;
+#endif
+    int err;
+
+    BUG_ON(!clk->cnt);
+    clk->cnt--;
+    if (clk->cnt > 0) {
+        return 0;
+    }
+
+    local_state = clk->state;
+
+#ifdef STATE_CHECK_DEBUG
+    reg_state = grp->ops->get_state(grp, clk);
+    //BUG_ON(local_state != reg_state);
+#endif
+
+    if (local_state == PWR_DOWN) {
+        return 0;
+    }
+
+    if (clk->force_on) {
+        return 0;
+    }
+
+    clk->ops->disable(clk);
+
+    clk->state = PWR_DOWN;
+    grp->state &= ~(clk->mask);
+
+    if (clk->parent) {
+        clk_disable_internal(clk->parent, "clk");
+    }
+
+    err = power_finish_locked(grp);
+    BUG_ON(err);
+
+    if (clk->mux) {
+        mux_disable_internal(clk->mux, "clk");
+    }
+
+    return 0;
+}
+
+static int get_clk_state_locked(struct cg_clk *clk)
+{
+    if (likely(initialized)) { 
+        return clk->state;
+    } else {
+        return clk->ops->get_state(clk);
+    }
+}
+
+int enable_clock(int id, char *name)
+{
+    int err;
+    unsigned long flags;
+    struct cg_clk *clk = id_to_clk(id);
+
+    BUG_ON(!initialized);
+    BUG_ON(!clk);
+    BUG_ON(!clk->grp);
+    BUG_ON(!clk->ops->check_validity(clk));
+    BUG_ON(!name);
+
+    clkmgr_lock(flags);
+    err = clk_enable_internal(clk, name);
+    clkmgr_unlock(flags);
+
+    return err;
+}
+EXPORT_SYMBOL(enable_clock);
+
+
+int disable_clock(int id, char *name)
+{
+    int err;
+    unsigned long flags;
+    struct cg_clk *clk = id_to_clk(id);
+
+    BUG_ON(!initialized);
+    BUG_ON(!clk);
+    BUG_ON(!clk->grp);
+    BUG_ON(!clk->ops->check_validity(clk));
+    BUG_ON(!name);
+
+    clkmgr_lock(flags);
+    err = clk_disable_internal(clk, name);
+    clkmgr_unlock(flags);
+
+    return err;
+}
+EXPORT_SYMBOL(disable_clock);
+
+int enable_clock_ext_locked(int id, char *name)
+{
+    int err;
+    struct cg_clk *clk = id_to_clk(id);
+
+    BUG_ON(!initialized);
+    BUG_ON(!clk);
+    BUG_ON(!clk->grp);
+    BUG_ON(!clk->ops->check_validity(clk));
+
+    BUG_ON(!clkmgr_locked());
+    err = clk_enable_internal(clk, name);
+
+    return err;
+}
+EXPORT_SYMBOL(enable_clock_ext_locked);
+
+
+int disable_clock_ext_locked(int id, char *name)
+{
+    int err;
+    struct cg_clk *clk = id_to_clk(id);
+
+    BUG_ON(!initialized);
+    BUG_ON(!clk);
+    BUG_ON(!clk->grp);
+    BUG_ON(!clk->ops->check_validity(clk));
+
+    BUG_ON(!clkmgr_locked());
+    err = clk_disable_internal(clk, name);
+
+    return err;
+}
+EXPORT_SYMBOL(disable_clock_ext_locked);
+
+int clock_is_on(int id)
+{
+    int state;
+    unsigned long flags;
+    struct cg_clk *clk = id_to_clk(id);    
+
+    BUG_ON(!clk);
+    BUG_ON(!clk->grp);
+    BUG_ON(!clk->ops->check_validity(clk));
+
+    clkmgr_lock(flags);
+    state = get_clk_state_locked(clk);
+    clkmgr_unlock(flags);
+
+    return state;
+}
+EXPORT_SYMBOL(clock_is_on);
+
+
+static void clk_set_force_on_locked(struct cg_clk *clk)
+{
+    clk->force_on = 1;
+}
+
+static void clk_clr_force_on_locked(struct cg_clk *clk)
+{
+    clk->force_on = 0;
+}
+
+void clk_set_force_on(int id)
+{
+    unsigned long flags;
+    struct cg_clk *clk = id_to_clk(id);
+
+    BUG_ON(!initialized);
+    BUG_ON(!clk);
+    BUG_ON(!clk->grp);
+    BUG_ON(!clk->ops->check_validity(clk));
+
+    clkmgr_lock(flags);
+    clk_set_force_on_locked(clk);
+    clkmgr_unlock(flags);
+}
+EXPORT_SYMBOL(clk_set_force_on);
+
+void clk_clr_force_on(int id)
+{
+    unsigned long flags;
+    struct cg_clk *clk = id_to_clk(id);
+
+    BUG_ON(!initialized);
+    BUG_ON(!clk);
+    BUG_ON(!clk->grp);
+    BUG_ON(!clk->ops->check_validity(clk));
+
+    clkmgr_lock(flags);
+    clk_clr_force_on_locked(clk);
+    clkmgr_unlock(flags);
+}
+EXPORT_SYMBOL(clk_clr_force_on);
+
+int clk_is_force_on(int id)
+{
+    struct cg_clk *clk = id_to_clk(id);
+
+    BUG_ON(!initialized);
+    BUG_ON(!clk);
+    BUG_ON(!clk->grp);
+    BUG_ON(!clk->ops->check_validity(clk));
+
+    return clk->force_on;
+}
+
+int grp_dump_regs(int id, unsigned int *ptr)
+{
+    struct cg_grp *grp = id_to_grp(id);    
+
+    //BUG_ON(!initialized);
+    BUG_ON(!grp);
+
+    return grp->ops->dump_regs(grp, ptr);
+}
+EXPORT_SYMBOL(grp_dump_regs);
+
+const char* grp_get_name(int id)
+{
+    struct cg_grp *grp = id_to_grp(id);    
+
+    //BUG_ON(!initialized);
+    BUG_ON(!grp);
+
+    return grp->name;
+}
+
+void print_grp_regs(void)
+{
+    int i;
+    int cnt;
+    unsigned int value[2];
+    const char *name;
+
+    for (i = 0; i < NR_GRPS; i++) {
+        name = grp_get_name(i);
+        cnt = grp_dump_regs(i, value);
+        if (cnt == 1) {
+            clk_info("[%02d][%-8s]=[0x%08x]\n", i, name, value[0]);
+        } else {
+            clk_info("[%02d][%-8s]=[0x%08x][0x%08x]\n", i, name, value[0], value[1]);
+        }
+    }
+}
+
+
+
+/************************************************
+ **********       initialization       **********
+ ************************************************/
 
 #if 0
 static void subsys_all_force_on(void)
@@ -2415,10 +2798,23 @@ static void cg_all_force_on(void)
 }
 
 
+extern void pmic_gpu_power_enable(int power_en);
+extern void pmic_vrf18_2_usage_protection(void);
+
 static void mt_subsys_init(void)
 {
     int i;
     struct subsys *sys;
+
+    gpu_power_src = test_spm_gpu_power_on();
+    clk_info("[%s]gpu_power_src is %s\n", __func__, 
+            gpu_power_src ? "VCORE" : "VRF18_2");
+
+    if (gpu_power_src == 0) {
+        pmic_vrf18_2_usage_protection();
+        pmic_gpu_power_enable(1); 
+    }
+
 #if 0
     if (test_spm_gpu_power_on()) {
         sys = id_to_sys(SYS_MFG);    
@@ -2435,11 +2831,14 @@ static void mt_subsys_init(void)
             clk_info("[%s]%s, change state: (%u->%u)\n", __func__, 
                     sys->name, sys->state, sys->default_sta);
             if (sys->default_sta == PWR_DOWN) {
-                disable_subsys_locked(sys, 1);
+                sys_disable_locked(sys, 1);
             } else {
-                enable_subsys_locked(sys);
+                sys_enable_locked(sys);
             }
         }
+#ifdef CONFIG_CLKMGR_STAT
+        INIT_LIST_HEAD(&sys->head);
+#endif
     }
 
 #if 0
@@ -2457,6 +2856,9 @@ static void mt_plls_init(void)
     for (i = 0; i < NR_PLLS; i++) {
         pll = &plls[i];
         pll->state = pll->ops->get_state(pll);
+#ifdef CONFIG_CLKMGR_STAT
+        INIT_LIST_HEAD(&pll->head);
+#endif
     }
 }
 
@@ -2475,6 +2877,8 @@ static void mt_plls_enable_hp(void)
 
 static void mt_muxs_init(void)
 {
+    int i;
+    struct clkmux *mux;
     unsigned int smi_mfg_as_sel;
 
     clk_setl(CLK_CFG_0, 0x80800000);    //irda,mfg
@@ -2485,6 +2889,13 @@ static void mt_muxs_init(void)
     //clk_setl(CLK_CFG_7, 0x80008000);    //dpilvds, vdec
     clk_setl(CLK_CFG_7, 0x00008000);    //vdec
     clk_setl(CLK_CFG_8, 0x00808000);    //smi_mfg_as,msdc0
+
+    for (i = 0; i < NR_MUXS; i++) {
+        mux = &muxs[i];
+#ifdef CONFIG_CLKMGR_STAT
+        INIT_LIST_HEAD(&mux->head);
+#endif
+    }
 
     muxs[MT_MUX_DISP].cnt = 1;
 
@@ -2532,7 +2943,6 @@ static void mt_clks_init(void)
     clk_writel(PERI_PDN0_SET, 0xFC03E001);  //i2c5~0, msdc4~0, nand 
     clk_writel(PERI_PDN1_SET, 0x00000001);  //i2c6
     clk_writel(DISP_CG_SET0, 0x00000002);   //rot_engine
-    //clk_writel(IMG_CG_CLR, 0x000001F5);
 
     for (i = 0; i < NR_GRPS; i++) {
         grp = &grps[i];
@@ -2545,6 +2955,9 @@ static void mt_clks_init(void)
                 clk->mask = 1U << j;
                 clk->state = clk->ops->get_state(clk); 
                 //(grp->state & clk->mask) ? PWR_DOWN : PWR_ON;
+#ifdef CONFIG_CLKMGR_STAT
+                INIT_LIST_HEAD(&clk->head);
+#endif
             }
         }
     }
@@ -2601,6 +3014,7 @@ static void mt_md2_cg_init(void)
 
 int mt_clkmgr_bringup_init(void)
 {
+    unsigned long flags;
     BUG_ON(initialized);
 
     mt_subsys_init();
@@ -2613,12 +3027,18 @@ int mt_clkmgr_bringup_init(void)
     initialized = 1;
 
     mt_freqhopping_init(); 
+
+    clkmgr_lock(flags);
+    mt_freqhopping_pll_init(); 
     mt_plls_enable_hp();
+    clkmgr_unlock(flags);
+
     return 0;
 }
 
 void mt_clkmgr_init(void)
 {
+    unsigned long flags;
     BUG_ON(initialized);
 
     mt_plls_init();
@@ -2630,8 +3050,14 @@ void mt_clkmgr_init(void)
     initialized = 1;
 
     mt_freqhopping_init(); 
+
+    clkmgr_lock(flags);
+    mt_freqhopping_pll_init(); 
     mt_plls_enable_hp();
+    clkmgr_unlock(flags);
 }
+
+
 
 #ifdef CONFIG_MTK_MMC
 extern void msdc_clk_status(int * status);
@@ -2662,173 +3088,11 @@ bool clkmgr_idle_can_enter(unsigned int *condition_mask, unsigned int *block_mas
     return true;
 }
 
-static int mux_test_read(char *page, char **start, off_t off,
-                int count, int *eof, void *data)
-{
-    char *p = page;
-    int len = 0;
 
-    p += sprintf(p, "********** mux register dump *********\n");
-    p += sprintf(p, "[CLK_CFG_0]=0x%08x\n", clk_readl(CLK_CFG_0));
-    p += sprintf(p, "[CLK_CFG_1]=0x%08x\n", clk_readl(CLK_CFG_1));
-    p += sprintf(p, "[CLK_CFG_2]=0x%08x\n", clk_readl(CLK_CFG_2));
-    p += sprintf(p, "[CLK_CFG_3]=0x%08x\n", clk_readl(CLK_CFG_3));
-    p += sprintf(p, "[CLK_CFG_4]=0x%08x\n", clk_readl(CLK_CFG_4));
-    p += sprintf(p, "[CLK_CFG_5]=0x%08x\n", clk_readl(CLK_CFG_5));
-    p += sprintf(p, "[CLK_CFG_6]=0x%08x\n", clk_readl(CLK_CFG_6));
-    p += sprintf(p, "[CLK_CFG_7]=0x%08x\n", clk_readl(CLK_CFG_7));
-    p += sprintf(p, "[CLK_MISC_CFG_2]=0x%08x\n", clk_readl(CLK_MISC_CFG_2));
-    p += sprintf(p, "[CLK_CFG_8]=0x%08x\n", clk_readl(CLK_CFG_8));
 
-    p += sprintf(p, "\n********** mux_test help *********\n");
-
-    *start = page + off;
-
-    len = p - page;
-    if (len > off)
-        len -= off;
-    else
-        len = 0;
-
-    *eof = 1;
-    return len < count ? len  : count;
-}
-
-static int clk_test_read(char *page, char **start, off_t off,
-                int count, int *eof, void *data)
-{
-    char *p = page;
-    int len = 0;
-
-    int i;
-    int cnt;
-    unsigned int value[2];
-    const char *name;        
-
-    p += sprintf(p, "********** clk register dump *********\n");
-    for (i = 0; i < NR_GRPS; i++) {
-        name = grp_get_name(i);
-        //p += sprintf(p, "[%d][%s] = 0x%08x, 0x%08x\n", i, name, grps[i].ops->get_state()); 
-        //p += sprintf(p, "[%d][%s]=0x%08x\n", i, name, grps[i].state); 
-        cnt = grp_dump_regs(i, value);
-        if (cnt == 1) {
-            p += sprintf(p, "[%02d][%-8s]=[0x%08x]\n", i, name, value[0]);
-        } else {
-            p += sprintf(p, "[%02d][%-8s]=[0x%08x][0x%08x]\n", i, name, value[0], value[1]);
-        } 
-    }
-    p += sprintf(p, "[PERI_PDN_MD_MASK]=0x%08x\n", clk_readl(PERI_PDN_MD_MASK)); 
-    p += sprintf(p, "[PERI_PDN0_MD1_STA]=0x%08x\n", clk_readl(PERI_PDN0_MD1_STA));
-    p += sprintf(p, "[PERI_PDN0_MD2_STA]=0x%08x\n", clk_readl(PERI_PDN0_MD2_STA));
-
-    p += sprintf(p, "\n********** clk_test help *********\n");
-    p += sprintf(p, "enable  clk: echo enable  id [mod_name] > /proc/clkmgr/clk_test\n");
-    p += sprintf(p, "disable clk: echo disable id [mod_name] > /proc/clkmgr/clk_test\n");
-
-    *start = page + off;
-
-    len = p - page;
-    if (len > off)
-        len -= off;
-    else
-        len = 0;
-
-    *eof = 1;
-    return len < count ? len  : count;
-}
-
-static int clk_test_write(struct file *file, const char *buffer,
-                unsigned long count, void *data)
-{
-    char desc[32]; 
-    int len = 0;
-
-    char cmd[10];
-    char mod_name[10];
-    int id;
-    
-    len = (count < (sizeof(desc) - 1)) ? count : (sizeof(desc) - 1);
-    if (copy_from_user(desc, buffer, len)) {
-        return 0;
-    }
-    desc[len] = '\0';
-
-    if (sscanf(desc, "%s %d %s", cmd, &id, mod_name) == 3) { 
-        if (!strcmp(cmd, "enable")) {
-            enable_clock(id, mod_name);
-        } else if (!strcmp(cmd, "disable")) {
-            disable_clock(id, mod_name);
-        }
-    } else if (sscanf(desc, "%s %d", cmd, &id) == 2) { 
-        if (!strcmp(cmd, "enable")) {
-            enable_clock(id, "pll_test");
-        } else if (!strcmp(cmd, "disable")) {
-            disable_clock(id, "pll_test");
-        }
-    }
-
-    return count;
-}
-
-static int clk_force_on_read(char *page, char **start, off_t off,
-                int count, int *eof, void *data)
-{
-    char *p = page;
-    int len = 0;
-
-    int i;
-    struct cg_clk *clk;
-
-    p += sprintf(p, "********** clk force on info dump *********\n");
-    for (i = 0; i < NR_CLKS; i++) {
-        clk = &clks[i];
-        if (clk->force_on) {
-            p += sprintf(p, "clock %d is force on\n", i);
-        }
-    }
-
-    p += sprintf(p, "\n********** clk_force_on help *********\n");
-    p += sprintf(p, "set clk force on: echo set id > /proc/clkmgr/clk_force_on\n");
-    p += sprintf(p, "clr clk force on: echo clr id > /proc/clkmgr/clk_force_on\n");
-
-    *start = page + off;
-
-    len = p - page;
-    if (len > off)
-        len -= off;
-    else
-        len = 0;
-
-    *eof = 1;
-    return len < count ? len  : count;
-}
-
-static int clk_force_on_write(struct file *file, const char *buffer,
-                unsigned long count, void *data)
-{
-    char desc[32]; 
-    int len = 0;
-
-    char cmd[10];
-    int id;
-    
-    len = (count < (sizeof(desc) - 1)) ? count : (sizeof(desc) - 1);
-    if (copy_from_user(desc, buffer, len)) {
-        return 0;
-    }
-    desc[len] = '\0';
-
-    if (sscanf(desc, "%s %d", cmd, &id) == 2) { 
-        if (!strcmp(cmd, "set")) {
-            clk_set_force_on(id);
-        } else if (!strcmp(cmd, "clr")) {
-            clk_clr_force_on(id);
-        }
-    }
-
-    return count;
-}
-
+/************************************************
+ **********       function debug       **********
+ ************************************************/
 
 static int pll_test_read(char *page, char **start, off_t off,
                 int count, int *eof, void *data)
@@ -2841,7 +3105,7 @@ static int pll_test_read(char *page, char **start, off_t off,
     unsigned int value[3];
     const char *name;
 
-    p += sprintf(p, "********** pll register dump *********\n");
+    p += sprintf(p, "********** pll register dump **********\n");
     for (i = 0; i < NR_PLLS; i++) {
         name = pll_get_name(i);
         cnt = pll_dump_regs(i, value);    
@@ -2850,7 +3114,7 @@ static int pll_test_read(char *page, char **start, off_t off,
         }
     }
 
-    p += sprintf(p, "\n********** pll_test help *********\n");
+    p += sprintf(p, "\n********** pll_test help **********\n");
     p += sprintf(p, "enable  pll: echo enable  id [mod_name] > /proc/clkmgr/pll_test\n");
     p += sprintf(p, "disable pll: echo disable id [mod_name] > /proc/clkmgr/pll_test\n");
 
@@ -2875,6 +3139,7 @@ static int pll_test_write(struct file *file, const char *buffer,
     char cmd[10];
     char mod_name[10];
     int id;
+    int err = 0;
     
     len = (count < (sizeof(desc) - 1)) ? count : (sizeof(desc) - 1);
     if (copy_from_user(desc, buffer, len)) {
@@ -2884,20 +3149,23 @@ static int pll_test_write(struct file *file, const char *buffer,
 
     if (sscanf(desc, "%s %d %s", cmd, &id, mod_name) == 3) { 
         if (!strcmp(cmd, "enable")) {
-            enable_pll(id, mod_name);
+            err = enable_pll(id, mod_name);
         } else if (!strcmp(cmd, "disable")) {
-            disable_pll(id, mod_name);
+            err = disable_pll(id, mod_name);
         }
     } else if (sscanf(desc, "%s %d", cmd, &id) == 2) { 
         if (!strcmp(cmd, "enable")) {
-            enable_pll(id, "pll_test");
+            err = enable_pll(id, "pll_test");
         } else if (!strcmp(cmd, "disable")) {
-            disable_pll(id, "pll_test");
+            err = disable_pll(id, "pll_test");
         }
     }
 
+    clk_info("[%s]%s pll %d: result is %d\n", __func__, cmd, id, err);
+
     return count;
 }
+
 
 static int pll_fsel_read(char *page, char **start, off_t off,
                 int count, int *eof, void *data)
@@ -2924,7 +3192,7 @@ static int pll_fsel_read(char *page, char **start, off_t off,
         }
     }
 
-    p += sprintf(p, "\n********** pll_fsel help *********\n");
+    p += sprintf(p, "\n********** pll_fsel help **********\n");
     p += sprintf(p, "adjust pll frequency:  echo id freq > /proc/clkmgr/pll_fsel\n");
 
     *start = page + off;
@@ -2962,6 +3230,46 @@ static int pll_fsel_write(struct file *file, const char *buffer,
 }
 
 
+#ifdef CONFIG_CLKMGR_STAT
+static int pll_stat_read(char *page, char **start, off_t off,
+                int count, int *eof, void *data)
+{
+    char *p = page;
+    int len = 0;
+
+    struct pll *pll;
+    struct list_head *pos;
+    struct stat_node *node;
+    int i;
+
+    p += sprintf(p, "\n********** pll stat dump **********\n");
+    for (i = 0; i < NR_PLLS; i++) {
+        pll = id_to_pll(i);
+        p += sprintf(p, "[%d][%-7s]state=%u, cnt=%u", i, pll->name, 
+                pll->state, pll->cnt);
+        list_for_each(pos, &pll->head) {
+            node = list_entry(pos, struct stat_node, link);
+            p += sprintf(p, "\t(%s,%u,%u)", node->name, node->cnt_on, node->cnt_off);
+        }
+        p += sprintf(p, "\n");
+    }
+
+    p += sprintf(p, "\n********** pll_dump help **********\n");
+
+    *start = page + off;
+
+    len = p - page;
+    if (len > off)
+        len -= off;
+    else
+        len = 0;
+
+    *eof = 1;
+    return len < count ? len  : count;
+}
+#endif
+
+
 static int subsys_test_read(char *page, char **start, off_t off,
                 int count, int *eof, void *data)
 {
@@ -2976,7 +3284,7 @@ static int subsys_test_read(char *page, char **start, off_t off,
     sta = clk_readl(SPM_PWR_STATUS);
     sta_s = clk_readl(SPM_PWR_STATUS_S);
 
-    p += sprintf(p, "********** subsys register dump *********\n");
+    p += sprintf(p, "********** subsys register dump **********\n");
     for (i = 0; i < NR_SYSS; i++) {
         name = subsys_get_name(i);
         state = subsys_is_on(i);
@@ -2985,7 +3293,7 @@ static int subsys_test_read(char *page, char **start, off_t off,
     }
     p += sprintf(p, "SPM_PWR_STATUS=0x%08x, SPM_PWR_STATUS_S=0x%08x\n", sta, sta_s);
 
-    p += sprintf(p, "\n********** subsys_test help *********\n");
+    p += sprintf(p, "\n********** subsys_test help **********\n");
     p += sprintf(p, "enable subsys:  echo enable id > /proc/clkmgr/subsys_test\n");
     p += sprintf(p, "disable subsys: echo disable id [force_off] > /proc/clkmgr/subsys_test\n");
 
@@ -3035,13 +3343,327 @@ static int subsys_test_write(struct file *file, const char *buffer,
     return count;
 }
 
+
+#ifdef CONFIG_CLKMGR_STAT
+static int subsys_stat_read(char *page, char **start, off_t off,
+                int count, int *eof, void *data)
+{
+    char *p = page;
+    int len = 0;
+
+    struct subsys *sys;
+    struct list_head *pos;
+    struct stat_node *node;
+    int i;
+
+    p += sprintf(p, "\n********** subsys stat dump **********\n");
+    for (i = 0; i < NR_SYSS; i++) {
+        sys = id_to_sys(i);
+        p += sprintf(p, "[%d][%-7s]state=%u", i, sys->name, sys->state);
+        list_for_each(pos, &sys->head) {
+            node = list_entry(pos, struct stat_node, link);
+            p += sprintf(p, "\t(%s,%u,%u)", node->name, node->cnt_on, node->cnt_off);
+        }
+        p += sprintf(p, "\n");
+    }
+
+    p += sprintf(p, "\n********** subsys_dump help **********\n");
+
+    *start = page + off;
+
+    len = p - page;
+    if (len > off)
+        len -= off;
+    else
+        len = 0;
+
+    *eof = 1;
+    return len < count ? len  : count;
+}
+#endif
+
+
+static int mux_test_read(char *page, char **start, off_t off,
+                int count, int *eof, void *data)
+{
+    char *p = page;
+    int len = 0;
+
+    p += sprintf(p, "********** mux register dump **********\n");
+    p += sprintf(p, "[CLK_CFG_0]=0x%08x\n", clk_readl(CLK_CFG_0));
+    p += sprintf(p, "[CLK_CFG_1]=0x%08x\n", clk_readl(CLK_CFG_1));
+    p += sprintf(p, "[CLK_CFG_2]=0x%08x\n", clk_readl(CLK_CFG_2));
+    p += sprintf(p, "[CLK_CFG_3]=0x%08x\n", clk_readl(CLK_CFG_3));
+    p += sprintf(p, "[CLK_CFG_4]=0x%08x\n", clk_readl(CLK_CFG_4));
+    p += sprintf(p, "[CLK_CFG_5]=0x%08x\n", clk_readl(CLK_CFG_5));
+    p += sprintf(p, "[CLK_CFG_6]=0x%08x\n", clk_readl(CLK_CFG_6));
+    p += sprintf(p, "[CLK_CFG_7]=0x%08x\n", clk_readl(CLK_CFG_7));
+    p += sprintf(p, "[CLK_MISC_CFG_2]=0x%08x\n", clk_readl(CLK_MISC_CFG_2));
+    p += sprintf(p, "[CLK_CFG_8]=0x%08x\n", clk_readl(CLK_CFG_8));
+
+    p += sprintf(p, "\n********** mux_test help **********\n");
+
+    *start = page + off;
+
+    len = p - page;
+    if (len > off)
+        len -= off;
+    else
+        len = 0;
+
+    *eof = 1;
+    return len < count ? len  : count;
+}
+
+
+#ifdef CONFIG_CLKMGR_STAT
+static int mux_stat_read(char *page, char **start, off_t off,
+                int count, int *eof, void *data)
+{
+    char *p = page;
+    int len = 0;
+
+    struct clkmux *mux;
+    struct list_head *pos;
+    struct stat_node *node;
+    int i;
+
+    p += sprintf(p, "********** mux stat dump **********\n");
+    for (i = 0; i < NR_MUXS; i++) {
+        mux = id_to_mux(i);
+#if 0
+        p += sprintf(p, "[%02d][%-14s]state=%u, cnt=%u", i, mux->name, 
+                mux->state, mux->cnt);
+#else
+        p += sprintf(p, "[%02d][%-14s]cnt=%u", i, mux->name, mux->cnt);
+#endif
+        list_for_each(pos, &mux->head) {
+            node = list_entry(pos, struct stat_node, link);
+            p += sprintf(p, "\t(%s,%u,%u)", node->name, node->cnt_on, node->cnt_off);
+        }
+        p += sprintf(p, "\n");
+    }
+
+    p += sprintf(p, "\n********** mux_dump help **********\n");
+
+    *start = page + off;
+
+    len = p - page;
+    if (len > off)
+        len -= off;
+    else
+        len = 0;
+
+    *eof = 1;
+    return len < count ? len  : count;
+}
+#endif
+
+
+static int clk_test_read(char *page, char **start, off_t off,
+                int count, int *eof, void *data)
+{
+    char *p = page;
+    int len = 0;
+
+    int i;
+    int cnt;
+    unsigned int value[2];
+    const char *name;        
+
+    p += sprintf(p, "********** clk register dump **********\n");
+    for (i = 0; i < NR_GRPS; i++) {
+        name = grp_get_name(i);
+        //p += sprintf(p, "[%d][%s] = 0x%08x, 0x%08x\n", i, name, grps[i].ops->get_state()); 
+        //p += sprintf(p, "[%d][%s]=0x%08x\n", i, name, grps[i].state); 
+        cnt = grp_dump_regs(i, value);
+        if (cnt == 1) {
+            p += sprintf(p, "[%02d][%-8s]=[0x%08x]\n", i, name, value[0]);
+        } else {
+            p += sprintf(p, "[%02d][%-8s]=[0x%08x][0x%08x]\n", i, name, value[0], value[1]);
+        } 
+    }
+    p += sprintf(p, "[PERI_PDN_MD_MASK]=0x%08x\n", clk_readl(PERI_PDN_MD_MASK)); 
+    p += sprintf(p, "[PERI_PDN0_MD1_STA]=0x%08x\n", clk_readl(PERI_PDN0_MD1_STA));
+    p += sprintf(p, "[PERI_PDN0_MD2_STA]=0x%08x\n", clk_readl(PERI_PDN0_MD2_STA));
+
+    p += sprintf(p, "\n********** clk_test help **********\n");
+    p += sprintf(p, "enable  clk: echo enable  id [mod_name] > /proc/clkmgr/clk_test\n");
+    p += sprintf(p, "disable clk: echo disable id [mod_name] > /proc/clkmgr/clk_test\n");
+    p += sprintf(p, "read state:  echo id > /proc/clkmgr/clk_test\n");
+
+    *start = page + off;
+
+    len = p - page;
+    if (len > off)
+        len -= off;
+    else
+        len = 0;
+
+    *eof = 1;
+    return len < count ? len  : count;
+}
+
+static int clk_test_write(struct file *file, const char *buffer,
+                unsigned long count, void *data)
+{
+    char desc[32]; 
+    int len = 0;
+
+    char cmd[10];
+    char mod_name[10];
+    int id;
+    int err;
+    
+    len = (count < (sizeof(desc) - 1)) ? count : (sizeof(desc) - 1);
+    if (copy_from_user(desc, buffer, len)) {
+        return 0;
+    }
+    desc[len] = '\0';
+
+    if (sscanf(desc, "%s %d %s", cmd, &id, mod_name) == 3) { 
+        if (!strcmp(cmd, "enable")) {
+            err = enable_clock(id, mod_name);
+        } else if (!strcmp(cmd, "disable")) {
+            err = disable_clock(id, mod_name);
+        }
+    } else if (sscanf(desc, "%s %d", cmd, &id) == 2) { 
+        if (!strcmp(cmd, "enable")) {
+            err = enable_clock(id, "pll_test");
+        } else if (!strcmp(cmd, "disable")) {
+            err = disable_clock(id, "pll_test");
+        }
+    } else if (sscanf(desc, "%d", &id) == 1) { 
+        clk_info("clock %d is %s\n", id, clock_is_on(id) ? "on" : "off");
+    }
+
+    //clk_info("[%s]%s clock %d: result is %d\n", __func__, cmd, id, err);
+
+    return count;
+}
+
+
+#ifdef CONFIG_CLKMGR_STAT
+static int clk_stat_read(char *page, char **start, off_t off,
+                int count, int *eof, void *data)
+{
+    char *p = page;
+    int len = 0;
+
+    struct cg_clk *clk;
+    struct list_head *pos;
+    struct stat_node *node;
+    int i, grp, offset;
+    int skip;
+
+    p += sprintf(p, "\n********** clk stat dump **********\n");
+    for (i = 0; i < NR_CLKS; i++) {
+        grp = i / 32;
+        offset = i % 32;
+        if (offset == 0) {
+            p += sprintf(p, "\n*****[%02d][%-8s]*****\n", grp, grp_get_name(grp));
+        }
+
+        clk = id_to_clk(i);
+        if (!clk || !clk->grp || !clk->ops->check_validity(clk))
+            continue;
+
+        skip = (clk->cnt == 0) && (clk->state == 0) && list_empty(&clk->head);
+        if (skip)
+            continue;
+
+        p += sprintf(p, "[%02d]state=%u, cnt=%u", offset, clk->state, clk->cnt);
+        list_for_each(pos, &clk->head) {
+            node = list_entry(pos, struct stat_node, link);
+            p += sprintf(p, "\t(%s,%u,%u)", node->name, node->cnt_on, node->cnt_off);
+        }
+        p += sprintf(p, "\n");
+    }
+
+    p += sprintf(p, "\n********** clk_dump help **********\n");
+
+    *start = page + off;
+
+    len = p - page;
+    if (len > off)
+        len -= off;
+    else
+        len = 0;
+
+    *eof = 1;
+    return len < count ? len  : count;
+}
+#endif
+
+
+static int clk_force_on_read(char *page, char **start, off_t off,
+                int count, int *eof, void *data)
+{
+    char *p = page;
+    int len = 0;
+
+    int i;
+    struct cg_clk *clk;
+
+    p += sprintf(p, "********** clk force on info dump **********\n");
+    for (i = 0; i < NR_CLKS; i++) {
+        clk = &clks[i];
+        if (clk->force_on) {
+            p += sprintf(p, "clock %d (0x%08x @ %s) is force on\n", i, 
+                    clk->mask, clk->grp->name);
+        }
+    }
+
+    p += sprintf(p, "\n********** clk_force_on help **********\n");
+    p += sprintf(p, "set clk force on: echo set id > /proc/clkmgr/clk_force_on\n");
+    p += sprintf(p, "clr clk force on: echo clr id > /proc/clkmgr/clk_force_on\n");
+
+    *start = page + off;
+
+    len = p - page;
+    if (len > off)
+        len -= off;
+    else
+        len = 0;
+
+    *eof = 1;
+    return len < count ? len  : count;
+}
+
+static int clk_force_on_write(struct file *file, const char *buffer,
+                unsigned long count, void *data)
+{
+    char desc[32]; 
+    int len = 0;
+
+    char cmd[10];
+    int id;
+    
+    len = (count < (sizeof(desc) - 1)) ? count : (sizeof(desc) - 1);
+    if (copy_from_user(desc, buffer, len)) {
+        return 0;
+    }
+    desc[len] = '\0';
+
+    if (sscanf(desc, "%s %d", cmd, &id) == 2) { 
+        if (!strcmp(cmd, "set")) {
+            clk_set_force_on(id);
+        } else if (!strcmp(cmd, "clr")) {
+            clk_clr_force_on(id);
+        }
+    }
+
+    return count;
+}
+
+
 static int udelay_test_read(char *page, char **start, off_t off,
                 int count, int *eof, void *data)
 {
     char *p = page;
     int len = 0;
 
-    p += sprintf(p, "\n********** udelay_test help *********\n");
+    p += sprintf(p, "\n********** udelay_test help **********\n");
     p += sprintf(p, "test udelay:  echo delay > /proc/clkmgr/udelay_test\n");
 
     *start = page + off;
@@ -3082,6 +3704,7 @@ static int udelay_test_write(struct file *file, const char *buffer,
     return count;
 }
 
+
 void mt_clkmgr_debug_init(void)
 {
     struct proc_dir_entry *entry;
@@ -3091,23 +3714,6 @@ void mt_clkmgr_debug_init(void)
     if (!clkmgr_dir) {
         clk_err("[%s]: fail to mkdir /proc/clkmgr\n", __func__);
         return;
-    }
-
-    entry = create_proc_entry("mux_test", 00640, clkmgr_dir);
-    if (entry) {
-        entry->read_proc = mux_test_read;
-    }
-
-    entry = create_proc_entry("clk_test", 00640, clkmgr_dir);
-    if (entry) {
-        entry->read_proc = clk_test_read;
-        entry->write_proc = clk_test_write;
-    }
-
-    entry = create_proc_entry("clk_force_on", 00640, clkmgr_dir);
-    if (entry) {
-        entry->read_proc = clk_force_on_read;
-        entry->write_proc = clk_force_on_write;
     }
 
     entry = create_proc_entry("pll_test", 00640, clkmgr_dir);
@@ -3122,10 +3728,55 @@ void mt_clkmgr_debug_init(void)
         entry->write_proc = pll_fsel_write;
     }
 
+#ifdef CONFIG_CLKMGR_STAT
+    entry = create_proc_entry("pll_stat", 00440, clkmgr_dir);
+    if (entry) {
+        entry->read_proc = pll_stat_read;
+    }
+#endif
+
     entry = create_proc_entry("subsys_test", 00640, clkmgr_dir);
     if (entry) {
         entry->read_proc = subsys_test_read;
         entry->write_proc = subsys_test_write;
+    }
+
+#ifdef CONFIG_CLKMGR_STAT
+    entry = create_proc_entry("subsys_stat", 00440, clkmgr_dir);
+    if (entry) {
+        entry->read_proc = subsys_stat_read;
+    }
+#endif
+
+    entry = create_proc_entry("mux_test", 00440, clkmgr_dir);
+    if (entry) {
+        entry->read_proc = mux_test_read;
+    }
+
+#ifdef CONFIG_CLKMGR_STAT
+    entry = create_proc_entry("mux_stat", 00440, clkmgr_dir);
+    if (entry) {
+        entry->read_proc = mux_stat_read;
+    }
+#endif
+
+    entry = create_proc_entry("clk_test", 00640, clkmgr_dir);
+    if (entry) {
+        entry->read_proc = clk_test_read;
+        entry->write_proc = clk_test_write;
+    }
+
+#ifdef CONFIG_CLKMGR_STAT
+    entry = create_proc_entry("clk_stat", 00440, clkmgr_dir);
+    if (entry) {
+        entry->read_proc = clk_stat_read;
+    }
+#endif
+
+    entry = create_proc_entry("clk_force_on", 00640, clkmgr_dir);
+    if (entry) {
+        entry->read_proc = clk_force_on_read;
+        entry->write_proc = clk_force_on_write;
     }
 
     entry = create_proc_entry("udelay_test", 00640, clkmgr_dir);

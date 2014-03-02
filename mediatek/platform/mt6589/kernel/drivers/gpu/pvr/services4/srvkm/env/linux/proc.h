@@ -120,7 +120,6 @@ struct proc_dir_entry* CreatePerProcessProcEntrySeq (
 								write_proc_t whandler
 							   );
 
-
 IMG_VOID RemoveProcEntrySeq(struct proc_dir_entry* proc_entry);
 IMG_VOID RemovePerProcessProcEntrySeq(struct proc_dir_entry* proc_entry);
 

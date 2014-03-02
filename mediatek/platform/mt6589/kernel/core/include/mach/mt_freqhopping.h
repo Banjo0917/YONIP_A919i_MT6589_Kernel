@@ -1,18 +1,3 @@
-/*
- * Copyright (C) 2011 MediaTek, Inc.
- *
- * Author: Holmes Chiou <holmes.chiou@mediatek.com>
- *
- * This software is licensed under the terms of the GNU General Public
- * License version 2, as published by the Free Software Foundation, and
- * may be copied, distributed, and modified under those terms.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- */
 
 #ifndef __MT_FREQHOPPING_H__
 #define __MT_FREQHOPPING_H__
@@ -20,20 +5,20 @@
 #define MT_FHPLL_MAX 6
 #define MT_SSC_NR_PREDEFINE_SETTING 10 //TODO: is 10 a good number ?
 
-#define SLTAG "[FH]"
+#define FHTAG "[FH]"
 
 #define VERBOSE_DEBUG 0
 
 #if VERBOSE_DEBUG
 #define FH_MSG(fmt, args...) \
 do {    \
-		printk( KERN_DEBUG SLTAG""fmt" <- %s(): L<%d>  PID<%s><%d>\n", \
+		printk( KERN_DEBUG FHTAG""fmt" <- %s(): L<%d>  PID<%s><%d>\n", \
             	##args ,__FUNCTION__,__LINE__,current->comm,current->pid); \
 } while(0);
 #else
 #define FH_MSG(fmt, args...) \
 do {    \
-		printk( KERN_DEBUG SLTAG""fmt" \n", \
+		printk( KERN_DEBUG FHTAG""fmt" \n", \
             	##args ); \
 } while(0);
 
@@ -60,24 +45,8 @@ enum FH_CMD{
  FH_CMD_ENABLE_USR_DEFINED,
  FH_CMD_DISABLE_USR_DEFINED,
  FH_CMD_INTERNAL_MAX_CMD,
-/* TODO:  do we need these cmds ?
- FH_CMD_PLL_ENABLE,
- FH_CMD_PLL_DISABLE,
- FH_CMD_EXT_ALL_FULL_RANGE_CMD,
- FH_CMD_EXT_ALL_HALF_RANGE_CMD,
- FH_CMD_EXT_DISABLE_ALL_CMD,
- FH_CMD_EXT_DESIGNATED_PLL_FULL_RANGE_CMD,
- FH_CMD_EXT_DESIGNATED_PLL_AND_SETTING_CMD
-*/ 
 };
 
-/*
-enum FH_OPCODE{
- FH_OPCODE_ENABLE_WITH_ID = 1,
- FH_OPCODE_ENABLE_WITHOUT_ID,
- FH_OPCODE_DISABLE,
-};
-*/
 
 enum FH_PLL_ID {
  MT658X_FH_MINIMUMM_PLL = 0,		
@@ -134,6 +103,7 @@ struct freqhopping_ioctl {
 
 int freqhopping_config(unsigned int pll_id, unsigned long vco_freq, unsigned int enable);
 void mt_freqhopping_init(void);
+void mt_freqhopping_pll_init(void);
 int mt_h2l_mempll(void);
 int mt_l2h_mempll(void);
 void mt_fh_popod_save(void);

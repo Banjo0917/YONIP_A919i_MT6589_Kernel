@@ -370,6 +370,7 @@ LCD_STATUS LCD_LayerSetFormat(LCD_LAYER_ID id, LCD_LAYER_FORMAT format);
 LCD_STATUS LCD_LayerEnableTdshp(LCD_LAYER_ID id, UINT32 en);
 LCD_STATUS LCD_LayerSetNextBuffIdx(LCD_LAYER_ID id, INT32 idx);
 LCD_STATUS LCD_LayerGetInfo(LCD_LAYER_ID id, UINT32 *enabled, INT32 *curr_idx, INT32 *next_idx);
+UINT32 LCD_DisableAllLayer(UINT32 vram_start, UINT32 vram_end);
 
 LCD_STATUS LCD_LayerEnableByteSwap(LCD_LAYER_ID id, BOOL enable);
 LCD_STATUS LCD_LayerSetRotation(LCD_LAYER_ID id, LCD_LAYER_ROTATION rotation);

@@ -98,11 +98,6 @@ typedef enum{
     HDMI_OUTPUT_MODE_DPI_BYPASS
 }HDMI_OUTPUT_MODE;
 
-typedef enum{
-    HDMI_DPI_OUTPUT_PORT_0,
-    HDMI_DPI_OUTPUT_PORT_1
-}HDMI_DPI_OURUT_PORT;
-
 typedef struct
 {
 	unsigned int width;
@@ -133,10 +128,12 @@ typedef struct
     /* iopad parameters */
     IO_DRIVING_CURRENT io_driving_current;
     HDMI_OUTPUT_MODE    output_mode;
-	HDMI_DPI_OURUT_PORT dpi_port;
 
     int is_force_awake;
     int is_force_landscape;
+
+    unsigned int scaling_factor; // determine the scaling of output screen size, valid value 0~10
+                                 // 0 means no scaling, 5 means scaling to 95%, 10 means 90%
 }HDMI_PARAMS;
 
 typedef enum{

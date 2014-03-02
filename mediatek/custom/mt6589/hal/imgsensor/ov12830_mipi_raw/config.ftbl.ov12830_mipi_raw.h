@@ -1,12 +1,10 @@
+
 //#ifndef _MTK_CUSTOM_PROJECT_HAL_IMGSENSOR_SRC_CONFIGFTBL__H_
 //#define _MTK_CUSTOM_PROJECT_HAL_IMGSENSOR_SRC_CONFIGFTBL__H_
 #if 1
 //
 
 
-/*******************************************************************************
- *
- ******************************************************************************/
 FTABLE_DEFINITION(SENSOR_DRVNAME_OV12830_MIPI_RAW)
 //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 FTABLE_SCENE_INDEP()
@@ -67,7 +65,7 @@ FTABLE_SCENE_INDEP()
             ITEM_AS_VALUES_(
                 "320x240",      "640x480",      "1024x768",     "1280x720",     "1280x768",     "1280x960", 
                 "1600x1200",    "2048x1536",    "2560x1440",    "2560x1920",    "3264x2448",    "3328x1872", 
-                "4096x3072", 
+                "2880x1728",    "3600x2160",    "4096x3072", 
             )
         ), 
     )
@@ -129,6 +127,18 @@ FTABLE_SCENE_INDEP()
                 "1.0",      //exposure compensation step; EV = step x index
             )
         ), 
+        //......................................................................
+        #if 1   //  SCENE HDR
+        SCENE_AS_(MtkCameraParameters::SCENE_MODE_HDR, 
+            ITEM_AS_DEFAULT_("0"), 
+            ITEM_AS_USER_LIST_(
+                "0",        //min exposure compensation index
+                "0",        //max exposure compensation index
+                "1.0",      //exposure compensation step; EV = step x index
+            )
+        )
+        #endif
+        //......................................................................
     )
 #endif
     //==========================================================================
@@ -142,8 +152,18 @@ FTABLE_SCENE_INDEP()
                 MtkCameraParameters::ANTIBANDING_OFF, 
                 MtkCameraParameters::ANTIBANDING_50HZ, 
                 MtkCameraParameters::ANTIBANDING_60HZ, 
-//                MtkCameraParameters::ANTIBANDING_AUTO, 
+                MtkCameraParameters::ANTIBANDING_AUTO, 
             )
+        ), 
+    )
+#endif
+    //==========================================================================
+#if 1
+    //  Video Snapshot
+    FTABLE_CONFIG_AS_TYPE_OF_USER(
+        KEY_AS_(MtkCameraParameters::KEY_VIDEO_SNAPSHOT_SUPPORTED), 
+        SCENE_AS_DEFAULT_SCENE(
+            ITEM_AS_DEFAULT_(MtkCameraParameters::TRUE), 
         ), 
     )
 #endif
@@ -155,7 +175,7 @@ FTABLE_SCENE_INDEP()
         SCENE_AS_DEFAULT_SCENE(
             ITEM_AS_DEFAULT_(MtkCameraParameters::FALSE), 
             ITEM_AS_SUPPORTED_(
-            #if 1
+            #if 0
                 MtkCameraParameters::FALSE
             #else
                 MtkCameraParameters::TRUE
@@ -189,6 +209,7 @@ FTABLE_SCENE_INDEP()
             ITEM_AS_DEFAULT_(MtkCameraParameters::OFF), 
             ITEM_AS_VALUES_(
                 MtkCameraParameters::OFF, 
+                MtkCameraParameters::ON
             )
         ), 
     )
@@ -202,19 +223,33 @@ FTABLE_SCENE_INDEP()
             ITEM_AS_DEFAULT_(MtkCameraParameters::CAPTURE_MODE_NORMAL), 
             ITEM_AS_VALUES_(
                 MtkCameraParameters::CAPTURE_MODE_NORMAL, 
-                MtkCameraParameters::CAPTURE_MODE_HDR_SHOT, 
                 MtkCameraParameters::CAPTURE_MODE_FACE_BEAUTY, 
                 MtkCameraParameters::CAPTURE_MODE_CONTINUOUS_SHOT, 
+                MtkCameraParameters::CAPTURE_MODE_SMILE_SHOT, 
+                MtkCameraParameters::CAPTURE_MODE_BEST_SHOT, 
+                MtkCameraParameters::CAPTURE_MODE_EV_BRACKET_SHOT, 
+                MtkCameraParameters::CAPTURE_MODE_AUTO_PANORAMA_SHOT, 
             )
         ), 
     )
 #endif
     //==========================================================================
+#if 0
+    //	Video Hdr
+    FTABLE_CONFIG_AS_TYPE_OF_DEFAULT_VALUES(
+        KEY_AS_(MtkCameraParameters::KEY_VIDEO_HDR), 
+        SCENE_AS_DEFAULT_SCENE(
+            ITEM_AS_DEFAULT_(MtkCameraParameters::OFF), 
+            ITEM_AS_VALUES_(
+                MtkCameraParameters::OFF, 
+                MtkCameraParameters::ON, 
+            )
+        ), 
+    )
+#endif
+    //==========================================================================    
 END_FTABLE_SCENE_INDEP()
 //------------------------------------------------------------------------------
-/*******************************************************************************
- *
- ******************************************************************************/
 //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 FTABLE_SCENE_DEP()
     //==========================================================================
@@ -402,9 +437,6 @@ END_FTABLE_SCENE_DEP()
 END_FTABLE_DEFINITION()
 
 
-/*******************************************************************************
- *
- ******************************************************************************/
 #endif
 //#endif //_MTK_CUSTOM_PROJECT_HAL_IMGSENSOR_SRC_CONFIGFTBL__H_
 

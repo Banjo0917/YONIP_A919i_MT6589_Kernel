@@ -155,6 +155,9 @@ void mt_lbprof_update_state_has_lock(int cpu, int rq_cnt)
 		if ( tmp_cpu == cpu && rq_cnt != MT_LBPROF_UPDATE_STATE )
 			continue;
 
+                if ( (tmp_cpu!= cpu) && (per_cpu(lb_state, tmp_cpu) == MT_LBPROF_ALLOW_UNBLANCE_STATE))
+                        continue;
+
 		switch(cpu_rq(tmp_cpu)->nr_running){
 			case 1:
 				per_cpu(lb_state, tmp_cpu) = MT_LBPROF_ONE_TASK_STATE;
@@ -172,7 +175,6 @@ void mt_lbprof_update_state_has_lock(int cpu, int rq_cnt)
 				}
 				per_cpu(lb_state, tmp_cpu) = MT_LBPROF_N_TASK_STATE;
 		}
-
 	}
 
 	if(delta >= 1000000 && unbalance){

@@ -389,6 +389,15 @@ DPI_STATUS DPI1_Init(BOOL isDpiPoweredOn)
 }
 EXPORT_SYMBOL(DPI1_Init);
 
+DPI_STATUS DPI1_FreeIRQ(void)
+{
+#if ENABLE_DPI1_INTERRUPT
+    free_irq(MT6589_DPI_IRQ_ID, NULL);
+#endif
+    return DPI_STATUS_OK;
+}
+EXPORT_SYMBOL(DPI1_FreeIRQ);
+
 DPI_STATUS DPI1_Deinit(void)
 {
     DPI1_DisableClk();

@@ -1,19 +1,4 @@
-/*
-**
-** Copyright 2008, The Android Open Source Project
-**
-** Licensed under the Apache License, Version 2.0 (the "License");
-** you may not use this file except in compliance with the License.
-** You may obtain a copy of the License at
-**
-**     http://www.apache.org/licenses/LICENSE-2.0
-**
-** Unless required by applicable law or agreed to in writing, software
-** distributed under the License is distributed on an "AS IS" BASIS,
-** WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-** See the License for the specific language governing permissions and
-** limitations under the License.
-*/
+
 
 
 #include "camera_custom_nvram.h"
@@ -38,6 +23,8 @@ int cust_isNeedAFLamp(int flashMode, int afLampMode, int isBvHigherTriger)
 {
 	if(flashMode==FLASHLIGHT_FORCE_OFF)
 		return 0;
+	if(flashMode==FLASHLIGHT_FORCE_ON)
+		return 1;
 	//if(afLampMode==AF_LAMP_OFF)
 	//	return 0;
 	//if(afLampMode==AF_LAMP_ON)
@@ -82,7 +69,7 @@ FLASH_PROJECT_PARA& cust_getFlashProjectPara(int aeMode, NVRAM_CAMERA_STROBE_STR
 {
 	static FLASH_PROJECT_PARA para;
 
-	para.dutyNum = 3;
+	para.dutyNum = 14;
 	para.stepNum = 1;
 	//tuning
 
@@ -126,28 +113,28 @@ FLASH_PROJECT_PARA& cust_getFlashProjectPara(int aeMode, NVRAM_CAMERA_STROBE_STR
 
 	//af
 	para.engLevel.afEngMode = ENUM_FLASH_ENG_INDEX_MODE;
-	para.engLevel.afDuty = 0;
+	para.engLevel.afDuty = 4;
 	para.engLevel.afStep = 0;
 
 	//pf, mf, normal
 	para.engLevel.pmfEngMode = ENUM_FLASH_ENG_INDEX_MODE;
-	para.engLevel.pfDuty = 1;
-	para.engLevel.mfDutyMax = 2;
-	para.engLevel.mfDutyMin = 0;
+	para.engLevel.pfDuty = 4;
+	para.engLevel.mfDutyMax = 17;
+	para.engLevel.mfDutyMin = 1;
 	para.engLevel.pmfStep = 0;
 
 	//low bat
 	para.engLevel.IChangeByVBatEn=0;
 	para.engLevel.vBatL = 3400;	//mv
 	para.engLevel.pfDutyL = 1;
-	para.engLevel.mfDutyMaxL = 2;
-	para.engLevel.mfDutyMinL = 0;
+	para.engLevel.mfDutyMaxL = 4;
+	para.engLevel.mfDutyMinL = 15;
 	para.engLevel.pmfStepL = 0;
 
 	//burst setting
 	para.engLevel.IChangeByBurstEn=1;
-	para.engLevel.pfDutyB = 1;
-	para.engLevel.mfDutyMaxB = 1;
+	para.engLevel.pfDutyB = 4;
+	para.engLevel.mfDutyMaxB = 5;
 	para.engLevel.mfDutyMinB = 0;
 	para.engLevel.pmfStepB = 0;
 

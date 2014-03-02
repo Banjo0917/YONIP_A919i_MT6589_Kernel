@@ -183,6 +183,7 @@ struct TS_PTPOD
 	unsigned int ts_BTS;
 };
 extern void get_thermal_slope_intercept(struct TS_PTPOD *ts_info);
+extern void set_taklking_flag(bool flag);
 
 #endif
 

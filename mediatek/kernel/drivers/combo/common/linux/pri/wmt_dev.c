@@ -37,11 +37,11 @@
 #include "wmt_tm.h"
 #include "psm_core.h"
 #include "stp_core.h"
-#include "hif_sdio.h"
 #include "stp_exp.h"
+#include "hif_sdio.h"
 
-#define MTK_WMT_VERSION  "Combo WMT Driver - v2.0"
-#define MTK_WMT_DATE     "2012/02/29"
+#define MTK_WMT_VERSION  "Combo WMT Driver - v1.0"
+#define MTK_WMT_DATE     "2011/10/04"
 #define WMT_DEV_MAJOR 190 // never used number
 #define WMT_DEV_NUM 1
 
@@ -68,6 +68,7 @@ static UINT32 gLpbkBufLog; // George LPBK debug
 
 P_WMT_PATCH_INFO pPatchInfo = NULL;
 UINT32 pAtchNum = 0;
+
 #if CFG_WMT_DBG_SUPPORT
 static struct proc_dir_entry *gWmtDbgEntry = NULL;
 COEX_BUF gCoexBuf;
@@ -93,8 +94,7 @@ static INT32 wmt_dbg_efuse_write(INT32 par1, INT32 par2, INT32 par3);
 static INT32 wmt_dbg_sdio_ctrl(INT32 par1, INT32 par2, INT32 par3);
 static INT32 wmt_dbg_stp_dbg_ctrl(INT32 par1, INT32 par2, INT32 par3);
 static INT32 wmt_dbg_stp_dbg_log_ctrl(INT32 par1, INT32 par2, INT32 par3);
-static INT32 wmt_dbg_wmt_coredump_ctrl(INT32 par1, INT32 par2, INT32 par3);
-
+static INT32 wmt_dbg_wmt_assert_ctrl(INT32 par1, INT32 par2, INT32 par3);
 
 
 
@@ -129,7 +129,7 @@ const static WMT_DEV_DBG_FUNC wmt_dev_dbg_func[] =
     [0x12] = wmt_dbg_sdio_ctrl,
     [0x13] = wmt_dbg_stp_dbg_ctrl,
     [0x14] = wmt_dbg_stp_dbg_log_ctrl,
-    [0x15] = wmt_dbg_wmt_coredump_ctrl,
+    [0x15] = wmt_dbg_wmt_assert_ctrl,
 };
 
 INT32 wmt_dbg_psm_ctrl(INT32 par1, INT32 par2, INT32 par3)
@@ -137,15 +137,15 @@ INT32 wmt_dbg_psm_ctrl(INT32 par1, INT32 par2, INT32 par3)
 #if CFG_WMT_PS_SUPPORT
     if (0 == par2)
     {
-        wmt_lib_ps_disable();
-        WMT_INFO_FUNC("call wmt_lib_psm_disable\n");
+        wmt_lib_ps_ctrl(0);
+        WMT_INFO_FUNC("disable PSM\n");
     }
     else
     {
         par2 = (1 > par2 || 20000 < par2) ? STP_PSM_IDLE_TIME_SLEEP : par2;
         wmt_lib_ps_set_idle_time(par2);
-        wmt_lib_ps_enable();
-        WMT_INFO_FUNC("call wmt_lib_psm_enable, idle to sleep time = %d ms\n", par2);
+        wmt_lib_ps_ctrl(1);
+        WMT_INFO_FUNC("enable PSM, idle to sleep time = %d ms\n", par2);
     }
 #else
     WMT_INFO_FUNC("WMT PS not supported\n");
@@ -155,15 +155,14 @@ INT32 wmt_dbg_psm_ctrl(INT32 par1, INT32 par2, INT32 par3)
 
 INT32 wmt_dbg_dsns_ctrl(INT32 par1, INT32 par2, INT32 par3)
 {
-    if (0 == par1)
+    if (WMTDSNS_FM_DISABLE <= par2 && WMTDSNS_MAX > par2 )
     {
-        mtk_wcn_wmt_dsns_ctrl(WMTDSNS_FM_DISABLE);
-        WMT_INFO_FUNC("disalbe FM dsns function\n");
+        WMT_INFO_FUNC("DSNS type (%d)\n", par2);
+        mtk_wcn_wmt_dsns_ctrl(par2);
     }
     else
     {
-        mtk_wcn_wmt_dsns_ctrl(WMTDSNS_FM_ENABLE);
-        WMT_INFO_FUNC("enable FM dsns function\n");
+        WMT_WARN_FUNC("invalid DSNS type\n");
     }
     return 0;
 }
@@ -242,7 +241,11 @@ INT32 wmt_dbg_cmd_test_api(ENUM_WMTDRV_CMD_T cmd)
     }
     WMT_INFO_FUNC("CMD_TEST, opid(%d), par(%d, %d)\n", pOp->op.opId, pOp->op.au4OpData[0], pOp->op.au4OpData[1]);
     /*wake up chip first*/
-    DISABLE_PSM_MONITOR();
+    if (DISABLE_PSM_MONITOR()) {
+        WMT_ERR_FUNC("wake up failed\n");
+        wmt_lib_put_op_to_free_queue(pOp);
+        return -1;
+    }
     bRet = wmt_lib_put_act_op(pOp);
     ENABLE_PSM_MONITOR();
     if ((cmd != WMTDRV_CMD_ASSERT) && (cmd != WMTDRV_CMD_EXCEPTION))
@@ -463,7 +466,9 @@ INT32 wmt_dbg_stp_dbg_log_ctrl(INT32 par1, INT32 par2, INT32 par3)
     return 0;
 }
 
-INT32 wmt_dbg_wmt_coredump_ctrl(INT32 par1, INT32 par2, INT32 par3)
+
+
+INT32 wmt_dbg_wmt_assert_ctrl(INT32 par1, INT32 par2, INT32 par3)
 {
     mtk_wcn_stp_coredump_flag_ctrl(0 != par2 ? 1 : 0);
     return 0;
@@ -849,10 +854,10 @@ INT32 wmt_dev_patch_get (
     }
 }
 
+
 INT32 wmt_dev_patch_put(osal_firmware **ppPatch)
 {
-    if (NULL != *ppPatch )
-    {
+    if (NULL != *ppPatch ) {
         if ((*ppPatch)->data) {
             vfree((*ppPatch)->data);
         }
@@ -861,14 +866,17 @@ INT32 wmt_dev_patch_put(osal_firmware **ppPatch)
     }
     return 0;
 }
+
+
 VOID wmt_dev_patch_info_free(VOID)
 {
-	if(pPatchInfo)
-	{
+	if (pPatchInfo) {
 		kfree(pPatchInfo);
 		pPatchInfo = NULL;
 	}
 }
+
+
 MTK_WCN_BOOL wmt_dev_is_file_exist(UCHAR *pFileName)
 {
     struct file *fd = NULL;
@@ -906,7 +914,6 @@ MTK_WCN_BOOL wmt_dev_is_file_exist(UCHAR *pFileName)
     return true;
 
 }
-
 
 #if  defined(CONFIG_THERMAL) &&  defined(CONFIG_THERMAL_OPEN)
 static unsigned long count_last_access_sdio = 0;    
@@ -1010,7 +1017,7 @@ static INT32 wmt_dev_tm_temp_query(void)
     }
 
     do_gettimeofday(&now_time);
-
+#if 1
     // Query condition 2:
     // Moniter the hif_sdio activity to decide if we have the need to query temperature.
     if(!query_cond)
@@ -1042,7 +1049,7 @@ static INT32 wmt_dev_tm_temp_query(void)
         }
         #endif
     }
-    
+ #endif   
     // Query condition 3:
     // If the query time exceeds the a certain of period, refresh temp table.
     //
@@ -1118,11 +1125,13 @@ static INT32 wmt_dev_tm_setup(void)
 }
 #else
 //STP-UART will access the symbol, so we keep symbol exist even when CONFIG_THERMAL is not support
-extern INT32 wmt_dev_tra_uart_update()
+extern INT32 wmt_dev_tra_uart_update(void)
 {          
     return 0;
 }
 #endif
+
+
 
 ssize_t
 WMT_write (
@@ -1231,29 +1240,28 @@ WMT_unlocked_ioctl (
     unsigned long arg
     )
 {
+#define WMT_IOC_MAGIC        0xa0
+#define WMT_IOCTL_PORT_NAME       _IOWR(WMT_IOC_MAGIC, 20, char*)
+#define WMT_IOCTL_WMT_CFG_NAME     _IOWR(WMT_IOC_MAGIC, 21, char*)
+#define WMT_IOCTL_WMT_QUERY_CHIPID     _IOR(WMT_IOC_MAGIC, 22, int)
+#define WMT_IOCTL_WMT_TELL_CHIPID     _IOW(WMT_IOC_MAGIC, 23, int)
+#define WMT_IOCTL_WMT_COREDUMP_CTRL     _IOW(WMT_IOC_MAGIC, 24, int)
+
+
+
     INT32 iRet = 0;
     UCHAR pBuffer[NAME_MAX + 1];
     WMT_DBG_FUNC("cmd (%u), arg (0x%lx)\n", cmd, arg);
-
     switch(cmd) {
     case 4: /* patch location */
         {
-#if 0
-        WMT_DBG_FUNC("old patch file: %s \n", pWmtDevCtx->cPatchName);
-        if (copy_from_user(pWmtDevCtx->cPatchName, (void *)arg, NAME_MAX)) {
-            iRet = -EFAULT;
-            break;
-        }
-        pWmtDevCtx->cPatchName[NAME_MAX] = '\0';
-        WMT_DBG_FUNC("new patch file name: %s \n", pWmtDevCtx->cPatchName);
-#endif
-            UCHAR cPatchName[NAME_MAX + 1];
-            if (copy_from_user(cPatchName, (void *)arg, NAME_MAX)) {
+            
+            if (copy_from_user(pBuffer, (void *)arg, NAME_MAX)) {
                 iRet = -EFAULT;
                 break;
             }
-            cPatchName[NAME_MAX] = '\0';
-            wmt_lib_set_patch_name(cPatchName);
+            pBuffer[NAME_MAX] = '\0';
+            wmt_lib_set_patch_name(pBuffer);
         }
         break;
 
@@ -1376,7 +1384,12 @@ WMT_unlocked_ioctl (
             WMT_INFO_FUNC("OPID(%d) type(%d) start\n",
                 pOp->op.opId,
                 pOp->op.au4OpData[0]);
-            DISABLE_PSM_MONITOR();
+            if (DISABLE_PSM_MONITOR()) {
+                WMT_ERR_FUNC("wake up failed\n");
+                wmt_lib_put_op_to_free_queue(pOp);
+                return -1;
+            }
+            
             bRet = wmt_lib_put_act_op(pOp);
             ENABLE_PSM_MONITOR();
             if (MTK_WCN_BOOL_FALSE == bRet) {
@@ -1462,44 +1475,9 @@ WMT_unlocked_ioctl (
         case 10:
         {
 			wmt_lib_host_awake_get();
-			#if 0
-            P_OSAL_OP pOp;
-            MTK_WCN_BOOL bRet;
-            P_OSAL_SIGNAL pSignal;
-            pOp = wmt_lib_get_free_op();
-            if (!pOp) {
-                WMT_WARN_FUNC("get_free_lxop fail\n");
-                return MTK_WCN_BOOL_FALSE;
-            }
-            
-            pSignal = &pOp->signal;
-            pOp->op.opId = WMT_OPID_FUNC_ON;
-            pOp->op.au4OpData[0] = WMTDRV_TYPE_COREDUMP;
-            pSignal->timeoutValue= 0;
-            WMT_INFO_FUNC("OPID(%d) type(%d) start\n",
-                   pOp->op.opId,
-                   pOp->op.au4OpData[0]);
-            /*do not check return value, we will do this either way*/
-            
-            /*wake up chip first*/
-            DISABLE_PSM_MONITOR();
-            bRet = wmt_lib_put_act_op(pOp);
-            ENABLE_PSM_MONITOR();
-            //wmt_lib_host_awake_put();
-            
-            if (MTK_WCN_BOOL_FALSE == bRet) {
-                WMT_WARN_FUNC("OPID(%d) type(%d) fail\n",
-                    pOp->op.opId,
-                    pOp->op.au4OpData[0]);
-            }
-            else {
-                    WMT_INFO_FUNC("OPID(%d) type(%d) ok\n",
-                    pOp->op.opId,
-                    pOp->op.au4OpData[0]);
-            }
-			#endif
+            mtk_wcn_stp_coredump_start_ctrl(1);
 			osal_strcpy(pBuffer, "MT662x f/w coredump start-");
-            if (copy_from_user(pBuffer + osal_strlen(pBuffer), (void *)arg, NAME_MAX)) {
+            if (copy_from_user(pBuffer + osal_strlen(pBuffer), (void *)arg, NAME_MAX - osal_strlen(pBuffer))) {
                 //osal_strcpy(pBuffer, "MT662x f/w assert core dump start");
                 WMT_ERR_FUNC("copy assert string failed\n");
             }
@@ -1514,51 +1492,58 @@ WMT_unlocked_ioctl (
         }
         break;
         
-			
+            
         case 12:
-		{
-			if (0 == arg)
-			{
-			    return wmt_lib_get_icinfo(WMTCHIN_CHIPID);
-			}
-			else if (1 == arg)
-			{
-			    return wmt_lib_get_icinfo(WMTCHIN_HWVER);
-			}
+        {
+            if (0 == arg)
+            {
+                return wmt_lib_get_icinfo(WMTCHIN_CHIPID);
+            }
+            else if (1 == arg)
+            {
+                return wmt_lib_get_icinfo(WMTCHIN_HWVER);
+            }
 			else if (2 == arg)
 			{
 			    return wmt_lib_get_icinfo(WMTCHIN_FWVER);
 			}
+        }
+        break;
+
+        case 13: {
+            if (1 == arg) {
+			    WMT_INFO_FUNC("launcher may be killed,block abnormal stp tx. \n");
+			    wmt_lib_set_stp_wmt_last_close(1);
+            } else {
+			    wmt_lib_set_stp_wmt_last_close(0);
+            }
+
 		}
 		break;
-
-		case 13:
-		{
-
+		
+        case 14: {
 			pAtchNum = arg;
 			WMT_INFO_FUNC(" get patch num from launcher = %d\n",pAtchNum);
 			wmt_lib_set_patch_num(pAtchNum);
 			pPatchInfo = kzalloc(sizeof(WMT_PATCH_INFO)*pAtchNum,GFP_ATOMIC);
-			if(!pPatchInfo)
-			{
+			if (!pPatchInfo) {
 				WMT_ERR_FUNC("allocate memory fail!\n");
 				break;
 			}
 		}
 		break;
 
-		case 14:
-		{
+		case 15: {
 			WMT_PATCH_INFO wMtPatchInfo;
 			P_WMT_PATCH_INFO pTemp = NULL;
 			UINT32 dWloadSeq;
 			static UINT32 counter = 0;
 			
-			if(!pPatchInfo)
-			{
+			if (!pPatchInfo) {
 				WMT_ERR_FUNC("NULL patch info pointer\n");
 				break;
 			}
+            
             if (copy_from_user(&wMtPatchInfo, (void *)arg, sizeof(WMT_PATCH_INFO))) {
                 WMT_ERR_FUNC("copy_from_user failed at %d\n", __LINE__);
                 iRet = -EFAULT;
@@ -1569,10 +1554,62 @@ WMT_unlocked_ioctl (
 			WMT_DBG_FUNC("current download seq no is %d,patch name is %s,addres info is 0x%02x,0x%02x,0x%02x,0x%02x\n",dWloadSeq,wMtPatchInfo.patchName,wMtPatchInfo.addRess[0],wMtPatchInfo.addRess[1],wMtPatchInfo.addRess[2],wMtPatchInfo.addRess[3]);
 			osal_memcpy(pPatchInfo + dWloadSeq - 1,&wMtPatchInfo,sizeof(WMT_PATCH_INFO));
 			pTemp = pPatchInfo + dWloadSeq - 1;
-			if(++counter == pAtchNum)
-			{
+			if (++counter == pAtchNum) {
 				wmt_lib_set_patch_info(pPatchInfo);
 				counter = 0;
+			}
+		}
+		break; 
+		
+        case WMT_IOCTL_PORT_NAME: {
+            CHAR cUartName[NAME_MAX + 1];
+            if (copy_from_user(cUartName, (void *)arg, NAME_MAX)) {
+                iRet = -EFAULT;
+                break;
+            }
+            cUartName[NAME_MAX] = '\0';
+            wmt_lib_set_uart_name(cUartName);
+        }
+        break;
+		
+		case WMT_IOCTL_WMT_CFG_NAME:
+		{
+			CHAR cWmtCfgName[NAME_MAX + 1];
+            if (copy_from_user(cWmtCfgName, (void *)arg, NAME_MAX)) {
+                iRet = -EFAULT;
+                break;
+            }
+            cWmtCfgName[NAME_MAX] = '\0';
+			wmt_conf_set_cfg_file(cWmtCfgName);
+		}
+		break;
+		case WMT_IOCTL_WMT_QUERY_CHIPID:
+		{
+			iRet = mtk_wcn_hif_sdio_query_chipid(1);
+		}
+		break;
+		case WMT_IOCTL_WMT_TELL_CHIPID:
+		{
+			iRet = mtk_wcn_hif_sdio_tell_chipid(arg);
+			if (0x6628 == arg)
+			{
+			    wmt_lib_merge_if_flag_ctrl(1);
+			}
+			else
+			{
+			    wmt_lib_merge_if_flag_ctrl(0);
+			}
+		}
+		break;
+		case WMT_IOCTL_WMT_COREDUMP_CTRL:
+		{
+		    if (0 == arg)
+		    {
+		        mtk_wcn_stp_coredump_flag_ctrl(0);
+		    }
+			else
+			{
+			    mtk_wcn_stp_coredump_flag_ctrl(1);
 			}
 		}
 		break;
@@ -1723,8 +1760,8 @@ static void WMT_exit (void)
     dev_t dev = MKDEV(gWmtMajor, 0);
 
 #if  defined(CONFIG_THERMAL) &&  defined(CONFIG_THERMAL_OPEN)
-    wmt_tm_deinit_rt();
-    wmt_tm_deinit();
+		wmt_tm_deinit_rt();
+		wmt_tm_deinit();
 #endif
 
     wmt_lib_deinit();

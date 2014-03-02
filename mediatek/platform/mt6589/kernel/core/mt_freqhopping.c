@@ -52,9 +52,8 @@ do {    \
 } while(0);
 
 #define MT_FH_CLK_GEN 		0
-#define MT_FH_DUMMY_READ	1
 
-#define USER_DEFINE_SETTING_ID 1
+#define USER_DEFINE_SETTING_ID 	1
 
 static DEFINE_SPINLOCK(freqhopping_lock);
 
@@ -75,8 +74,19 @@ static unsigned int 	*g_fh_rank1_pa;
 static unsigned int 	*g_fh_rank1_va;
 static unsigned int	*g_fh_rank0_pa;
 static unsigned int	*g_fh_rank0_va;
+//static unsigned int	g_clk_en=0;
 
 #ifndef PER_PROJECT_FH_SETTING	
+
+#define MT_FH_DUMMY_READ	0
+
+#define LOW_DRAMC_DDS		0x0010C000
+#define LOW_DRAMC_INT		67 //233.5
+#define LOW_DRAMC_FRACTION	0 //233.5
+#define LOW_DRAMC		233 //233.5
+#define LOW_DRAMC_FREQ		233500
+
+#define LVDS_PLL_IS_ON		1
 
 //TODO: fill in the default freq & corresponding setting_id
 static  fh_pll_t g_fh_pll[MT658X_FH_PLL_TOTAL_NUM] = { //keep track the status of each PLL 
@@ -85,7 +95,7 @@ static  fh_pll_t g_fh_pll[MT658X_FH_PLL_TOTAL_NUM] = { //keep track the status o
 	{FH_FH_ENABLE_SSC,  FH_PLL_ENABLE   , 0, 266000  , 0}, //MEMPLL   default SSC enable
 	{FH_FH_DISABLE,     FH_PLL_ENABLE   , 0, 1599000 , 0}, //MSDCPLL  default SSC enable
 	{FH_FH_DISABLE,     FH_PLL_ENABLE   , 0, 1188000 , 0}, //TVDPLL   default SSC disable
-	{FH_FH_DISABLE,     FH_PLL_DISABLE  , 0, 1200000 , 0}  //LVDSPLL  default SSC disable
+	{FH_FH_ENABLE_SSC,  FH_PLL_ENABLE  , 0, 1664000 , 0}  //LVDSPLL  default SSC disable
 };
 
 
@@ -94,7 +104,7 @@ static  fh_pll_t g_fh_pll[MT658X_FH_PLL_TOTAL_NUM] = { //keep track the status o
 static const struct freqhopping_ssc mt_ssc_armpll_setting[MT_SSC_NR_PREDEFINE_SETTING]= {
 	{0,0,0,0,0,0},//Means disable
 	{0,0xFF,0xFF,0xFF,0xFF,0xFF},//Means User-Define
-	{1209000 ,0 ,9 ,0, 0x770A, 0xBA000},// 1.209GHz , 0.27us, 0.023437500, 0 ~ -8%
+	{1599000, 0, 9, 0, 0x9d70, 0xF6000},// 1.209GHz , 0.27us, 0.023437500, 0 ~ -8%
 	{1001000 ,0 ,9 ,0, 0x628F, 0x9A000},// 1.001GHz , 0.27us, 0.023437500, 0 ~ -8% 
 	{ 715000 ,0 ,9 ,0, 0x8CCC, 0xDC000},//   715MHz , 0.27us, 0.023437500, 0 ~ -8%
 	{ 419250 ,0 ,9 ,0, 0xA51E, 0x102000},//419.25MHz , 0.27us, 0.023437500, 0 ~ -8%
@@ -113,6 +123,7 @@ static const struct freqhopping_ssc mt_ssc_mempll_setting[MT_SSC_NR_PREDEFINE_SE
 	{0,0xFF,0xFF,0xFF,0xFF,0xFF},//Means User-Define
 	{266000 ,0 ,7 ,0, 0x61CD, 0x00131A2E},//266MHz , 0.27us, 0.007812500 , 0 ~ -4%
 	//{266000 ,0 ,9 ,0, 0xC39B, 0x00131A2E},//266MHz , 0.27us, 0.023437500, 0 ~ -8%
+	{233500 ,0 ,7 ,0, 0x55C2, 0x0010C000},//233.5MHz , 0.27us, 0.007812500, 0 ~ -4%  
 	{208500 ,0 ,7 ,0, 0x4CA8, 0x000EF8F5},//208.5MHz , 0.27us, 0.007812500, 0 ~ -4%  
 	{200000 ,0 ,7 ,0, 0x4989, 0x000E5CCC},//200MHz , 0.27us, 0.007812500, 0 ~ -4%  
 	{0,0,0,0,0,0} //EOF
@@ -136,7 +147,7 @@ static const struct freqhopping_ssc mt_ssc_tvdpll_setting[MT_SSC_NR_PREDEFINE_SE
 static const struct freqhopping_ssc mt_ssc_lvdspll_setting[MT_SSC_NR_PREDEFINE_SETTING]= {
 	{0,0,0,0,0,0},//Means disable
 	{0,0xFF,0xFF,0xFF,0xFF,0xFF},//Means User-Define
-	{1200000, 0, 9, 0, 0x9627, 0xB89D8}, // 1200MHz ,46.15384615
+	{1664000, 0, 9, 0, 0x51EB, 0x80000}, // 1200MHz ,46.15384615
 	{1400000, 0, 9, 0, 0x8dc8, 0xDD89D}, // 1400MHz, 55.38461538
 	{0,0,0,0,0,0} //EOF
 };
@@ -195,12 +206,18 @@ static void update_fhctl_status(const int pll_id, const int enable)
 
         FH_MSG("PLen#=%d",enabled_num) ;
 
-        if(enabled_num == 1) {
-                enable_clock(MT_CG_PERI1_FHCTL, "FREQHOP") ;
+#if 0  //TODO: FIX the enable clock mechanism
+        if((g_clk_en == 0)&&(enabled_num >= 1)) {
+		enable_clock_ext_locked(MT_CG_PERI1_FHCTL, "FREQHOP") ;
+                //wait_for_sophieenable_clock(MT_CG_PERI1_FHCTL, "FREQHOP") ;
+                g_clk_en = 1;                
         }
-        else if((enabled_num == 0)) {
-                disable_clock(MT_CG_PERI1_FHCTL, "FREQHOP") ;
+        else if((g_clk_en == 1)&&(enabled_num == 0)) {
+                disable_clock_ext_locked(MT_CG_PERI1_FHCTL, "FREQHOP") ;
+                //wait_for_sophie disable_clock(MT_CG_PERI1_FHCTL, "FREQHOP") ;
+                g_clk_en = 0;
         }
+#endif        
 }
 
 
@@ -246,8 +263,8 @@ static int __mt_enable_freqhopping(unsigned int pll_id,const struct freqhopping_
 	fh_set_field(REG_FHCTL0_CFG+(0x10*pll_id),FH_SFSTRX_DYS,ssc_setting->df);
 	fh_set_field(REG_FHCTL0_CFG+(0x10*pll_id),FH_SFSTRX_DTS,ssc_setting->dt);
 
-	fh_set_field(REG_FHCTL0_UPDNLMT+(0x10*pll_id),FH_FRDDSX_DNLMT,ssc_setting->lowbnd);
-	fh_set_field(REG_FHCTL0_UPDNLMT+(0x10*pll_id),FH_FRDDSX_UPLMT,ssc_setting->upbnd);
+	fh_write32(REG_FHCTL0_UPDNLMT+(0x10*pll_id), (((ssc_setting->lowbnd) << 16) | (ssc_setting->upbnd)));
+	
 	fh_write32(REG_FHCTL0_DDS+(0x10*pll_id), (ssc_setting->dds)|(1U<<31));
 	pll_hp = fh_read32(PLL_HP_CON0) | (1 << pll_id);
 	fh_write32( PLL_HP_CON0,  pll_hp );
@@ -553,14 +570,14 @@ Exit:
 
 static int __freqhopping_ctrl_lock(struct freqhopping_ioctl* fh_ctl,bool enable)
 {
-	int	retVal=1;
+	int		retVal=1;
+	unsigned long 	flags;
 
 	FH_MSG("EN: _fctr_lck %d:%d",fh_ctl->pll_id,enable);
 
-	//spin_lock_irqsave(&freqhopping_lock, flags);
-	spin_lock(&freqhopping_lock);
+	spin_lock_irqsave(&freqhopping_lock, flags);
 	retVal = __freqhopping_ctrl(fh_ctl, enable);
-	spin_unlock(&freqhopping_lock);
+	spin_unlock_irqrestore(&freqhopping_lock, flags);
 	
 	return retVal;
 }
@@ -638,12 +655,7 @@ static int mt_freqhopping_ioctl(struct file *file, unsigned int cmd, unsigned lo
 }
 
 
-#ifndef MT_FH_DUMMY_READ
-
-#define mt_dummy_read()
-#define mt_dummy_read_init()
-
-#else //MT_FH_DUMMY_READ
+#if MT_FH_DUMMY_READ
 
 static noinline void mt_dummy_read(void)
 {
@@ -758,6 +770,18 @@ static void mt_dummy_read_init(void)
 	}
 }
 
+#else //MT_FH_DUMMY_READ
+
+static void mt_dummy_read_init(void)
+{
+	FH_MSG("EN: mt_dummy_read_init()");
+}
+static noinline void mt_dummy_read(void)
+{
+	FH_MSG("EN: DR() r0:%p r1:%p",g_fh_rank0_va,g_fh_rank1_va);
+	udelay(800);
+}
+
 #endif //MT_FH_DUMMY_READ
 
 
@@ -768,6 +792,7 @@ static int mt_h2oc_mempll(void)
 	unsigned int	fh_dds=0;
 	unsigned int	pll_dds=0;
 	unsigned int	i=0;
+
 
 	FH_MSG("EN: %s:%d",__func__,g_curr_dramc);
 
@@ -792,7 +817,8 @@ static int mt_h2oc_mempll(void)
 		return -1;
 	}
 	
-	spin_lock(&freqhopping_lock);
+	//TODO: provelock issue spin_lock(&freqhopping_lock); 
+	spin_lock_irqsave(&freqhopping_lock, flags);
 
 	//disable SSC when OC
 	__mt_disable_freqhopping(2, NULL);
@@ -826,7 +852,7 @@ static int mt_h2oc_mempll(void)
 
 	FH_MSG("=> 0x%x",DRV_Reg32(REG_FHCTL2_MON));
 
-	local_irq_save(flags);
+	//TODO: provelock issue local_irq_save(flags);
 
 	//---------------------------------------------
 	//Overwrite MEMPLL NCPO setting in hopping SRAM
@@ -860,7 +886,7 @@ static int mt_h2oc_mempll(void)
 	//sfstr_dts[3:0] = 4・d0(0.27us)
 	//sfstr_dys[3:0] = 4・d9(0.023437500)
 	//slope = 26MHz * 0.007812500 / 0.27us = 0.75MHz/us < 2.5MHz/us
-	fh_write32(REG_FHCTL2_CFG, (0 << 24|7 << 28|5));
+	fh_write32(REG_FHCTL2_CFG, ( (0 << 24) | (7 << 28) | 5));
 	
 	//-------------------------------------------------
 	// Trigger 2G1 Hopping on channel number 0
@@ -869,13 +895,13 @@ static int mt_h2oc_mempll(void)
 
 	g_curr_dramc = 293;
 
-	local_irq_restore(flags);
+	//TODO: provelock issue local_irq_restore(flags);
 
 	mt_dummy_read();
 
 	FH_MSG("-MON- 0x%x",DRV_Reg32(REG_FHCTL2_MON));
 
-	local_irq_save(flags);
+	//TODO: provelock issue local_irq_save(flags);
 
 	fh_write32( DDRPHY_BASE+0x624, (fh_read32(DDRPHY_BASE+0x624) & 0x7FF) ); //clear NCPO
 	fh_write32( DDRPHY_BASE+0x624, ( fh_read32(DDRPHY_BASE+0x624) |(((0x54 << 14) | 0x0A8F ) << 11 )) ); //set NCPO
@@ -886,7 +912,7 @@ static int mt_h2oc_mempll(void)
 	//Turn off MEMPLL hopping
 	fh_write32(REG_FHCTL2_CFG, 0x70700000);
 
-	local_irq_restore(flags);
+	//TODO: provelock issue local_irq_restore(flags);
 
 	if(g_fh_pll[MT658X_FH_MEM_PLL].fh_status == FH_FH_ENABLE_SSC){
 		FH_MSG("to SSC");
@@ -903,8 +929,9 @@ static int mt_h2oc_mempll(void)
 	g_fh_pll[MT658X_FH_MEM_PLL].curr_freq 	= 293000;
 	g_fh_pll[MT658X_FH_MEM_PLL].pll_status 	= FH_PLL_ENABLE;
 
-	spin_unlock(&freqhopping_lock);
-
+	//TODO: provelock issue spin_unlock(&freqhopping_lock);
+	spin_unlock_irqrestore(&freqhopping_lock, flags);
+	
 	freqhopping_config(MT658X_FH_MEM_PLL, 293000, true); //update freq.
 
 	return 0;
@@ -917,6 +944,7 @@ static int mt_oc2h_mempll(void)
 	unsigned int	fh_dds=0;
 	unsigned int	pll_dds=0;
 	unsigned int	i=0;
+
 	
 	FH_MSG("EN: %s:%d",__func__,g_curr_dramc);
 	
@@ -941,7 +969,8 @@ static int mt_oc2h_mempll(void)
 		return 0;			
 	}
 
-	spin_lock(&freqhopping_lock);
+	//TODO: provelock issue spin_lock(&freqhopping_lock);
+	spin_lock_irqsave(&freqhopping_lock, flags);
 	
 	if(g_fh_pll[MT658X_FH_MEM_PLL].fh_status == FH_FH_ENABLE_SSC){//only when SSC is enable
 		
@@ -973,7 +1002,7 @@ static int mt_oc2h_mempll(void)
 
 	FH_MSG("=> 0x%x",DRV_Reg32(REG_FHCTL2_MON));
 
-	local_irq_save(flags);
+	//TODO: provelock issue local_irq_save(flags);
 	
 	//---------------------------------------------
 	//Overwrite MEMPLL NCPO setting in hopping SRAM
@@ -1008,7 +1037,7 @@ static int mt_oc2h_mempll(void)
 	//sfstr_dts[3:0] = 4・d0(0.27us)
 	//sfstr_dys[3:0] = 4・d9(0.023437500)
 	//slope = 26MHz * 0.007812500 / 0.27us = 0.75MHz/us < 2.5MHz/us
-	fh_write32(REG_FHCTL2_CFG, (0 << 24|7 << 28|5));
+	fh_write32(REG_FHCTL2_CFG, ( (0 << 24) | (7 << 28) | 5));
 	
 	//-------------------------------------------------
 	// Trigger 2G1 Hopping on channel number 0
@@ -1017,13 +1046,13 @@ static int mt_oc2h_mempll(void)
 
 	g_curr_dramc = 266;
 
-	local_irq_restore(flags);
+	//TODO: provelock issue local_irq_restore(flags);
 	
 	mt_dummy_read();
 
 	FH_MSG("-MON- 0x%x",DRV_Reg32(REG_FHCTL2_MON));
 
-	local_irq_save(flags);
+	//TODO: provelock issue local_irq_save(flags);
 	fh_write32( DDRPHY_BASE+0x624, (fh_read32(DDRPHY_BASE+0x624) & 0x7FF) ); //clear NCPO
 	fh_write32( DDRPHY_BASE+0x624, ( fh_read32(DDRPHY_BASE+0x624) |(((0x4C << 14) | 0x1A2E ) << 11 )) ); //set NCPO
 	
@@ -1032,7 +1061,7 @@ static int mt_oc2h_mempll(void)
 
 	//Turn off MEMPLL hopping
 	fh_write32(REG_FHCTL2_CFG, 0x70700000);
-	local_irq_restore(flags);
+	//TODO: provelock issue local_irq_restore(flags);
 	
 	if(g_fh_pll[MT658X_FH_MEM_PLL].fh_status == FH_FH_ENABLE_SSC){
 		FH_MSG("to SSC");
@@ -1048,8 +1077,9 @@ static int mt_oc2h_mempll(void)
 	g_fh_pll[MT658X_FH_MEM_PLL].curr_freq 	= 266000;
 	g_fh_pll[MT658X_FH_MEM_PLL].pll_status 	= FH_PLL_ENABLE;
 
-	spin_unlock(&freqhopping_lock);
-
+	//TODO: provelock issue spin_unlock(&freqhopping_lock);
+	spin_unlock_irqrestore(&freqhopping_lock, flags);
+	
 	freqhopping_config(MT658X_FH_MEM_PLL, 266000, true); //update freq.
 	
 	return 0;
@@ -1079,13 +1109,15 @@ int mt_l2h_mempll(void)  //mempll low to high (200->266MHz)
 	
 	FH_MSG("dds: %x",(DRV_Reg32(DDRPHY_BASE+0x624) >> 11 ));
 	
-	if((DRV_Reg32(DDRPHY_BASE+0x624) >> 11 ) != 0xEF8F5){
-		FH_BUG_ON((DRV_Reg32(DDRPHY_BASE+0x624) >> 11 ) != 0xEF8F5);
-		FH_MSG("DDS != 0xEF8F5");
+	if((DRV_Reg32(DDRPHY_BASE+0x624) >> 11 ) != LOW_DRAMC_DDS){
+		FH_BUG_ON((DRV_Reg32(DDRPHY_BASE+0x624) >> 11 ) != LOW_DRAMC_DDS);
+		FH_MSG("DDS != 0x%X",LOW_DRAMC_DDS);
 		return 0;			
 	}
 
-	spin_lock(&freqhopping_lock);
+	//TODO: provelock issue spin_lock(&freqhopping_lock);
+	spin_lock_irqsave(&freqhopping_lock, flags);
+
 	
 	if(g_fh_pll[MT658X_FH_MEM_PLL].fh_status == FH_FH_ENABLE_SSC){//only when SSC is enable
 		
@@ -1117,7 +1149,7 @@ int mt_l2h_mempll(void)  //mempll low to high (200->266MHz)
 
 	FH_MSG("=> 0x%x",DRV_Reg32(REG_FHCTL2_MON));
 
-	local_irq_save(flags);
+	//TODO: provelock issue local_irq_save(flags);
 	
 	//---------------------------------------------
 	//Overwrite MEMPLL NCPO setting in hopping SRAM
@@ -1152,7 +1184,7 @@ int mt_l2h_mempll(void)  //mempll low to high (200->266MHz)
 	//sfstr_dts[3:0] = 4・d0(0.27us)
 	//sfstr_dys[3:0] = 4・d9(0.023437500)
 	//slope = 26MHz * 0.007812500 / 0.27us = 0.75MHz/us < 2.5MHz/us
-	fh_write32(REG_FHCTL2_CFG, (0 << 24|7 << 28|5));
+	fh_write32(REG_FHCTL2_CFG, ( (0 << 24) | (7 << 28) | 5));
 	
 	//-------------------------------------------------
 	// Trigger 2G1 Hopping on channel number 0
@@ -1161,13 +1193,13 @@ int mt_l2h_mempll(void)  //mempll low to high (200->266MHz)
 
 	g_curr_dramc = 266;
 
-	local_irq_restore(flags);
+	//TODO: provelock issue local_irq_restore(flags);
 	
 	mt_dummy_read();
 
 	FH_MSG("-MON- 0x%x",DRV_Reg32(REG_FHCTL2_MON));
 
-	local_irq_save(flags);
+	//TODO: provelock issue local_irq_save(flags);
 	fh_write32( DDRPHY_BASE+0x624, (fh_read32(DDRPHY_BASE+0x624) & 0x7FF) ); //clear NCPO
 	fh_write32( DDRPHY_BASE+0x624, ( fh_read32(DDRPHY_BASE+0x624) |(((0x4C << 14) | 0x1A2E ) << 11 )) ); //set NCPO
 	
@@ -1176,7 +1208,7 @@ int mt_l2h_mempll(void)  //mempll low to high (200->266MHz)
 
 	//Turn off MEMPLL hopping
 	fh_write32(REG_FHCTL2_CFG, 0x70700000);
-	local_irq_restore(flags);
+	//TODO: provelock issue local_irq_restore(flags);
 	
 	if(g_fh_pll[MT658X_FH_MEM_PLL].fh_status == FH_FH_ENABLE_SSC){
 		FH_MSG("to SSC");
@@ -1192,7 +1224,8 @@ int mt_l2h_mempll(void)  //mempll low to high (200->266MHz)
 	g_fh_pll[MT658X_FH_MEM_PLL].curr_freq 	= 266000;
 	g_fh_pll[MT658X_FH_MEM_PLL].pll_status 	= FH_PLL_ENABLE;
 
-	spin_unlock(&freqhopping_lock);
+	//TODO: provelock issue spin_unlock(&freqhopping_lock);
+	spin_unlock_irqrestore(&freqhopping_lock, flags);
 
 	freqhopping_config(MT658X_FH_MEM_PLL, 266000, true); //update freq.
 	
@@ -1218,7 +1251,7 @@ int mt_h2l_mempll(void)  //mempll low to high (200->266MHz)
 		return -1;
 	}
 
-	if(g_curr_dramc == 208){
+	if(g_curr_dramc == LOW_DRAMC){
 		return -1;	
 	}
 
@@ -1230,7 +1263,9 @@ int mt_h2l_mempll(void)  //mempll low to high (200->266MHz)
 		return 0;			
 	}
 	
-	spin_lock(&freqhopping_lock);
+	//TODO: provelock issue spin_lock(&freqhopping_lock);
+	spin_lock_irqsave(&freqhopping_lock, flags);
+	
 
 	if(g_fh_pll[MT658X_FH_MEM_PLL].fh_status == FH_FH_ENABLE_SSC){//only when SSC is enable
 		
@@ -1261,7 +1296,7 @@ int mt_h2l_mempll(void)  //mempll low to high (200->266MHz)
 
 	FH_MSG("=> 0x%x",DRV_Reg32(REG_FHCTL2_MON));
 
-	local_irq_save(flags);
+	//TODO: provelock issue local_irq_save(flags);
 
 	//---------------------------------------------
 	//Overwrite MEMPLL NCPO setting in hopping SRAM
@@ -1269,10 +1304,11 @@ int mt_h2l_mempll(void)  //mempll low to high (200->266MHz)
 	//Turn on SRAM CE, point to SRAM address of MEMPLL NCPO value 0
 	fh_write32(REG_FHSRAM_CON, (0x1 << 9 | 0x80) );
 
+	//>>>Example<<<
 	//Target Freq. : NCPO INT : 59.89 (26MHz*59.89 = 1557.14 MHz, DRAMC = 208.5MHz)
 	//INT : 59 => 0x3B << 14
 	//FRACTION : 0.89 => 0x38F5
-	fh_write32(REG_FHSRAM_WR, ((0x3B << 14) | 0x38F5) );
+	fh_write32(REG_FHSRAM_WR, LOW_DRAMC_DDS);
 	
 	
 	//-------------------------------------------------
@@ -1296,25 +1332,25 @@ int mt_h2l_mempll(void)  //mempll low to high (200->266MHz)
 	//sfstr_dts[3:0] = 4・d0(0.27us)
 	//sfstr_dys[3:0] = 4・d9(0.023437500)
 	//slope = 26MHz * 0.007812500 / 0.27us = 0.75MHz/us < 2.5MHz/us
-	fh_write32(REG_FHCTL2_CFG, (0 << 24|7 << 28|5));
+	fh_write32(REG_FHCTL2_CFG, ( (0 << 24) | (7 << 28) | 5));
 	
 	//-------------------------------------------------
 	// Trigger 2G1 Hopping on channel number 0
 	//-------------------------------------------------
 	fh_write32(REG_FHCTL_2G1_CH, 0);
 
-	g_curr_dramc = 208;
+	g_curr_dramc = LOW_DRAMC;
 
-	local_irq_restore(flags);
+	//TODO: provelock issue local_irq_restore(flags);
 
 	mt_dummy_read();
 
 	FH_MSG("-MON- 0x%x",DRV_Reg32(REG_FHCTL2_MON));
 
-	local_irq_save(flags);
+	//TODO: provelock issue local_irq_save(flags);
 
 	fh_write32( DDRPHY_BASE+0x624, (fh_read32(DDRPHY_BASE+0x624) & 0x7FF) ); //clear NCPO
-	fh_write32( DDRPHY_BASE+0x624, ( fh_read32(DDRPHY_BASE+0x624) |(((0x3B << 14) | 0x38F5 ) << 11 )) ); //set NCPO
+	fh_write32( DDRPHY_BASE+0x624, ( fh_read32(DDRPHY_BASE+0x624) |(((LOW_DRAMC_INT << 14) | LOW_DRAMC_FRACTION ) << 11 )) ); //set NCPO
 	
 	//sync NCPO value
 	fh_write32(REG_FHCTL2_DDS, (DRV_Reg32(DDRPHY_BASE+0x624) >> 11 )|(1U<<31));
@@ -1322,7 +1358,7 @@ int mt_h2l_mempll(void)  //mempll low to high (200->266MHz)
 	//Turn off MEMPLL hopping
 	fh_write32(REG_FHCTL2_CFG, 0x70700000);
 
-	local_irq_restore(flags);
+	//TODO: provelock issue local_irq_restore(flags);
 
 	if(g_fh_pll[MT658X_FH_MEM_PLL].fh_status == FH_FH_ENABLE_SSC){
 		FH_MSG("to SSC");
@@ -1336,12 +1372,13 @@ int mt_h2l_mempll(void)  //mempll low to high (200->266MHz)
 
 	FH_MSG("+MON+ 0x%x",DRV_Reg32(REG_FHCTL2_MON));
 
-	g_fh_pll[MT658X_FH_MEM_PLL].curr_freq 	= 208500;
+	g_fh_pll[MT658X_FH_MEM_PLL].curr_freq 	= LOW_DRAMC_FREQ;
 	g_fh_pll[MT658X_FH_MEM_PLL].pll_status 	= FH_PLL_ENABLE;
 
-	spin_unlock(&freqhopping_lock);
+	//TODO: provelock issue spin_unlock(&freqhopping_lock);
+	spin_unlock_irqrestore(&freqhopping_lock, flags);
 
-	freqhopping_config(MT658X_FH_MEM_PLL, 208500, true); //update freq.
+	freqhopping_config(MT658X_FH_MEM_PLL, LOW_DRAMC_FREQ, true); //update freq.
 
 	return 0;
 }
@@ -1351,7 +1388,7 @@ int mt_fh_dram_overclock(int clk)
 {
 	FH_MSG("EN: %s clk:%d",__func__,clk);
 	
-	if( clk == 208){ //target freq: 208.5MHz
+	if( clk == LOW_DRAMC){ //target freq: 208.5MHz
 		if( g_curr_dramc != 266 ){ //266 -> 208.5 only
 			FH_BUG_ON(1);
 			return -1;
@@ -1376,7 +1413,7 @@ int mt_fh_dram_overclock(int clk)
 			FH_BUG_ON(1);
 			return -1;
 		}
-		else if( g_curr_dramc == 208 ){ //208 -> 266
+		else if( g_curr_dramc == LOW_DRAMC ){ //208 -> 266
 			return(mt_l2h_mempll());			
 		}
 		else if( g_curr_dramc == 293 ){ //293 -> 266
@@ -1476,7 +1513,7 @@ static int freqhopping_dramc_proc_write(struct file *file, const char *buffer, u
 		else if(freq == 293){
 			FH_MSG("==> %d",mt_fh_dram_overclock(293));
 		}
-		else if(freq == 208){
+		else if(freq == LOW_DRAMC){
 			FH_MSG("==> %d",mt_fh_dram_overclock(208));
 		}
 #endif
@@ -2180,7 +2217,10 @@ static int freqhopping_debug_proc_init(void)
 
 int freqhopping_config(unsigned int pll_id, unsigned long vco_freq, unsigned int enable)
 {
-	struct freqhopping_ioctl fh_ctl;
+	struct freqhopping_ioctl 	fh_ctl;
+	unsigned int			fh_status;
+	unsigned long 			flags=0;
+
 	
 	FH_MSG("conf() id: %d f: %d, e: %d",(int)pll_id, (int)vco_freq, (int)enable);
 	
@@ -2189,7 +2229,12 @@ int freqhopping_config(unsigned int pll_id, unsigned long vco_freq, unsigned int
 		return 1;
 	}		
 	
-	spin_lock(&freqhopping_lock);
+	//TODO: provelock issue spin_lock(&freqhopping_lock);
+	spin_lock_irqsave(&freqhopping_lock, flags);
+
+	
+	//backup
+	fh_status = g_fh_pll[pll_id].fh_status;
 
 	g_fh_pll[pll_id].curr_freq = vco_freq;
 	g_fh_pll[pll_id].pll_status = (enable > 0) ? FH_PLL_ENABLE:FH_PLL_DISABLE;
@@ -2206,7 +2251,11 @@ int freqhopping_config(unsigned int pll_id, unsigned long vco_freq, unsigned int
 		FH_MSG("-fh,skip");		
 	}
 	
-	spin_unlock(&freqhopping_lock);
+	//restore
+	g_fh_pll[pll_id].fh_status = fh_status;
+
+	//TODO: provelock issue spin_unlock(&freqhopping_lock);
+	spin_unlock_irqrestore(&freqhopping_lock, flags);
 	
 	return 0;
 }
@@ -2361,7 +2410,15 @@ void mt_freqhopping_init(void)
 
 	g_initialize = 1;
 	
+	
+	enable_clock(MT_CG_PERI1_FHCTL, "FREQHOP") ;
+#if 0 
 	freqhopping_config(MT658X_FH_MEM_PLL, 266000, true); //Enable MEMPLL SSC
+#if LVDS_PLL_IS_ON
+	freqhopping_config(MT658X_FH_LVDS_PLL, 1664000, true); //Enable LVDSPLL SSC
+#endif
+#endif 
+ 
 #if 0
 	freqhopping_config(MT658X_FH_TVD_PLL, 1188000, true); //TODO: test only
 	freqhopping_config(MT658X_FH_LVDS_PLL, 1200000, true); //TODO: test only
@@ -2371,6 +2428,20 @@ void mt_freqhopping_init(void)
 }
 
 EXPORT_SYMBOL(mt_freqhopping_init);
+
+void mt_freqhopping_pll_init(void)
+{
+	FH_MSG("EN: %s",__func__);
+
+	freqhopping_config(MT658X_FH_MEM_PLL, 266000, true); //Enable MEMPLL SSC
+	
+#if LVDS_PLL_IS_ON
+	freqhopping_config(MT658X_FH_LVDS_PLL, 1664000, true); //Enable LVDSPLL SSC
+#endif 
+	
+}
+
+EXPORT_SYMBOL(mt_freqhopping_pll_init);
 
 //TODO: module_init(mt_freqhopping_init);
 //TODO: module_exit(cpufreq_exit);

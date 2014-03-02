@@ -34,7 +34,8 @@
 //#pragma GCC optimize ("O0")
 #define DEFAULT_PAGE_SIZE 0x1000
 #define PAGE_ORDER 12
-
+extern int record_ion_info(int from_kernel,ion_sys_record_t *param);
+extern char *get_userString_from_hashTable(char *string_name,unsigned int len);
 struct ion_device *g_ion_device;
 struct ion_heap *g_ion_heaps[ION_HEAP_IDX_MAX];
 
@@ -163,6 +164,62 @@ static long ion_sys_ioctl(struct ion_client *client, unsigned int cmd, unsigned 
     case ION_SYS_GET_CLIENT:
         Param.get_client_param.client = (unsigned int) client;
         break;
+    case ION_SYS_RECORD:
+	{
+	     unsigned int i;
+	     char *tmp_string = NULL;
+	    
+	     //copy mapping info from userspace to kernel space 
+	     if(!from_kernel && (Param.record_param.backtrace_num > 0))
+	     {
+		printk("[ion_sys_ioctl]prepare to copy mapping info from userspace\n");
+	     	for(i = 0 ; i < Param.record_param.backtrace_num;i++)
+	     	{
+			//printk("[ion_sys_ioctl]mapping[%d] name 0x%x address 0x%x size %d\n",i,Param.record_param.mapping_record[i].name,Param.record_param.mapping_record[i].address,Param.record_param.mapping_record[i].size);
+			if(Param.record_param.mapping_record[i].size > 0 )
+			{
+				unsigned int string_len = 0;
+				string_len = strlen_user((void __user*)Param.record_param.mapping_record[i].name);
+				if(string_len > 0)
+				{
+					int ret;
+					tmp_string = (char *)kmalloc(string_len,GFP_KERNEL);
+					ret = copy_from_user(tmp_string, (void __user *)Param.record_param.mapping_record[i].name, string_len);
+					if(tmp_string!=NULL)
+					{
+	     				 	Param.record_param.mapping_record[i].name= get_userString_from_hashTable(tmp_string,string_len);
+						kfree(tmp_string);
+					}
+					else
+					{
+						printk("[ION_FUNC%d][ion_sys_ioctl]tmp_string is NULL\n",Param.record_param.action);
+					}
+				}
+				else
+				{
+					printk("[ION_FUNC%d][ion_sys_ioctl]mapping info error can't get right string len \n",Param.record_param.action);
+				}
+			}
+	     	}
+	     }
+	     Param.record_param.client = client;
+	     printk("[ION_FUNC%d][ion_sys_record] PID :%d client 0x%x from_kernel [%d] backtrace[%d]\n",Param.record_param.action,Param.record_param.pid,(unsigned int)Param.record_param.client,from_kernel,Param.record_param.backtrace_num);
+	     if(Param.record_param.handle != NULL)
+	     {
+		Param.record_param.buffer = ion_handle_buffer(Param.record_param.handle);
+		if(Param.record_param.buffer != NULL)
+		{
+			printk("[ION_FUNC%d][ion_sys_record]BUFFER :[%x] size :[%d]\n",Param.record_param.action,(unsigned int)Param.record_param.buffer,Param.record_param.buffer->size);
+	    	}
+		else
+		{
+		       printk("[ION_FUNC%d]buffer is NULL\n",Param.record_param.action);
+		} 
+	     }
+	     record_ion_info(from_kernel,&Param.record_param);
+	     printk("[ION_FUNC%d][ion_sys_ioctl]DONE\n",Param.record_param.action);
+	     break;
+	}
     default:
         printk("[ion_sys_ioctl]: Error. Invalid command.\n");
         ret = -EFAULT;

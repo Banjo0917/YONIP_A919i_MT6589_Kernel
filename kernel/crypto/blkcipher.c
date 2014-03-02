@@ -101,28 +101,16 @@ static inline unsigned int blkcipher_done_fast(struct blkcipher_walk *walk,
 
 	return n;
 }
-extern void dump_mem_sg(unsigned int *sg);
+
 int blkcipher_walk_done(struct blkcipher_desc *desc,
 			struct blkcipher_walk *walk, int err)
 {
 	struct crypto_blkcipher *tfm = desc->tfm;
 	unsigned int nbytes = 0;
-    struct scatter_walk *scat_walk;
-    struct page *page;
-    
-    
-    scat_walk = &walk->out;
-    
-    page = sg_page(scat_walk->sg);
+
 	if (likely(err >= 0)) {
 		unsigned int n = walk->nbytes - err;
-		//M
-        if(page == NULL){
-            printk(KERN_ERR "lkcipher_walk_done[1]:0x%x, walk->out:0x%x, walk->out.sg:0x%x, sg->offset:%d, sg->length:%d\n", (unsigned int)walk, (unsigned int)&walk->out, (unsigned int)walk->out.sg, walk->out.sg->offset, walk->out.sg->length);
-            dump_mem_sg((unsigned int*)walk->out.sg);
-        }
-        BUG_ON(page == NULL);
-        
+
 		if (likely(!(walk->flags & BLKCIPHER_WALK_SLOW)))
 			n = blkcipher_done_fast(walk, n);
 		else if (WARN_ON(err)) {
@@ -134,13 +122,7 @@ int blkcipher_walk_done(struct blkcipher_desc *desc,
 		nbytes = walk->total - n;
 		err = 0;
 	}
-	//M
-	if(page == NULL){
-	    printk(KERN_ERR "lkcipher_walk_done[2]:0x%x, walk->out:0x%x, walk->out.sg:0x%x, sg->offset:%d, sg->length:%d\n", (unsigned int)walk, (unsigned int)&walk->out, (unsigned int)walk->out.sg, walk->out.sg->offset, walk->out.sg->length);
-	    dump_mem_sg((unsigned int*)walk->out.sg);
-	}
-	BUG_ON(page == NULL);
-    
+
 	scatterwalk_done(&walk->in, 0, nbytes);
 	scatterwalk_done(&walk->out, 1, nbytes);
 
@@ -282,15 +264,7 @@ static int blkcipher_walk_next(struct blkcipher_desc *desc,
 		err = blkcipher_next_copy(walk);
 		goto set_phys_lowmem;
 	}
-	//M
-	if(sg_page(walk->out.sg) == NULL)
-    {
-        printk(KERN_ERR "blkcipher_walk:0x%x, walk->out:0x%x, walk->out.sg:0x%x, sg->offset:%d, sg->length:%d\n", (unsigned int)walk, (unsigned int)&walk->out, (unsigned int)walk->out.sg, walk->out.sg->offset, walk->out.sg->length);
-        dump_mem_sg((unsigned int *)walk->out.sg);
-        BUG_ON(1);
-        //WARN_ON(1);
-        //return -ENOMEM;
-    }
+
 	return blkcipher_next_fast(desc, walk);
 
 set_phys_lowmem:

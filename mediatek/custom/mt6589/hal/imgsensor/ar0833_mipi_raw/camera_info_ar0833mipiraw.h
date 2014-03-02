@@ -1,17 +1,13 @@
+
+
 #ifndef _CAMERA_INFO_AR0833MIPIRAW_H
 #define _CAMERA_INFO_AR0833MIPIRAW_H
 
-/*******************************************************************************
-*   Configuration
-********************************************************************************/
 #define SENSOR_ID                           AR0833_SENSOR_ID
 #define SENSOR_DRVNAME                      SENSOR_DRVNAME_AR0833_MIPI_RAW
 #define INCLUDE_FILENAME_ISP_REGS_PARAM     "camera_isp_regs_ar0833mipiraw.h"
 #define INCLUDE_FILENAME_ISP_PCA_PARAM      "camera_isp_pca_ar0833mipiraw.h"
 #define INCLUDE_FILENAME_ISP_LSC_PARAM      "camera_isp_lsc_ar0833mipiraw.h"
-/*******************************************************************************
-*
-********************************************************************************/
 
 #if defined(ISP_SUPPORT)
 

@@ -1,3 +1,21 @@
+/***
+ * BY OPENING THIS FILE, RECEIVER HEREBY UNEQUIVOCALLY ACKNOWLEDGES AND AGREES
+ * THAT THE SOFTWARE/FIRMWARE AND ITS DOCUMENTATIONS ("MEDIATEK-DISTRIBUTED SOFTWARE")
+ * RECEIVED FROM MEDIATEK AND/OR ITS REPRESENTATIVES ARE PROVIDED TO RECEIVER
+ * ON AN "AS-IS" BASIS ONLY. MEDIATEK EXPRESSLY DISCLAIMS ANY AND ALL
+ * WARRANTIES, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE IMPLIED
+ * WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE OR
+ * NONINFRINGEMENT. NEITHER DOES MEDIATEK PROVIDE ANY WARRANTY WHATSOEVER WITH
+ * RESPECT TO THE SOFTWARE OF ANY THIRD PARTY WHICH MAY BE USED BY,
+ * INCORPORATED IN, OR SUPPLIED WITH THE MEDIATEK-DISTRIBUTED SOFTWARE, AND RECEIVER AGREES
+ * TO LOOK ONLY TO SUCH THIRD PARTY FOR ANY WARRANTY CLAIM RELATING THERETO.
+ * RECEIVER EXPRESSLY ACKNOWLEDGES THAT IT IS RECEIVER'S SOLE RESPONSIBILITY TO
+ * OBTAIN FROM ANY THIRD PARTY ALL PROPER LICENSES CONTAINED IN MEDIATEK-DISTRIBUTED
+ * SOFTWARE. MEDIATEK SHALL ALSO NOT BE RESPONSIBLE FOR ANY MEDIATEK-DISTRIBUTED SOFTWARE
+ * RELEASES MADE TO RECEIVER'S SPECIFICATION OR TO CONFORM TO A PARTICULAR
+ * STANDARD OR OPEN FORUM.
+ */
+
 #include <linux/kernel.h>
 #include <linux/module.h>
 #include <linux/dmi.h>
@@ -443,6 +461,26 @@ static struct thermal_cooling_device_ops mtktspmic_cooling_sysrst_ops = {
 };
 
 
+static int mtktspmic_read_cal(char *buf, char **start, off_t off, int count, int *eof, void *data)
+{
+	int len = 0;
+	char *p = buf;
+
+	p += sprintf(p, "mtktspmic cal:\nReg(0x1C0)=0x%x, Reg(0x1C6)=0x%x, Reg(0x1C8)=0x%x\n", 
+	                pmic_read(0x1C0), pmic_read(0x1C6), pmic_read(0x1C8));
+
+	*start = buf + off;
+
+	len = p - buf;
+	if (len > off)
+		len -= off;
+	else
+		len = 0;
+        
+	return len < count ? len  : count;
+}
+
+
 static int mtktspmic_read(char *buf, char **start, off_t off, int count, int *eof, void *data)
 {
 	int len = 0;
@@ -621,6 +659,13 @@ static int __init mtktspmic_init(void)
 		{
 			entry->read_proc = mtktspmic_read;
 			entry->write_proc = mtktspmic_write;
+		}
+
+		entry = create_proc_entry("mtktspmic_cal", S_IRUGO, mtktspmic_dir);
+		if (entry)
+		{
+			entry->read_proc = mtktspmic_read_cal;
+			entry->write_proc = NULL;
 		}
 	}
 

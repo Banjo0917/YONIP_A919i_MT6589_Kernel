@@ -1,17 +1,13 @@
+
+
 #ifndef _CAMERA_INFO_HI542RAW_H
 #define _CAMERA_INFO_HI542RAW_H
 
-/*******************************************************************************
-*   Configuration
-********************************************************************************/
 #define SENSOR_ID                           HI542_SENSOR_ID
 #define SENSOR_DRVNAME                      SENSOR_DRVNAME_HI542_RAW
 #define INCLUDE_FILENAME_ISP_REGS_PARAM     "camera_isp_regs_hi542raw.h"
 #define INCLUDE_FILENAME_ISP_PCA_PARAM      "camera_isp_pca_hi542raw.h"
 #define INCLUDE_FILENAME_ISP_LSC_PARAM      "camera_isp_lsc_hi542raw.h"
-/*******************************************************************************
-*
-********************************************************************************/
 
 #if defined(ISP_SUPPORT)
 

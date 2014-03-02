@@ -13,14 +13,6 @@ lib-y := ctype.o string.o vsprintf.o cmdline.o \
 	 sha1.o md5.o irq_regs.o reciprocal_div.o argv_split.o \
 	 proportions.o prio_heap.o ratelimit.o show_mem.o \
 	 is_single_threaded.o plist.o decompress.o
-	 
-# LINE<JIRA_ID><DATE20130418><jiemian V12 tp upgrade problem>zenghaihui
-my-dir := $(dir $(lastword $(MAKEFILE_LIST)))
-my-libs := $(wildcard $(my-dir)ft5x16/ft5x16_download_lib.a)  
-ifneq ($(my-libs),)
-ldflags-y += -L$(my-dir) --whole-archive $(my-libs)  --no-whole-archive
-endif
-
 
 lib-$(CONFIG_MMU) += ioremap.o
 lib-$(CONFIG_SMP) += cpumask.o

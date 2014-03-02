@@ -55,7 +55,12 @@ extern struct MTKFB_MMP_Events_t
     MMP_Event EsdCheck;
     MMP_Event WaitVSync;
     MMP_Event LayerDump;
+    MMP_Event Layer[4];
     MMP_Event OvlDump;
+    MMP_Event FBDump;
+    MMP_Event DSIRead;
+    MMP_Event GetLayerInfo;
+    MMP_Event LayerInfo[4];
     MMP_Event Debug;
 } MTKFB_MMP_Events;
 

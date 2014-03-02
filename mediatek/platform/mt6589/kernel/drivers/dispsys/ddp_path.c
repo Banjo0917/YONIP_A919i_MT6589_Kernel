@@ -51,6 +51,8 @@ extern void DpEngine_SHARPonConfig(unsigned int srcWidth,unsigned int srcHeight)
 extern    void DpEngine_SHARPonInit(void);
 
 extern unsigned char pq_debug_flag;
+static DECLARE_WAIT_QUEUE_HEAD(g_disp_mutex_wq);
+static unsigned int g_disp_mutex_reg_update = 0;
 
 //50us -> 1G needs 50000times
 #define USE_TIME_OUT
@@ -87,6 +89,14 @@ unsigned int g_ddp_timeout_flag = 0;
     g_ddp_timeout_flag = 1;\
 }
 
+static void _disp_path_mutex_reg_update_cb(unsigned int param)
+{
+    if (param & (1 << gMutexID))
+    {
+        g_disp_mutex_reg_update = 1;
+        wake_up_interruptible(&g_disp_mutex_wq);
+    }
+}
 
 unsigned int disp_mutex_lock_cnt = 0;
 unsigned int disp_mutex_unlock_cnt = 0;
@@ -98,6 +108,7 @@ int disp_path_get_mutex()
     }
     else
     {
+        disp_register_irq(DISP_MODULE_MUTEX, _disp_path_mutex_reg_update_cb);
         return disp_path_get_mutex_(gMutexID);
     }
 }
@@ -117,8 +128,9 @@ int disp_path_get_mutex_(int mutexID)
         cnt++;
         if(cnt>10000)
         {
-            DISP_ERR("disp_path_get_mutex() timeout! \n");
+            DISP_ERR("disp_path_get_mutex() timeout! mutexID=%d \n", mutexID);
             MMProfileLogEx(DDP_MMP_Events.Mutex[mutexID], MMProfileFlagPulse, 0, 0);
+            disp_dump_reg(DISP_MODULE_MUTEX0+mutexID);
             break;
         }
     }
@@ -133,11 +145,13 @@ int disp_path_release_mutex()
     }
     else
     {
+        g_disp_mutex_reg_update = 0;
         return disp_path_release_mutex_(gMutexID);
     }
 }
 
 // check engines' clock bit and enable bit before unlock mutex
+#define DDP_SMI_LARB2_POWER_BIT     0x1
 #define DDP_OVL_POWER_BIT     0x30
 #define DDP_RDMA0_POWER_BIT   0xe000
 #define DDP_WDMA1_POWER_BIT   0x1800
@@ -146,12 +160,22 @@ int disp_check_engine_status(int mutexID)
     int result = 0;
     unsigned int engine = DISP_REG_GET(DISP_REG_CONFIG_MUTEX_MOD(mutexID)); 
     
-    if((DISP_REG_GET(DISP_REG_CONFIG_CG_CON0)&0x01) != 0)
+    if((DISP_REG_GET(DISP_REG_CONFIG_CG_CON0)&DDP_SMI_LARB2_POWER_BIT) != 0)
     {
         result = -1;
-        DISP_ERR("smi clk abnormal, clk=0x%x \n", DISP_REG_GET(DISP_REG_CONFIG_CG_CON0));
-    }
+        DISP_ERR("smi clk if off before release mutex, clk=0x%x \n", DISP_REG_GET(DISP_REG_CONFIG_CG_CON0));
 
+        DISP_MSG("force on smi clock\n");
+        DISP_REG_SET(DISP_REG_CONFIG_CG_CON0, DISP_REG_GET(DISP_REG_CONFIG_CG_CON0)|DDP_SMI_LARB2_POWER_BIT);
+    }
+    
+    // mutex intr must enable before release
+    //DISP_ERR("release mutex inten=0x%x \n", DISP_REG_GET(DISP_REG_CONFIG_MUTEX_INTEN));
+    if(DISP_REG_GET(DISP_REG_CONFIG_MUTEX_INTEN)!= DDP_MUTEX_INTR_ENABLE_BIT)
+    {
+        DISP_ERR("before release mutex inten=0x%x \n", DISP_REG_GET(DISP_REG_CONFIG_MUTEX_INTEN));
+        DISP_REG_SET(DISP_REG_CONFIG_MUTEX_INTEN, DDP_MUTEX_INTR_ENABLE_BIT);
+    }
 
     if(engine&(1<<0)) //ROT
     {
@@ -297,6 +321,15 @@ int disp_path_release_mutex_(int mutexID)
     return 0;
 }
 
+int disp_path_wait_reg_update(void)
+{
+    wait_event_interruptible_timeout(
+                    g_disp_mutex_wq,
+                    g_disp_mutex_reg_update,
+                    HZ/10);
+    return 0;
+}
+
 int disp_path_change_tdshp_status(unsigned int layer, unsigned int enable)
 {
 	  ASSERT(layer<DDP_OVL_LAYER_MUN);
@@ -315,11 +348,13 @@ int disp_path_config_layer(OVL_CONFIG_STRUCT* pOvlConfig)
     pOvlConfig->source,   // data source (0=memory)
     pOvlConfig->fmt, 
     pOvlConfig->addr, // addr 
-    pOvlConfig->x,  // x
-    pOvlConfig->y,  // y
-    pOvlConfig->w, // width
-    pOvlConfig->h, // height
-    pOvlConfig->pitch, //pitch, pixel number
+    pOvlConfig->src_x,  // x
+    pOvlConfig->src_y,  // y
+    pOvlConfig->src_pitch, //pitch, pixel number
+    pOvlConfig->dst_x,  // x
+    pOvlConfig->dst_y,  // y
+    pOvlConfig->dst_w, // width
+    pOvlConfig->dst_h, // height
     pOvlConfig->keyEn,  //color key
     pOvlConfig->key,  //color key
     pOvlConfig->aen, // alpha enable
@@ -327,6 +362,7 @@ int disp_path_config_layer(OVL_CONFIG_STRUCT* pOvlConfig)
     pOvlConfig->isTdshp);    
     
     // config overlay
+    MMProfileLogEx(DDP_MMP_Events.Debug, MMProfileFlagPulse, pOvlConfig->layer, pOvlConfig->layer_en);
     OVLLayerSwitch(pOvlConfig->layer, pOvlConfig->layer_en);
     if(pOvlConfig->layer_en!=0)
     {
@@ -334,11 +370,13 @@ int disp_path_config_layer(OVL_CONFIG_STRUCT* pOvlConfig)
                        pOvlConfig->source,   // data source (0=memory)
                        pOvlConfig->fmt, 
                        pOvlConfig->addr, // addr 
-                       pOvlConfig->x,  // x
-                       pOvlConfig->y,  // y
-                       pOvlConfig->w, // width
-                       pOvlConfig->h, // height
-                       pOvlConfig->pitch, //pitch, pixel number
+                       pOvlConfig->src_x,  // x
+                       pOvlConfig->src_y,  // y
+                       pOvlConfig->src_pitch, //pitch, pixel number
+                       pOvlConfig->dst_x,  // x
+                       pOvlConfig->dst_y,  // y
+                       pOvlConfig->dst_w, // width
+                       pOvlConfig->dst_h, // height
                        pOvlConfig->keyEn,  //color key
                        pOvlConfig->key,  //color key
                        pOvlConfig->aen, // alpha enable
@@ -670,8 +708,13 @@ int disp_path_config_(struct disp_path_config_struct* pConfig, int mutexId)
 	        }
         }
         DISP_DBG("[DDP] %p mutex value : %x (mode : %d) (id : %d)\n", (void*)DISP_REG_CONFIG_MUTEX_MOD(mutexId), mutexValue, mutexMode, mutexId);
-        //DISP_REG_SET(DISP_REG_CONFIG_MUTEX_RST(mutexId), 1);
-        //DISP_REG_SET(DISP_REG_CONFIG_MUTEX_RST(mutexId), 0);
+
+        if(pConfig->dstModule != DISP_MODULE_DSI_VDO && pConfig->dstModule != DISP_MODULE_DPI0)
+        {
+            DISP_REG_SET(DISP_REG_CONFIG_MUTEX_RST(mutexId), 1);
+            DISP_REG_SET(DISP_REG_CONFIG_MUTEX_RST(mutexId), 0);
+        }
+
         DISP_REG_SET(DISP_REG_CONFIG_MUTEX_MOD(mutexId), mutexValue);
         DISP_REG_SET(DISP_REG_CONFIG_MUTEX_SOF(mutexId), mutexMode);
 
@@ -705,28 +748,33 @@ int disp_path_config_(struct disp_path_config_struct* pConfig, int mutexId)
             break;
 
             case DISP_MODULE_DPI0:
-                DISP_REG_SET(DISP_REG_CONFIG_OVL_MOUT_EN, 0x4);   // ovl_mout output to COLOR
-                DISP_REG_SET(DISP_REG_CONFIG_COLOR_MOUT_EN, 0x8); // color_mout output to BLS
+                if(pConfig->srcModule == DISP_MODULE_RDMA1)
+                {
+                    DISP_REG_SET(DISP_REG_CONFIG_RDMA1_OUT_SEL, 0x1); // rdma1_mout to dpi0
+                    DISP_REG_SET(DISP_REG_CONFIG_DPI0_SEL, 1);        // dpi0_sel from rdma1
+                    DISP_REG_SET(DISP_REG_CONFIG_MISC, 0x1);	      // set DPI IO for DPI usage
+                }
+                else
+                {
+                    DISP_REG_SET(DISP_REG_CONFIG_OVL_MOUT_EN, 0x4);   // ovl_mout output to COLOR
+                    DISP_REG_SET(DISP_REG_CONFIG_COLOR_MOUT_EN, 0x8); // color_mout output to BLS
 
-                DISP_REG_SET(DISP_REG_CONFIG_COLOR_SEL, 1);         // color_sel from ovl
-                DISP_REG_SET(DISP_REG_CONFIG_BLS_SEL, 1);         // bls_sel from COLOR   
-                
-                /*
-                DISP_REG_SET(DISP_REG_CONFIG_OVL_MOUT_EN, 0x4);   // ovl_mout output to Color
-                DISP_REG_SET(DISP_REG_CONFIG_TDSHP_MOUT_EN, 0x10); // tdshp_mout output to OVL directlink
-                DISP_REG_SET(DISP_REG_CONFIG_COLOR_MOUT_EN, 0x8); // color_mout output to BLS
+                    DISP_REG_SET(DISP_REG_CONFIG_COLOR_SEL, 1);         // color_sel from ovl
+                    DISP_REG_SET(DISP_REG_CONFIG_BLS_SEL, 1);         // bls_sel from COLOR   
 
-                DISP_REG_SET(DISP_REG_CONFIG_TDSHP_SEL, 0);         // tdshp_sel from overlay before blending 
-                DISP_REG_SET(DISP_REG_CONFIG_COLOR_SEL, 1);         // color_sel from overla after blending
-                DISP_REG_SET(DISP_REG_CONFIG_BLS_SEL, 1);         // bls_sel from COLOR               
-                */
-         
-                DISP_REG_SET(DISP_REG_CONFIG_RDMA0_OUT_SEL, 0x2); // rdma0_mout to dpi0    
-                DISP_REG_SET(DISP_REG_CONFIG_DPI0_SEL, 0);        // dpi0_sel from rdma0                
-                //DISP_REG_SET(DISP_REG_CONFIG_RDMA1_OUT_SEL, 0x1); // rdma0_mout to dpi0    
-                //DISP_REG_SET(DISP_REG_CONFIG_DPI0_SEL, 1);        // dpi0_sel from rdma1
-                //DISP_REG_SET(DISP_REG_CONFIG_MISC, 0x1);	// set DPI IO for DPI usage
+                    /*
+                    DISP_REG_SET(DISP_REG_CONFIG_OVL_MOUT_EN, 0x4);   // ovl_mout output to Color
+                    DISP_REG_SET(DISP_REG_CONFIG_TDSHP_MOUT_EN, 0x10); // tdshp_mout output to OVL directlink
+                    DISP_REG_SET(DISP_REG_CONFIG_COLOR_MOUT_EN, 0x8); // color_mout output to BLS
 
+                    DISP_REG_SET(DISP_REG_CONFIG_TDSHP_SEL, 0);         // tdshp_sel from overlay before blending 
+                    DISP_REG_SET(DISP_REG_CONFIG_COLOR_SEL, 1);         // color_sel from overla after blending
+                    DISP_REG_SET(DISP_REG_CONFIG_BLS_SEL, 1);         // bls_sel from COLOR               
+                    */
+
+                    DISP_REG_SET(DISP_REG_CONFIG_RDMA0_OUT_SEL, 0x2); // rdma0_mout to dpi0
+                    DISP_REG_SET(DISP_REG_CONFIG_DPI0_SEL, 0);        // dpi0_sel from rdma0
+                }
             break;
 
             case DISP_MODULE_DPI1:
@@ -788,13 +836,13 @@ int disp_path_config_(struct disp_path_config_struct* pConfig, int mutexId)
             if(pConfig->ovl_config.layer_en!=0)
             {
                 if(pConfig->ovl_config.addr==0 ||
-                   pConfig->ovl_config.w==0    ||
-                   pConfig->ovl_config.h==0    )
+                   pConfig->ovl_config.dst_w==0    ||
+                   pConfig->ovl_config.dst_h==0    )
                 {
                     DISP_ERR("ovl parameter invalidate, addr=0x%x, w=%d, h=%d \n",
                            pConfig->ovl_config.addr, 
-                           pConfig->ovl_config.w,
-                           pConfig->ovl_config.h);
+                           pConfig->ovl_config.dst_w,
+                           pConfig->ovl_config.dst_h);
                     return -1;
                 }
 
@@ -802,11 +850,13 @@ int disp_path_config_(struct disp_path_config_struct* pConfig, int mutexId)
                                pConfig->ovl_config.source,   // data source (0=memory)
                                pConfig->ovl_config.fmt, 
                                pConfig->ovl_config.addr, // addr 
-                               pConfig->ovl_config.x,  // x
-                               pConfig->ovl_config.y,  // y
-                               pConfig->ovl_config.w, // width
-                               pConfig->ovl_config.h, // height
-                               pConfig->ovl_config.pitch,
+                               pConfig->ovl_config.src_x,  // x
+                               pConfig->ovl_config.src_y,  // y
+                               pConfig->ovl_config.src_pitch, //pitch, pixel number
+                               pConfig->ovl_config.dst_x,  // x
+                               pConfig->ovl_config.dst_y,  // y
+                               pConfig->ovl_config.dst_w, // width
+                               pConfig->ovl_config.dst_h, // height
                                pConfig->ovl_config.keyEn,  //color key
                                pConfig->ovl_config.key,  //color key
                                pConfig->ovl_config.aen, // alpha enable
@@ -998,13 +1048,14 @@ int disp_path_config_(struct disp_path_config_struct* pConfig, int mutexId)
     // disp_rdma0 ultra
     DISP_REG_SET(DISP_REG_RDMA_MEM_GMC_SETTING_0, 0x20402040);
     // disp_rdma1 ultra
-    //DISP_REG_SET(DISP_REG_RDMA_MEM_GMC_SETTING_0+0x1000, 0x20402040);
+    DISP_REG_SET(DISP_REG_RDMA_MEM_GMC_SETTING_0+0x1000, 0x20402040);
     // disp_wdma0 ultra
     //DISP_REG_SET(DISP_REG_WDMA_BUF_CON1, 0x10000000);
     //DISP_REG_SET(DISP_REG_WDMA_BUF_CON2, 0x20402020);
     // disp_wdma1 ultra
-    //DISP_REG_SET(DISP_REG_WDMA_BUF_CON1+0x1000, 0x10000000);
-    //DISP_REG_SET(DISP_REG_WDMA_BUF_CON2+0x1000, 0x20402020);
+    DISP_REG_SET(DISP_REG_WDMA_BUF_CON1+0x1000, 0x800800ff);    
+
+    DISP_REG_SET(DISP_REG_WDMA_BUF_CON2+0x1000, 0x20200808);
 /*************************************************/
        // TDOD: add debug cmd in display to dump register 
 //        disp_dump_reg(DISP_MODULE_OVL);
@@ -1849,7 +1900,8 @@ int disp_reg_restore()
     reg_restore(DISP_REG_WDMA_FLOW_CTRL_DBG +0x1000 );
     reg_restore(DISP_REG_WDMA_EXEC_DBG      +0x1000 );
     reg_restore(DISP_REG_WDMA_CLIP_DBG      +0x1000 );
-                                                
+
+#if 0
     // BLS                                       
     reg_restore(DISP_REG_BLS_EN                   );
     reg_restore(DISP_REG_BLS_RST                  );
@@ -1868,17 +1920,18 @@ int disp_reg_restore()
     reg_restore(DISP_REG_PWM_DATA_WIDTH           );
     reg_restore(DISP_REG_PWM_THRESH               );
     reg_restore(DISP_REG_PWM_SEND_WAVENUM         );
-  
+#endif
     //DISP_MSG("disp_reg_restore() release mutex \n");
     //disp_path_release_mutex();
     DISP_MSG("disp_reg_restore() done \n");
-    
-#if defined(MTK_AAL_SUPPORT)
-    disp_bls_init(fb_width, fb_height);
-#endif
 
     DpEngine_COLORonInit();
     DpEngine_COLORonConfig(fb_width,fb_height);
+
+    // backlight should be turn on last
+#if defined(MTK_AAL_SUPPORT)
+    disp_bls_init(fb_width, fb_height);
+#endif
 
     MMProfileLogEx(DDP_MMP_Events.BackupReg, MMProfileFlagEnd, 1, 0);
     return 0;        
@@ -1958,32 +2011,35 @@ int disp_path_clock_on(char* name)
     enable_clock(MT_CG_DISP0_COLOR       , "DDP");
 //    enable_clock(MT_CG_DISP0_2DSHP       , "DDP");
     enable_clock(MT_CG_DISP0_BLS         , "DDP");
-    enable_clock(MT_CG_DISP0_WDMA1_ENGINE, "DDP");
-    enable_clock(MT_CG_DISP0_WDMA1_SMI   , "DDP");
+    //enable_clock(MT_CG_DISP0_WDMA1_ENGINE, "DDP");
+    //enable_clock(MT_CG_DISP0_WDMA1_SMI   , "DDP");
     enable_clock(MT_CG_DISP0_RDMA0_ENGINE, "DDP");
     enable_clock(MT_CG_DISP0_RDMA0_SMI   , "DDP");
     enable_clock(MT_CG_DISP0_RDMA0_OUTPUT, "DDP");
     
-    enable_clock(MT_CG_DISP0_RDMA1_ENGINE, "DDP");
-    enable_clock(MT_CG_DISP0_RDMA1_SMI   , "DDP");
-    enable_clock(MT_CG_DISP0_RDMA1_OUTPUT, "DDP");
-    enable_clock(MT_CG_DISP0_GAMMA_ENGINE, "DDP");
-    enable_clock(MT_CG_DISP0_GAMMA_PIXEL , "DDP");    
+    //enable_clock(MT_CG_DISP0_RDMA1_ENGINE, "DDP");
+    //enable_clock(MT_CG_DISP0_RDMA1_SMI   , "DDP");
+    //enable_clock(MT_CG_DISP0_RDMA1_OUTPUT, "DDP");
+    //enable_clock(MT_CG_DISP0_GAMMA_ENGINE, "DDP");
+    //enable_clock(MT_CG_DISP0_GAMMA_PIXEL , "DDP");    
 
     //enable_clock(MT_CG_DISP0_G2D_ENGINE  , "DDP");
     //enable_clock(MT_CG_DISP0_G2D_SMI     , "DDP");
     
     // restore ddp related registers
-    if(*pRegBackup != DDP_UNBACKED_REG_MEM)
+    if (strncmp(name, "ipoh_mtkfb", 10))
     {
-          disp_reg_restore();
-          
-          // restore intr enable registers
-          disp_intr_restore();
-    }
-    else
-    {
-          DISP_MSG("disp_path_clock_on(), dose not call disp_reg_restore, cause mem not inited! \n");
+		if(*pRegBackup != DDP_UNBACKED_REG_MEM)
+		{
+			  disp_reg_restore();
+
+			  // restore intr enable registers
+			  disp_intr_restore();
+		}
+		else
+		{
+			  DISP_MSG("disp_path_clock_on(), dose not call disp_reg_restore, cause mem not inited! \n");
+		}
     }
     
     
@@ -2028,20 +2084,21 @@ int disp_path_clock_off(char* name)
     disable_clock(MT_CG_DISP0_COLOR       , "DDP");
 //    disable_clock(MT_CG_DISP0_2DSHP       , "DDP");
     disable_clock(MT_CG_DISP0_BLS         , "DDP");
-    disable_clock(MT_CG_DISP0_WDMA1_ENGINE, "DDP");
-    disable_clock(MT_CG_DISP0_WDMA1_SMI   , "DDP");
+    //disable_clock(MT_CG_DISP0_WDMA1_ENGINE, "DDP");
+    //disable_clock(MT_CG_DISP0_WDMA1_SMI   , "DDP");
     disable_clock(MT_CG_DISP0_RDMA0_ENGINE, "DDP");
     disable_clock(MT_CG_DISP0_RDMA0_SMI   , "DDP");
     disable_clock(MT_CG_DISP0_RDMA0_OUTPUT, "DDP");
     
-    disable_clock(MT_CG_DISP0_RDMA1_ENGINE, "DDP");
-    disable_clock(MT_CG_DISP0_RDMA1_SMI   , "DDP");
-    disable_clock(MT_CG_DISP0_RDMA1_OUTPUT, "DDP");
-    disable_clock(MT_CG_DISP0_GAMMA_ENGINE, "DDP");
-    disable_clock(MT_CG_DISP0_GAMMA_PIXEL , "DDP");    
+    //disable_clock(MT_CG_DISP0_RDMA1_ENGINE, "DDP");
+    //disable_clock(MT_CG_DISP0_RDMA1_SMI   , "DDP");
+    //disable_clock(MT_CG_DISP0_RDMA1_OUTPUT, "DDP");
+    //disable_clock(MT_CG_DISP0_GAMMA_ENGINE, "DDP");
+    //disable_clock(MT_CG_DISP0_GAMMA_PIXEL , "DDP");    
 
     
-    if(g_dst_module==DISP_MODULE_DPI0 || g_dst_module==DISP_MODULE_DPI1)
+    // DPI can not suspend issue fixed, so remove this workaround
+    if(0) //if(g_dst_module==DISP_MODULE_DPI0 || g_dst_module==DISP_MODULE_DPI1)
     {
         DISP_MSG("warning: do not power off MT_CG_DISP0_LARB2_SMI for DPI resume issue\n");
     }

@@ -136,11 +136,13 @@ typedef struct {
     PF_WMT_CB fDrvRst[4];
 } WMT_FDRV_CB, *P_WMT_FDRV_CB;
 
+
 typedef struct {
 	UINT32 dowloadSeq;
 	UCHAR addRess[4];
 	UCHAR patchName[256];
 }WMT_PATCH_INFO,*P_WMT_PATCH_INFO;
+
 
 /* OS independent wrapper for WMT_OP */
 typedef struct _DEV_WMT_ {
@@ -173,9 +175,15 @@ typedef struct _DEV_WMT_ {
     UCHAR cWmtcfgName[NAME_MAX + 1];
     const osal_firmware *pWmtCfg;
 
+	const osal_firmware *pNvram;
+	
+    /* Current used UART port description*/
+    CHAR cUartName[NAME_MAX + 1];
+    	
     OSAL_OP_Q rFreeOpQ; /* free op queue */
     OSAL_OP_Q rActiveOpQ; /* active op queue */
     OSAL_OP arQue[WMT_OP_BUF_SIZE]; /* real op instances */
+    P_OSAL_OP pCurOP; /* current op*/
 
     /* cmd str buffer */
     UCHAR cCmd[NAME_MAX + 1];
@@ -197,7 +205,6 @@ typedef struct _DEV_WMT_ {
 
 	P_WMT_PATCH_INFO pWmtPatchInfo;
 }DEV_WMT, *P_DEV_WMT;
-
 
 /*******************************************************************************
 *                            P U B L I C   D A T A
@@ -230,9 +237,13 @@ extern INT32
 wmt_lib_ps_deinit(VOID);
 extern INT32
 wmt_lib_ps_enable(VOID);
+extern INT32 
+wmt_lib_ps_ctrl(UINT32 state);
+
 extern INT32
 wmt_lib_ps_disable(VOID);
-
+extern VOID
+wmt_lib_ps_irq_cb(VOID);
 #endif
 extern VOID
 wmt_lib_ps_set_sdio_psop (
@@ -241,6 +252,7 @@ wmt_lib_ps_set_sdio_psop (
 
 /* LXOP functions: */
 extern P_OSAL_OP wmt_lib_get_free_op (VOID);
+extern INT32 wmt_lib_put_op_to_free_queue(P_OSAL_OP pOp);
 extern MTK_WCN_BOOL wmt_lib_put_act_op (P_OSAL_OP pOp);
 
 //extern ENUM_WMTHWVER_TYPE_T wmt_lib_get_hwver (VOID);
@@ -252,6 +264,7 @@ extern INT32 wmt_lib_trigger_cmd_signal (INT32 result);
 extern UCHAR *wmt_lib_get_cmd(VOID);
 extern P_OSAL_EVENT wmt_lib_get_cmd_event(VOID);
 extern INT32 wmt_lib_set_patch_name(UCHAR *cPatchName);
+extern INT32 wmt_lib_set_uart_name(CHAR *cUartName);
 extern INT32 wmt_lib_set_hif(ULONG hifconf);
 extern P_WMT_HIF_CONF wmt_lib_get_hif(VOID);
 extern MTK_WCN_BOOL wmt_lib_get_cmd_status(VOID);
@@ -289,14 +302,22 @@ INT32 wmt_lib_efuse_rw (
     );
 INT32 wmt_lib_sdio_ctrl(UINT32 on);
 
-extern VOID DISABLE_PSM_MONITOR(void);
+extern INT32 DISABLE_PSM_MONITOR(void);
 extern VOID ENABLE_PSM_MONITOR(void);
 extern INT32 wmt_lib_notify_stp_sleep(void);
 extern void wmt_lib_psm_lock_release(void);
-extern void wmt_lib_psm_lock_aquire(void);
+extern INT32 wmt_lib_psm_lock_aquire(void);
+extern INT32 wmt_lib_set_stp_wmt_last_close(UINT32 value);
 
 extern VOID wmt_lib_set_patch_num(ULONG num);
 extern VOID wmt_lib_set_patch_info(P_WMT_PATCH_INFO pPatchinfo);
+
+extern INT32 wmt_lib_set_current_op(P_DEV_WMT pWmtDev, P_OSAL_OP pOp);
+extern P_OSAL_OP wmt_lib_get_current_op(P_DEV_WMT pWmtDev);
+
+extern INT32 wmt_lib_merge_if_flag_ctrl(UINT32 enable);
+extern INT32 wmt_lib_merge_if_flag_get(UINT32 enable);
+
 /*******************************************************************************
 *                              F U N C T I O N S
 ********************************************************************************

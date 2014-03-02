@@ -70,6 +70,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "pdump_km.h"
 
 #include "mtk_sysfreq.h"
+#include "mach/mt_clkmgr.h"
 static IMG_INT
 SGXGetClientInfoBW(IMG_UINT32 ui32BridgeID,
 				   PVRSRV_BRIDGE_IN_GETCLIENTINFO *psGetClientInfoIN,
@@ -3810,6 +3811,7 @@ SGXPDumpSaveMemBW(IMG_UINT32						ui32BridgeID,
 
 #endif /* PDUMP */
 
+
 static IMG_INT
 SGXSetFreqInfoBW(IMG_UINT32 ui32BridgeID,
                  PVRSRV_BRIDGE_INPUT *psDataIN,
@@ -3817,13 +3819,41 @@ SGXSetFreqInfoBW(IMG_UINT32 ui32BridgeID,
                  PVRSRV_PER_PROCESS_DATA *psPerProc)
 {
     unsigned int freqSet = psDataIN->freq;
+    unsigned int tbltype = psDataIN->type;
 
 	PVRSRV_BRIDGE_ASSERT_CMD(ui32BridgeID, PVRSRV_BRIDGE_MTK_SET_FREQ_INFO);
 	PVR_UNREFERENCED_PARAMETER(psPerProc);
 
-	psRetOUT->eError = MTKSetFreqInfo(freqSet);
+	psRetOUT->eError = MTKSetFreqInfo(freqSet, tbltype);
 	if (psRetOUT->eError != PVRSRV_OK)
 	{
+	    return 1;
+	}
+
+	return 0;
+}
+
+static IMG_INT
+SGXGetPowerSrcInfoBW(IMG_UINT32 ui32BridgeID,
+                 PVRSRV_BRIDGE_PWSRC_INPUT *psDataIN,
+                 PVRSRV_BRIDGE_PWSRC_RETURN *psRetOUT,
+                 PVRSRV_PER_PROCESS_DATA *psPerProc)
+{
+    int PowerSrc;
+
+	PVRSRV_BRIDGE_ASSERT_CMD(ui32BridgeID, PVRSRV_BRIDGE_MTK_SET_FREQ_INFO);
+	PVR_UNREFERENCED_PARAMETER(psDataIN);
+	PVR_UNREFERENCED_PARAMETER(psPerProc);
+
+	PowerSrc = get_gpu_power_src();
+
+	if ((PowerSrc == 0) || (PowerSrc == 1))
+	{
+	    psRetOUT->powersrc = PowerSrc;
+	}
+	else
+	{
+	    psRetOUT->powersrc = -1;
 	    return 1;
 	}
 
@@ -3879,6 +3909,7 @@ IMG_VOID SetSGXDispatchTableEntry(IMG_VOID)
 	SetDispatchTableEntry(PVRSRV_BRIDGE_SGX_PDUMP_SAVEMEM, SGXPDumpSaveMemBW);
 #endif
     SetDispatchTableEntry(PVRSRV_BRIDGE_MTK_SET_FREQ_INFO, SGXSetFreqInfoBW);
+    SetDispatchTableEntry(PVRSRV_BRIDGE_MTK_GET_POWER_INFO, SGXGetPowerSrcInfoBW);
 
 }
 /* PRQA L:END_SET_SGX */ /* end of setup overrides */

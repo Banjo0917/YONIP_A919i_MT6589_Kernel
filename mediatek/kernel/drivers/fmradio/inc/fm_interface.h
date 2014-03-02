@@ -82,6 +82,12 @@ struct fm {
     fm_u16 max_freq;                // for UE, 1080KHz
     fm_u16 cur_freq;                //current frequency
     fm_u8 band;                     // UE/JAPAN/JPANWD
+    /*FM Tx*/
+    fm_u32 vcoon;//TX VCO tracking ON duiration(ms)
+    fm_u32 vcooff;//TX RTC VCO tracking interval(s)
+    fm_u32 txpwrctl;//TX power contrl interval(s)
+    fm_u32 tx_pwr;
+    fm_bool rdstx_on;                 //false:rds tx off, true:rds tx on
     //RDS data
     struct fm_flag_event *rds_event;//pointer to rds event
     struct rds_t *pstRDSData;       //rds spec data buffer
@@ -93,13 +99,17 @@ struct fm {
     struct fm_work *eint_wk;
     struct fm_work *rds_wk;
     struct fm_work *rst_wk; //work for subsystem reset
+    //Tx
+    struct fm_work *fm_tx_desense_wifi_work;
+    struct fm_work *fm_tx_power_ctrl_work;
+    
 };
 
 struct fm_callback {
     //call backs
     fm_u16(*cur_freq_get)(void);
     fm_s32(*cur_freq_set)(fm_u16 new_freq);
-    fm_u16(*chan_para_get)(fm_u16 freq);    //get channel parameter, HL side/ FA / ATJ
+//    fm_u16(*chan_para_get)(fm_u16 freq);    //get channel parameter, HL side/ FA / ATJ
 };
 
 struct fm_basic_interface {
@@ -138,6 +148,22 @@ struct fm_basic_interface {
     fm_s32(*i2s_set)(fm_s32 onoff, fm_s32 mode, fm_s32 sample);
     fm_s32(*i2s_get)(fm_s32 *ponoff, fm_s32 *pmode, fm_s32 *psample);
     fm_s32(*hwinfo_get)(struct fm_hw_info *req);
+    fm_s32(*is_dese_chan)(fm_u16 freq);             // check if this is a de-sense channel
+    fm_s32(*softmute_tune)(fm_u16 freq,fm_s32 *rssi,fm_bool *valid);
+    fm_s32(*desense_check)(fm_u16 freq,fm_s32 rssi);             // check if this is a valid channel
+    fm_s32(*get_freq_cqi)(fm_u16 freq,fm_s32 *cqi);
+    fm_s32(*cqi_log)(fm_s32 min_freq, fm_s32 max_freq,fm_s32 space, fm_s32 cnt);//cqi log tool
+    fm_s32(*fm_via_bt)(fm_bool flag);//fm over BT:1:enable,0:disable
+    /*tx function*/
+    fm_s32(*tx_support)(fm_s32 *sup);
+    fm_s32(*rdstx_enable)(fm_s32 *flag);
+    fm_bool(*tune_tx)(fm_u16 freq);
+    fm_s32(*pwrupseq_tx)(void);
+    fm_s32(*pwrdownseq_tx)(void);
+    fm_s32 (*tx_pwr_ctrl)(fm_u16 freq, fm_s32 *ctr);
+    fm_s32 (*rtc_drift_ctrl)(fm_u16 freq, fm_s32 *ctr);
+    fm_s32 (*tx_desense_wifi)(fm_u16 freq, fm_s32 *ctr);
+    fm_s32 (*tx_scan)(fm_u16 min_freq, fm_u16 max_freq,fm_u16 *pFreq,fm_u16 *pScanTBL,fm_u16 *ScanTBLsize,fm_u16 scandir,fm_u16 space);
 };
 
 struct fm_rds_interface {
@@ -153,6 +179,11 @@ struct fm_rds_interface {
     fm_s32(*rds_log_get)(struct rds_rx_t *dst, fm_s32 *dst_len);
     fm_s32(*rds_gc_get)(struct rds_group_cnt_t *dst, rds_t *rdsp);
     fm_s32(*rds_gc_reset)(rds_t *rdsp);
+    /*Tx*/
+    fm_s32(*rds_tx)(fm_u16 pi, fm_u16 *ps, fm_u16 *other_rds, fm_u8 other_rds_cnt);
+    fm_s32(*rds_tx_enable)(void);
+    fm_s32(*rds_tx_disable)(void);
+    fm_s32(*rdstx_support)(fm_s32 *sup);
 };
 
 struct fm_lowlevel_ops {
@@ -161,14 +192,31 @@ struct fm_lowlevel_ops {
     struct fm_rds_interface ri;
 };
 
+#if (!defined(MT6620_FM)&&!defined(MT6628_FM))
 extern fm_s32 fm_low_ops_register(struct fm_lowlevel_ops *ops);
-
 extern fm_s32 fm_low_ops_unregister(struct fm_lowlevel_ops *ops);
-
 extern fm_s32 fm_rds_ops_register(struct fm_lowlevel_ops *ops);
-
 extern fm_s32 fm_rds_ops_unregister(struct fm_lowlevel_ops *ops);
+#endif
+#ifdef MT6620_FM
+extern fm_s32 MT6620fm_low_ops_register(struct fm_lowlevel_ops *ops);
+extern fm_s32 MT6620fm_low_ops_unregister(struct fm_lowlevel_ops *ops);
+extern fm_s32 MT6620fm_rds_ops_register(struct fm_lowlevel_ops *ops);
+extern fm_s32 MT6620fm_rds_ops_unregister(struct fm_lowlevel_ops *ops);
+#endif
+#ifdef MT6628_FM
+extern fm_s32 MT6628fm_low_ops_register(struct fm_lowlevel_ops *ops);
+extern fm_s32 MT6628fm_low_ops_unregister(struct fm_lowlevel_ops *ops);
+extern fm_s32 MT6628fm_rds_ops_register(struct fm_lowlevel_ops *ops);
+extern fm_s32 MT6628fm_rds_ops_unregister(struct fm_lowlevel_ops *ops);
+#endif
+/*
+ * fm_get_channel_space - get the spcace of gived channel
+ * @freq - value in 760~1080 or 7600~10800
+ *
+ * Return 0, if 760~1080; return 1, if 7600 ~ 10800, else err code < 0
+ */
 
-
+extern fm_s32 fm_get_channel_space(int freq);
 #endif //__FM_INTERFACE_H__
 

@@ -1,19 +1,4 @@
-/*
-**
-** Copyright 2008, The Android Open Source Project
-**
-** Licensed under the Apache License, Version 2.0 (the "License");
-** you may not use this file except in compliance with the License.
-** You may obtain a copy of the License at
-**
-**     http://www.apache.org/licenses/LICENSE-2.0
-**
-** Unless required by applicable law or agreed to in writing, software
-** distributed under the License is distributed on an "AS IS" BASIS,
-** WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-** See the License for the specific language governing permissions and
-** limitations under the License.
-*/
+
 
 #ifndef _DBG_CAM_PARAM_H
 #define _DBG_CAM_PARAM_H
@@ -47,9 +32,6 @@ typedef struct
   (MUINT32)(tag_module & 0xff))                   \
 )
 //
-#warning "[FIXME] DEBUG_EIS_MID should be defined in EIS file"
-#define DEBUG_EIS_MID               0x4001  // fake. should be defined in EIS file
-//
 #define DEBUG_CAM_CMN_MID           0x0005
 #define DEBUG_CAM_MF_MID            0x0006
 #define DEBUG_CAM_N3D_MID           0x0007
@@ -57,11 +39,11 @@ typedef struct
 #define DEBUG_CAM_SHAD_MID          0x0009
 #define DEBUG_CAM_SHAD_ARRAY_MID    0x0010
 //
-#define DEBUF_CAM_TOT_MODULE_NUM    6 //should be modified
+#define DEBUF_CAM_TOT_MODULE_NUM    5 //should be modified
 #define DEBUF_CAM_TAG_MODULE_NUM    5 //should be modified
 
 //
-#define DEBUG_CAM_KEYID 0xF8F9FAFB
+#define DEBUG_CAM_KEYID     0xF8F9FAFB
 //
 
 typedef struct DEBUG_CAM_INFO_S
@@ -75,7 +57,6 @@ typedef struct DEBUG_CAM_INFO_S
         MUINT32  u4DbgN3DInfoOffset;
         MUINT32  u4DbgSENSORInfoOffset;
         MUINT32  u4DbgSHADInfoOffset;
-        MUINT32  u4DbgSHADArrayOffset;
     } hdr;
 
     DEBUG_CMN_INFO_T    rDbgCMNInfo;
@@ -83,7 +64,6 @@ typedef struct DEBUG_CAM_INFO_S
     DEBUG_N3D_INFO_T    rDbgN3DInfo;
     DEBUG_SENSOR_INFO_T rDbgSENSORInfo;
     DEBUG_SHAD_INFO_T   rDbgSHADInfo;
-    DEBUG_SHAD_ARRAY_T  rDbgSHADArray;
 
 } DEBUG_CAM_INFO_T;
 

@@ -524,6 +524,7 @@ static void hdmi_drv_get_params(HDMI_PARAMS *params)
 
 	params->io_driving_current = IO_DRIVING_CURRENT_2MA;
 	params->intermediat_buffer_num = 4;
+    params->scaling_factor = 5;
 }
 
 void hdmi_drv_suspend(void)
@@ -661,13 +662,13 @@ int hdmi_drv_power_on(void)
 	HDMI_FUNC();
 	mt65xx_eint_mask(CUST_EINT_MHL_NUM);
 
-#if 0
-	//SiiMhlTxHwGpioResume();
+#if 1
+	SiiMhlTxHwGpioResume();
 	//pmic_config_interface(0x87,0x1,0x01,0x0);
 #endif
 
 	//msleep(100);
-    SiiMhlTxHwReset(50,200);
+    SiiMhlTxHwReset(5,5);
 
 	//xuecheng
 	HalInstallCheckDeviceCB(SiiCheckDevice);
@@ -684,7 +685,7 @@ void hdmi_drv_power_off(void)
 {
 	HDMI_FUNC();
 
-#if 0
+#if 1
 	SiiMhlTxHwGpioSuspend();
 #endif
 

@@ -195,9 +195,9 @@ static void musb_id_pin_work(struct work_struct *data)
 	switch_set_state((struct switch_dev *)&otg_state,mtk_musb->is_host);
 	if(mtk_musb ->is_host) {
         	//setup fifo for host mode
-        	ep_config_from_table_for_host(mtk_musb);
-    		wake_lock(&mtk_musb->usb_lock);
-    		ignore_vbuserr = false;
+        ep_config_from_table_for_host(mtk_musb);
+    	wake_lock(&mtk_musb->usb_lock);
+    	ignore_vbuserr = false;
 		musb_set_vbus(mtk_musb,true);
 		musb_start(mtk_musb);
 		switch_int_to_device();
@@ -472,7 +472,7 @@ static irqreturn_t musb_stage0_irq(struct musb *musb, u8 int_usb,
 				| (USB_PORT_STAT_C_OVERCURRENT << 16);
 		}
 
-		DBG(2,"[MUSB]VBUS_ERROR (%02x, %s), retry #%d, port1 %08x\n",
+		DBG(0,"[MUSB]VBUS_ERROR (%02x, %s), retry #%d, port1 %08x\n",
 				devctl,
 				({ char *s;
 				switch (devctl & MUSB_DEVCTL_VBUS) {
@@ -492,7 +492,8 @@ static irqreturn_t musb_stage0_irq(struct musb *musb, u8 int_usb,
 		/* go through A_WAIT_VFALL then start a new session */
 		if (!ignore) {
 			#if defined(MTK_FAN5405_SUPPORT) || defined(MTK_BQ24158_SUPPORT) || defined(MTK_NCP1851_SUPPORT) || defined(MTK_BQ24196_SUPPORT)
-			DBG(0, "too many VBUS error, do nothing for switching charger!\n");
+			DBG(0, "too many VBUS error, restart power on sequence for switching charger!\n");
+			schedule_work(&musb->id_pin_work);
 			#else
 			musb_set_vbus(musb, 0);
 			DBG(0, "too many VBUS error, turn it off!\n");
@@ -558,7 +559,10 @@ static irqreturn_t musb_stage0_irq(struct musb *musb, u8 int_usb,
 		if (musb->is_host) {
 			#ifdef CONFIG_USB_MTK_HDRC_HCD
 			usb_hcd_resume_root_hub(musb_to_hcd(musb));
+            /* lock again in musb_h_disable() */
+			spin_unlock(&musb->lock);
 			musb_root_disconnect(musb);
+			spin_lock(&musb->lock);
 			#endif
 
 		} else {
@@ -726,7 +730,7 @@ void musb_stop(struct musb *musb)
 		musb_root_disconnect(musb);
 		if (wake_lock_active(&mtk_musb->usb_lock))
 			wake_unlock(&mtk_musb->usb_lock);
-		spin_unlock(&musb->lock);
+		//spin_unlock(&musb->lock);
 	}
 	musb->is_host = false;
 	if(musb->in_ipo_off) { // musb_stop will be called during IPO shutdown if B-cable is plugged out
@@ -753,6 +757,15 @@ static void musb_shutdown(struct platform_device *pdev)
 	//Modification for ALPS00402008
 	//musb_platform_disable(musb); // because this function will result in sleep
 	//Modification for ALPS00402008
+	//Modification for ALPS00439779
+	//DISCONNECT ALL THE DRIVERS TO PREVENT THEM TO KEEP GOING
+	musb->g.speed = USB_SPEED_UNKNOWN;
+	if (musb->gadget_driver && musb->gadget_driver->disconnect) {
+		DBG(0,"MUSB: call gadget disconnect \n");
+		musb->gadget_driver->disconnect(&musb->g);
+	}
+	//Modification for ALPS00439779
+
 	spin_lock_irqsave(&musb->lock, flags);
 
 	musb_generic_disable(musb);
@@ -765,7 +778,7 @@ static void musb_shutdown(struct platform_device *pdev)
 	//Modification for ALPS00408742
 #ifdef CONFIG_USB_MTK_HDRC_HCD
 	if (is_otg_enabled(musb) || is_host_enabled(musb))
-	{	
+	{
 		printk("%s, line %d. \n", __func__, __LINE__);
 		musb_set_vbus(mtk_musb,FALSE); //for host mode
 	}
@@ -1636,7 +1649,7 @@ static int musb_suspend_noirq(struct device *dev)
 	return 0;
 }
 
-extern void musb_phy_context_restore();
+extern void musb_phy_context_restore(void);
 static int musb_resume_noirq(struct device *dev)
 {
 	struct musb	*musb = dev_to_musb(dev);
@@ -1646,7 +1659,7 @@ static int musb_resume_noirq(struct device *dev)
 	usb_enable_clock(true);
 
 	musb_restore_context(musb);
-        musb_phy_context_restore();
+	musb_phy_context_restore();
 	/*Turn off USB clock, after finishing writing regs*/
 	usb_enable_clock(false);
 	mtk_usb_power = false;

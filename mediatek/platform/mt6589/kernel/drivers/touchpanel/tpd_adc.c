@@ -1,3 +1,38 @@
+/* Copyright Statement:
+ *
+ * This software/firmware and related documentation ("MediaTek Software") are
+ * protected under relevant copyright laws. The information contained herein
+ * is confidential and proprietary to MediaTek Inc. and/or its licensors.
+ * Without the prior written permission of MediaTek inc. and/or its licensors,
+ * any reproduction, modification, use or disclosure of MediaTek Software,
+ * and information contained herein, in whole or in part, shall be strictly prohibited.
+ */
+/* MediaTek Inc. (C) 2010. All rights reserved.
+ *
+ * BY OPENING THIS FILE, RECEIVER HEREBY UNEQUIVOCALLY ACKNOWLEDGES AND AGREES
+ * THAT THE SOFTWARE/FIRMWARE AND ITS DOCUMENTATIONS ("MEDIATEK SOFTWARE")
+ * RECEIVED FROM MEDIATEK AND/OR ITS REPRESENTATIVES ARE PROVIDED TO RECEIVER ON
+ * AN "AS-IS" BASIS ONLY. MEDIATEK EXPRESSLY DISCLAIMS ANY AND ALL WARRANTIES,
+ * EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE IMPLIED WARRANTIES OF
+ * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE OR NONINFRINGEMENT.
+ * NEITHER DOES MEDIATEK PROVIDE ANY WARRANTY WHATSOEVER WITH RESPECT TO THE
+ * SOFTWARE OF ANY THIRD PARTY WHICH MAY BE USED BY, INCORPORATED IN, OR
+ * SUPPLIED WITH THE MEDIATEK SOFTWARE, AND RECEIVER AGREES TO LOOK ONLY TO SUCH
+ * THIRD PARTY FOR ANY WARRANTY CLAIM RELATING THERETO. RECEIVER EXPRESSLY ACKNOWLEDGES
+ * THAT IT IS RECEIVER'S SOLE RESPONSIBILITY TO OBTAIN FROM ANY THIRD PARTY ALL PROPER LICENSES
+ * CONTAINED IN MEDIATEK SOFTWARE. MEDIATEK SHALL ALSO NOT BE RESPONSIBLE FOR ANY MEDIATEK
+ * SOFTWARE RELEASES MADE TO RECEIVER'S SPECIFICATION OR TO CONFORM TO A PARTICULAR
+ * STANDARD OR OPEN FORUM. RECEIVER'S SOLE AND EXCLUSIVE REMEDY AND MEDIATEK'S ENTIRE AND
+ * CUMULATIVE LIABILITY WITH RESPECT TO THE MEDIATEK SOFTWARE RELEASED HEREUNDER WILL BE,
+ * AT MEDIATEK'S OPTION, TO REVISE OR REPLACE THE MEDIATEK SOFTWARE AT ISSUE,
+ * OR REFUND ANY SOFTWARE LICENSE FEES OR SERVICE CHARGE PAID BY RECEIVER TO
+ * MEDIATEK FOR SUCH MEDIATEK SOFTWARE AT ISSUE.
+ *
+ * The following software/firmware and/or related documentation ("MediaTek Software")
+ * have been modified by MediaTek Inc. All revisions are subject to any receiver's
+ * applicable license agreements with MediaTek Inc.
+ */
+
 #include "tpd.h"
 #include "tpd_adc.h"
 
@@ -10,40 +45,40 @@ u16 tpd_read_adc(u16 pos);
 
 void tpd_set_debounce_time_DEBT0(int debounce_time) 
 {
-    tpd_adc_writew(debounce_time<<5, AUXADC_TP_DEBT0);
+    __raw_writew(debounce_time<<5, AUXADC_TP_DEBT0);
 }
 
 void tpd_set_debounce_time_DEBT1(int debounce_time) 
 {
-    tpd_adc_writew(debounce_time<<5, AUXADC_TP_DEBT1);
+    __raw_writew(debounce_time<<5, AUXADC_TP_DEBT1);
 }
 
 unsigned int tpd_get_debounce_time_DEBT0(void) 
 {
-    return (tpd_adc_readw(AUXADC_TP_DEBT0)&0x3fff)>>5;
+    return (__raw_readw(AUXADC_TP_DEBT0)&0x3fff)>>5;
 }
 
 unsigned int tpd_get_debounce_time_DEBT1(void) 
 {
-    return (tpd_adc_readw(AUXADC_TP_DEBT1)&0x3fff)>>5;
+    return (__raw_readw(AUXADC_TP_DEBT1)&0x3fff)>>5;
 }
 
 void tpd_set_spl_number(int spl_num) 
 {
 	if(spl_num > 0)
-    	tpd_adc_writew(spl_num|0x100, AUXADC_TP_CON2);// enable and set spl num.
+    	__raw_writew(spl_num|0x100, AUXADC_TP_CON2);// enable and set spl num.
 }
 
 unsigned int tpd_get_spl_number(void)
 {
-	return tpd_adc_readw(AUXADC_TP_CON2)&0xff;
+	return __raw_readw(AUXADC_TP_CON2)&0xff;
 }
 
 static u16 tpd_read_rawdata(unsigned int base, int raw_data_offset)
 {
 	unsigned value = 0;
 
-	value = (tpd_adc_readw(base + raw_data_offset*4)&0xfff);
+	value = (__raw_readw(base + raw_data_offset*4)&0xfff);
 	return value;
 }
 
@@ -63,10 +98,10 @@ u16 tpd_read(int position, int raw_data_offset)
 	if(tpd_sample_mode&FAV_MODE_HW || tpd_sample_mode&FAV_MODE_SW) {
 		switch(position) {
 			default:
-			case TPD_X:  return tpd_adc_readw(AUXADC_TP_DATA0)&0xffff;
-			case TPD_Y:  return tpd_adc_readw(AUXADC_TP_DATA1)&0xffff;
-			case TPD_Z1: return tpd_adc_readw(AUXADC_TP_DATA2)&0xffff;
-			case TPD_Z2: return tpd_adc_readw(AUXADC_TP_DATA3)&0xffff;
+			case TPD_X:  return __raw_readw(AUXADC_TP_DATA0)&0xffff;
+			case TPD_Y:  return __raw_readw(AUXADC_TP_DATA1)&0xffff;
+			case TPD_Z1: return __raw_readw(AUXADC_TP_DATA2)&0xffff;
+			case TPD_Z2: return __raw_readw(AUXADC_TP_DATA3)&0xffff;
 		} 
 		return 0;
 	}
@@ -86,21 +121,21 @@ u16 tpd_read(int position, int raw_data_offset)
 
 /* pass command, return sampled data */
 u16 tpd_read_adc(u16 pos) {
-   tpd_adc_writew(pos, AUXADC_TP_ADDR);
-   tpd_adc_writew(TP_CON_SPL_TRIGGER, AUXADC_TP_CON0);
-   while(TP_CON_SPL_MASK & tpd_adc_readw(AUXADC_TP_CON0)) { ; } //wait for write finish
-   return tpd_adc_readw(AUXADC_TP_DATA0); 
+   __raw_writew(pos, AUXADC_TP_ADDR);
+   __raw_writew(TP_CON_SPL_TRIGGER, AUXADC_TP_CON0);
+   while(TP_CON_SPL_MASK & __raw_readw(AUXADC_TP_CON0)) { ; } //wait for write finish
+   return __raw_readw(AUXADC_TP_DATA0); 
 }
 
 u16 tpd_read_status(void) 
 {
-    return tpd_adc_readw(AUXADC_TP_CON0) & 2;
+    return __raw_readw(AUXADC_TP_CON0) & 2;
 }
 
 void tpd_fav_switch(int on_off)
 {
 	if(tpd_sample_mode&FAV_MODE_HW) {
-		unsigned int value =  tpd_adc_readw(AUXADC_TP_CON1);
+		unsigned int value =  __raw_readw(AUXADC_TP_CON1);
 
 		if(on_off == 1)//enable
 		{
@@ -111,11 +146,11 @@ void tpd_fav_switch(int on_off)
 			/* disable auto trigger */
 			value &= (~(1<<FAV_SEL));	
 		}
-		tpd_adc_writew(value, AUXADC_TP_CON1);
+		__raw_writew(value, AUXADC_TP_CON1);
 	}
 
 	if(tpd_sample_mode&FAV_MODE_SW) {
-		unsigned int value =  tpd_adc_readw(AUXADC_TP_CON1);
+		unsigned int value =  __raw_readw(AUXADC_TP_CON1);
 
 		if(on_off == 1)//enable
 		{
@@ -126,11 +161,11 @@ void tpd_fav_switch(int on_off)
 			/* disable auto trigger */
 			value &= (~(1<<FAV_SEL));	
 		}
-		tpd_adc_writew(value, AUXADC_TP_CON1);
+		__raw_writew(value, AUXADC_TP_CON1);
 	}
 
 	if(tpd_sample_mode&RAW_DATA_MODE) {
-		unsigned int value =  tpd_adc_readw(AUXADC_TP_RAW_CON);
+		unsigned int value =  __raw_readw(AUXADC_TP_RAW_CON);
 
 		if(on_off == 1)
 		{	
@@ -140,18 +175,18 @@ void tpd_fav_switch(int on_off)
 		{
 			value &= (~(1<<2)); 
 		}
-		tpd_adc_writew(value, AUXADC_TP_RAW_CON);
+		__raw_writew(value, AUXADC_TP_RAW_CON);
 	}		
 }
 
 /* only for sw workaround, 6577E1 can NOT clear invalid flag in auto-timer tigger mode */
 void tpd_clear_invalid_flag(void)
 {
-	unsigned int value =  tpd_adc_readw(AUXADC_TP_CON1);
+	unsigned int value =  __raw_readw(AUXADC_TP_CON1);
 
 	value |= (1 << FAV_EN_BIT);
 
-	tpd_adc_writew(value, AUXADC_TP_CON1);
+	__raw_writew(value, AUXADC_TP_CON1);
 }
 
 void tpd_fav_config(int coord, int cnt, int asamp, int adel)
@@ -170,12 +205,12 @@ void tpd_fav_config(int coord, int cnt, int asamp, int adel)
 		
 	//unsigned int value = 0x2|(1<<3)|(0x1<<5)|(0x1<<8);	
 	value = cnt|(asamp<<FAV_ASAMP)|(coord<<FAV_COORDSEL)|(adel<<FAV_ADEL_BIT);
-	tpd_adc_writew(value, AUXADC_TP_CON1);
+	__raw_writew(value, AUXADC_TP_CON1);
 }
 
 unsigned int tpd_get_sample_cnt(void)
 {
-	unsigned int value = (tpd_adc_readw(AUXADC_TP_CON1)&0x3);
+	unsigned int value = (__raw_readw(AUXADC_TP_CON1)&0x3);
 	
 	if(value == 0)
 		return 1;
@@ -185,7 +220,7 @@ unsigned int tpd_get_sample_cnt(void)
 
 unsigned int tpd_get_asamp(void)
 {
-	unsigned int value = (tpd_adc_readw(AUXADC_TP_CON1)&(0x1<<FAV_ASAMP));
+	unsigned int value = (__raw_readw(AUXADC_TP_CON1)&(0x1<<FAV_ASAMP));
 	
 	return value>>FAV_ASAMP;
 }
@@ -194,27 +229,27 @@ unsigned int tpd_get_asamp(void)
 void tpd_fav_set_auto_interval(unsigned int ms)
 {
 	int value = (0xa0/5)*ms;
-	tpd_adc_writew(value, AUXADC_TP_AUTO_TIME_INTVL);
+	__raw_writew(value, AUXADC_TP_AUTO_TIME_INTVL);
 }
 unsigned int tpd_fav_get_auto_interval(void)
 {
-	unsigned int value = tpd_adc_readw(AUXADC_TP_AUTO_TIME_INTVL);;
+	unsigned int value = __raw_readw(AUXADC_TP_AUTO_TIME_INTVL);;
 	return value/(0xa0/5);
 }
 
 
 void tpd_adc_init(void) 
 {
-	unsigned int value = tpd_adc_readw(AUXADC_MISC);
+	unsigned int value = __raw_readw(AUXADC_MISC);
 	
-    tpd_adc_writew(TP_SAMPLE_SETTING, AUXADC_TP_CMD);
-  	tpd_adc_writew(1*32, AUXADC_TP_DEBT0); //when setting >2*32. Rtouch can not work with thermal sensor
-  	tpd_adc_writew(TP_DEBOUNCE_TIME, AUXADC_TP_DEBT1);
-  	tpd_adc_writew(value|(1<<15), AUXADC_MISC); // non-stop
+    __raw_writew(TP_SAMPLE_SETTING, AUXADC_TP_CMD);
+  	__raw_writew(1*32, AUXADC_TP_DEBT0); //when setting >2*32. Rtouch can not work with thermal sensor
+  	__raw_writew(TP_DEBOUNCE_TIME, AUXADC_TP_DEBT1);
+  	__raw_writew(value|(1<<15), AUXADC_MISC); // non-stop
     /* COORSEL: b1,x-y-z1-z2; LCNT: b11, 16 times; ASAMP: b1,enable; ADEL: 255 */
   	tpd_fav_config(1, 16, 1, 255);
   	tpd_fav_set_auto_interval(10);// 10ms
-  	//tpd_adc_writew(TP_CMD_ADDR_X, AUXADC_TP_ADDR);// for test
+  	//__raw_writew(TP_CMD_ADDR_X, AUXADC_TP_ADDR);// for test
 }
 
 

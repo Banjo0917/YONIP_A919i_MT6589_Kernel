@@ -1,3 +1,38 @@
+/* Copyright Statement:
+ *
+ * This software/firmware and related documentation ("MediaTek Software") are
+ * protected under relevant copyright laws. The information contained herein
+ * is confidential and proprietary to MediaTek Inc. and/or its licensors.
+ * Without the prior written permission of MediaTek inc. and/or its licensors,
+ * any reproduction, modification, use or disclosure of MediaTek Software,
+ * and information contained herein, in whole or in part, shall be strictly prohibited.
+ *
+ * MediaTek Inc. (C) 2010. All rights reserved.
+ *
+ * BY OPENING THIS FILE, RECEIVER HEREBY UNEQUIVOCALLY ACKNOWLEDGES AND AGREES
+ * THAT THE SOFTWARE/FIRMWARE AND ITS DOCUMENTATIONS ("MEDIATEK SOFTWARE")
+ * RECEIVED FROM MEDIATEK AND/OR ITS REPRESENTATIVES ARE PROVIDED TO RECEIVER ON
+ * AN "AS-IS" BASIS ONLY. MEDIATEK EXPRESSLY DISCLAIMS ANY AND ALL WARRANTIES,
+ * EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE IMPLIED WARRANTIES OF
+ * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE OR NONINFRINGEMENT.
+ * NEITHER DOES MEDIATEK PROVIDE ANY WARRANTY WHATSOEVER WITH RESPECT TO THE
+ * SOFTWARE OF ANY THIRD PARTY WHICH MAY BE USED BY, INCORPORATED IN, OR
+ * SUPPLIED WITH THE MEDIATEK SOFTWARE, AND RECEIVER AGREES TO LOOK ONLY TO SUCH
+ * THIRD PARTY FOR ANY WARRANTY CLAIM RELATING THERETO. RECEIVER EXPRESSLY ACKNOWLEDGES
+ * THAT IT IS RECEIVER'S SOLE RESPONSIBILITY TO OBTAIN FROM ANY THIRD PARTY ALL PROPER LICENSES
+ * CONTAINED IN MEDIATEK SOFTWARE. MEDIATEK SHALL ALSO NOT BE RESPONSIBLE FOR ANY MEDIATEK
+ * SOFTWARE RELEASES MADE TO RECEIVER'S SPECIFICATION OR TO CONFORM TO A PARTICULAR
+ * STANDARD OR OPEN FORUM. RECEIVER'S SOLE AND EXCLUSIVE REMEDY AND MEDIATEK'S ENTIRE AND
+ * CUMULATIVE LIABILITY WITH RESPECT TO THE MEDIATEK SOFTWARE RELEASED HEREUNDER WILL BE,
+ * AT MEDIATEK'S OPTION, TO REVISE OR REPLACE THE MEDIATEK SOFTWARE AT ISSUE,
+ * OR REFUND ANY SOFTWARE LICENSE FEES OR SERVICE CHARGE PAID BY RECEIVER TO
+ * MEDIATEK FOR SUCH MEDIATEK SOFTWARE AT ISSUE.
+ *
+ * The following software/firmware and/or related documentation ("MediaTek Software")
+ * have been modified by MediaTek Inc. All revisions are subject to any receiver's
+ * applicable license agreements with MediaTek Inc.
+ */
+ 
 #include <linux/kernel.h>
 #include <asm/io.h>
 
@@ -18,32 +53,32 @@ void BM_Init(void)
     */
     if (readl(EMI_ARBA) & 0x00008000) {
         g_cBWL |= 1 << 0;
-        mt65xx_reg_sync_writel(readl(EMI_ARBA) & ~0x00008000, EMI_ARBA);
+        writel(readl(EMI_ARBA) & ~0x00008000, EMI_ARBA);
     }
 
     if (readl(EMI_ARBC) & 0x00008000) {
         g_cBWL |= 1 << 2;
-        mt65xx_reg_sync_writel(readl(EMI_ARBC) & ~0x00008000, EMI_ARBC);
+        writel(readl(EMI_ARBC) & ~0x00008000, EMI_ARBC);
     }
 
     if (readl(EMI_ARBD) & 0x00008000) {
         g_cBWL |= 1 << 3;
-        mt65xx_reg_sync_writel(readl(EMI_ARBD) & ~0x00008000, EMI_ARBD);
+        writel(readl(EMI_ARBD) & ~0x00008000, EMI_ARBD);
     }
 
     if (readl(EMI_ARBE) & 0x00008000) {
         g_cBWL |= 1 << 4;
-        mt65xx_reg_sync_writel(readl(EMI_ARBE) & ~0x00008000, EMI_ARBE);
+        writel(readl(EMI_ARBE) & ~0x00008000, EMI_ARBE);
     }
 
     if (readl(EMI_ARBF) & 0x00008000) {
         g_cBWL |= 1 << 5;
-        mt65xx_reg_sync_writel(readl(EMI_ARBF) & ~0x00008000, EMI_ARBF);
+        writel(readl(EMI_ARBF) & ~0x00008000, EMI_ARBF);
     }
 
     if (readl(EMI_ARBG) & 0x00008000) {
         g_cBWL |= 1 << 6;
-        mt65xx_reg_sync_writel(readl(EMI_ARBG) & ~0x00008000, EMI_ARBG);
+        writel(readl(EMI_ARBG) & ~0x00008000, EMI_ARBG);
     }
 }
 
@@ -51,32 +86,32 @@ void BM_DeInit(void)
 {
     if (g_cBWL & (1 << 0)) {
         g_cBWL &= ~(1 << 0);
-        mt65xx_reg_sync_writel(readl(EMI_ARBA) | 0x00008000, EMI_ARBA);
+        writel(readl(EMI_ARBA) | 0x00008000, EMI_ARBA);
     }
 
     if (g_cBWL & (1 << 2)) {
         g_cBWL &= ~(1 << 2);
-        mt65xx_reg_sync_writel(readl(EMI_ARBC) | 0x00008000, EMI_ARBC);
+        writel(readl(EMI_ARBC) | 0x00008000, EMI_ARBC);
     }
 
     if (g_cBWL & (1 << 3)) {
         g_cBWL &= ~(1 << 3);
-        mt65xx_reg_sync_writel(readl(EMI_ARBD) | 0x00008000, EMI_ARBD);
+        writel(readl(EMI_ARBD) | 0x00008000, EMI_ARBD);
     }
 
     if (g_cBWL & (1 << 4)) {
         g_cBWL &= ~(1 << 4);
-        mt65xx_reg_sync_writel(readl(EMI_ARBE) | 0x00008000, EMI_ARBE);
+        writel(readl(EMI_ARBE) | 0x00008000, EMI_ARBE);
     }
 
     if (g_cBWL & (1 << 5)) {
         g_cBWL &= ~(1 << 5);
-        mt65xx_reg_sync_writel(readl(EMI_ARBF) | 0x00008000, EMI_ARBF);
+        writel(readl(EMI_ARBF) | 0x00008000, EMI_ARBF);
     }
 
     if (g_cBWL & (1 << 6)) {
         g_cBWL &= ~(1 << 6);
-        mt65xx_reg_sync_writel(readl(EMI_ARBG) | 0x00008000, EMI_ARBG);
+        writel(readl(EMI_ARBG) | 0x00008000, EMI_ARBG);
     }
 }
 
@@ -517,8 +552,8 @@ void MCI_Mon_Disable(void)
 
 void MCI_Event_Set(unsigned int evt0, unsigned int evt1)
 {
-  mt65xx_reg_sync_writel(evt0, MCI_EVENT0_SEL);
-  mt65xx_reg_sync_writel(evt1, MCI_EVENT1_SEL);
+  writel(evt0, MCI_EVENT0_SEL);
+  writel(evt1, MCI_EVENT1_SEL);
 }
 
 

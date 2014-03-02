@@ -1016,6 +1016,7 @@ allocate_instance(struct device *dev,
 	INIT_LIST_HEAD(&musbfsh->out_bulk);
 
 	hcd->uses_new_polling = 1;
+	hcd->has_tt = 1;
 
 	musbfsh->vbuserr_retry = VBUSERR_RETRY_COUNT;
 

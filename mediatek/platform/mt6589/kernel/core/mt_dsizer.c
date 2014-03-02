@@ -65,9 +65,8 @@ int mt_dsizer_init(void){
         int ret;
         unsigned int val;
         unsigned int ooo_addr = 0xF0001200;
-        CHIP_SW_VER ver;
+        CHIP_SW_VER ver = mt_get_chip_sw_ver();
         val = readl(ooo_addr);
-        ver = mt_get_chip_sw_ver();
         printk("[DSI] MCI_Downsizer init\n");
         if (CHIP_SW_VER_02 > ver) 
         {

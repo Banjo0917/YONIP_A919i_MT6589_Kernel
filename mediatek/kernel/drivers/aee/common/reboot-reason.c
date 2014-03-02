@@ -41,16 +41,8 @@ static ssize_t aee_rr_read_reboot_reason(char *page, char **start, off_t off,
 	int len, i;
 
 	len =  sprintf(page, "WDT status: %d\n"
-		       "fiq step: %u\n" 
-		       "shutdown mode: %u\n"
-		       "current-jiffies: %lu ms\n"
-		       "external-wdk-kick: %lu ms\n"
-		       "idle(last-enter-jiffies, count): %lu ms, %lu\n\n",
-		       aee_rr_last_rec.wdt_status, aee_rr_last_rec.fiq_step, aee_rr_last_rec.shutdown_mode,
-		       (unsigned long) jiffies_to_msecs(aee_rr_last_rec.jiffies_current - INITIAL_JIFFIES),
-		       (unsigned long) jiffies_to_msecs(aee_rr_last_rec.jiffies_wdk_kick - INITIAL_JIFFIES), 
-		       (unsigned long) jiffies_to_msecs(aee_rr_last_rec.jiffies_idle - INITIAL_JIFFIES), 
-		       (unsigned long) aee_rr_last_rec.in_idle);
+		       "fiq step: %u\n",
+		       aee_rr_last_rec.wdt_status, aee_rr_last_rec.fiq_step);
 	for (i = 0; i < NR_CPUS; i++) {
 		len += sprintf(page + len, "CPU %d\n"
 			       "  irq: enter(%d, %llu) quit(%d, %llu)\n"
@@ -147,6 +139,7 @@ int aee_dump_stack_top_binary(char *buf, int buf_len,
 }
 
 extern int hw_reboot_mode(void);
+extern void mt_fiq_printf(const char *fmt, ...);
 
 static atomic_t nested_panic_time = ATOMIC_INIT(0);
 void aee_stop_nested_panic(struct pt_regs *regs)
@@ -263,7 +256,8 @@ out:
    /* waiting for the WDT timeout */
 	while (1)
     {
-        printk("%s hang here%d\t", __func__, i++);
+        // output to UART directly to avoid printk nested panic
+        mt_fiq_printf("%s hang here%d\t", __func__, i++);
         while(timeout--)
         {
             udelay(1);

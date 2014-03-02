@@ -89,6 +89,17 @@ typedef struct _QUE_T {
 *                                 M A C R O S
 ********************************************************************************
 */
+
+/*
+  * To resolve compiler warning of address check -Waddress
+  * Redefine a ASSERT dedicate for queue operation 
+  */
+#if DBG
+    #define QUE_ASSERT ASSERT
+#else
+    #define QUE_ASSERT(_exp)
+#endif
+
 #define QUEUE_INITIALIZE(prQueue) \
         { \
             (prQueue)->prHead = (P_QUE_ENTRY_T)NULL; \
@@ -108,8 +119,8 @@ typedef struct _QUE_T {
 
 #define QUEUE_INSERT_HEAD(prQueue, prQueueEntry) \
         { \
-            ASSERT(prQueue); \
-            ASSERT(prQueueEntry); \
+            QUE_ASSERT(prQueue); \
+            QUE_ASSERT(prQueueEntry); \
             (prQueueEntry)->prNext = (prQueue)->prHead; \
             (prQueue)->prHead = (prQueueEntry); \
             if ((prQueue)->prTail == (P_QUE_ENTRY_T)NULL) { \
@@ -120,8 +131,8 @@ typedef struct _QUE_T {
 
 #define QUEUE_INSERT_TAIL(prQueue, prQueueEntry) \
         { \
-            ASSERT(prQueue); \
-            ASSERT(prQueueEntry); \
+            QUE_ASSERT(prQueue); \
+            QUE_ASSERT(prQueueEntry); \
             (prQueueEntry)->prNext = (P_QUE_ENTRY_T)NULL; \
             if ((prQueue)->prTail) { \
                 ((prQueue)->prTail)->prNext = (prQueueEntry); \
@@ -138,7 +149,7 @@ typedef struct _QUE_T {
  */
 #define QUEUE_REMOVE_HEAD(prQueue, prQueueEntry, _P_TYPE) \
         { \
-            ASSERT(prQueue); \
+            QUE_ASSERT(prQueue); \
             prQueueEntry = (_P_TYPE)((prQueue)->prHead); \
             if (prQueueEntry) { \
                 (prQueue)->prHead = ((P_QUE_ENTRY_T)(prQueueEntry))->prNext; \
@@ -152,16 +163,16 @@ typedef struct _QUE_T {
 
 #define QUEUE_MOVE_ALL(prDestQueue, prSrcQueue) \
         { \
-            ASSERT(prDestQueue); \
-            ASSERT(prSrcQueue); \
+            QUE_ASSERT(prDestQueue); \
+            QUE_ASSERT(prSrcQueue); \
             *(P_QUE_T)prDestQueue = *(P_QUE_T)prSrcQueue; \
             QUEUE_INITIALIZE(prSrcQueue); \
         }
 
 #define QUEUE_CONCATENATE_QUEUES(prDestQueue, prSrcQueue) \
         { \
-            ASSERT(prDestQueue); \
-            ASSERT(prSrcQueue); \
+            QUE_ASSERT(prDestQueue); \
+            QUE_ASSERT(prSrcQueue); \
             if (prSrcQueue->u4NumElem > 0) { \
                 if ((prDestQueue)->prTail) { \
                     ((prDestQueue)->prTail)->prNext = (prSrcQueue)->prHead; \

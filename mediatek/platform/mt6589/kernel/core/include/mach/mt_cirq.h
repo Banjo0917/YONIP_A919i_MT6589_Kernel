@@ -87,6 +87,7 @@
 /*
  * Define function prototypes.
  */
+void mt_cirq_wfi_func(void);
 void mt_cirq_enable(void);
 void mt_cirq_disable(void);
 void mt_cirq_clone_gic(void);
